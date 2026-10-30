@@ -32,4 +32,7 @@ Things to nail down when we start LLD. Resolve in order.
     - Nightly device runs: T3 Code scheduled tasks on this PC; FAILs open issues via gh. GitHub Actions has no device role.
     - Remaining open: NIGHTLY-INVOCATION exact task shape (blocked by #1); crates.io name check at first publish.
 
+9. **Device session runbook (surface F)** — **RESOLVED (2026-10-30, grilling round 6)**, see `docs/runbook-device.md`:
+    - Executable checklist doc (GUI-verified steps can't be scripted); one-time MIUI hardening vs per-session ladder B0..B7; home WiFi + hotspot fallback; ADB setup-only inside sessions; source-build path for VelaVoice v1; evidence bundle contract per red run.
+
 Each item: when resolved, write the answer into `docs/bridge-contract.md` or ARCHITECTURE.md, and log it in DECISIONS.md.

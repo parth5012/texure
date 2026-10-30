@@ -42,6 +42,24 @@ Full observable behavior table + shared state machine: [docs/behavior-spec.md](d
 
 ---
 
+## 2026-10-30 (device runbook, LLD round 6)
+
+**Form: executable checklist doc.** docs/runbook-device.md; every step carries probe command + expected output; pure-script verification rejected (MIUI battery dialogs are GUI-only).
+
+**Structure: one-time vs per-session split.** A = MIUI hardening (battery No restrictions, autostart, recents lock, dev options, stays-alive), repeat trigger = MIUI update/app reinstall/reset. B = ordered ladder B0→B7 (device up → same network probe → app install → overlay probe → server connect → injection probe → flow). Straight-to-flow rejected: every red run would burn time rebuilding the ladder.
+
+**Network doctrine: home WiFi + hotspot fallback.** Same-subnet ping is the network gate; no reply = phone hotspot with documented cost (PC loses internet). Home-WiFi-only rejected on AP-isolation debug risk.
+
+**ADB position re-confirmed: setup-only inside the runbook** (install + logcat during sessions), never a runtime requirement; target is removal once pairing overlay covers install-less flows (product-claim guard, G4).
+
+**App source: both paths documented, v1 = source path A** (assembleDebug + adb install from D:\work\projects\VelaVoice); plugin/mavenLocal path joins when #2 lands.
+
+**Evidence bundles mandatory per red run** (logcat tail + screenshot + tree dump + step.md + issue), folder contract named in the runbook.
+
+Full runbook: [docs/runbook-device.md](docs/runbook-device.md).
+
+---
+
 ## 2026-10-30 (custom linters, grilling round 4)
 
 **Lint surface: docs + code.** texure's top silent-failure mode is doc/code drift, so lints cover both. Class D (docs/contract/scenarios) = Rust crate `texure-lint` (serde); Class C (code anti-patterns) = ast-grep YAML rules indexing guardrails.md G1/G4/G5/G6, except release-leak final say stays with the Gradle-plugin check.
