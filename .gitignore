@@ -1,0 +1,14 @@
+# Rust
+/target/
+Cargo.lock
+
+# Android / Gradle
+build/
+.gradle/
+local.properties
+*.iml
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
