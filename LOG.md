@@ -1,5 +1,27 @@
 # Log
 
+## 2026-10-30 (LLD E grilling session, orchestrator thread — same-day continuation)
+- LLD E (ticket #7) claimed and grilled HITL, 5 questions, human confirmed. Decisions: verify-at-execute identity-chain recovery (mid-press refresh ⇒ NODE_OUTDATED, no semantic hashes); wait_for grammar frozen {text|tag|visible|hidden, int timeout default 10 cap 30, hidden=negative, no composition}; 16-code error table frozen + WAIT_TIMEOUT ok:false row + APP_BUSY deleted (BUSY wins) + BRIDGE_STOPPED/PORT_IN_USE/CAPTURE_FAILED/HUMAN_STEERING/NODE_NOT_FOUND given behavior rows; contract table = sole lint-parseable authority (A3 taxonomy retargeted); /ui-tree gains additive cd field (schema stays v1), security annotations rejected, scale default 0.5.
+- bridge-contract.md: open questions ALL closed (port + node-id + tree-shape + scale bullets resolved). behavior-spec rows updated (1.1 shutdown+bind, 1.4 rev guard/human wins/node checks, 1.5 capture failure). lld-outline items 2+3 RESOLVED. DECISIONS.md round-8 entry.
+- Tracker: #7 resolution comment + closed completed; map #11 Decisions-so-far second line. ERROR fixed again mid-flight: repeated the stray-PATCH body clobber on #7 (this time caught and restored immediately from the pre-patch body). Procedure fix adopted for next tickets: comment via POST only, PATCH never for bodies during close-out.
+- Doc changes still UNCOMMITTED (attribution rule) — batch now spans LLD A + LLD E on orchestrator checkout.
+- Map 1 Phase 1 CLEAR: both grilling tickets closed; Spike 1 (#1) + crash capture (#4) are frontier for the map-1 AFK worker (device required per runbook).
+- Status: Done (ticket #7 closed) — VERIFY: docs-only, L0–L3 n/a; FLIPS: none. NEXT: map-1 AFK worker DISPATCH HELD by user (2026-10-30) — starts only when they say go.
+
+## 2026-10-30 (LLD A grilling session, orchestrator thread)
+- LLD A (ticket #6) claimed (`assignee: parth5012`) and grilled HITL, 8 questions, human confirmed. Decisions: NanoHTTPD+ws engine; serial bridge worker (sendPointerSync direct / dispatchTouchEvent+tree main-hop latch 1s); coords-in injection adapter, auto-fallback inside, no agent knob; activity-scoped overlay, zero grants; FGS specialUse; port fixed 8765 + SO_REUSEADDR + loud PORT_IN_USE (port bullet removed from #7 scope); token plain app-private prefs allowBackup=false; user Stop = hard abort, candidate code BRIDGE_STOPPED handed to #7 error table.
+- Authored docs/lld-bridge.md; freeze rows + port open-question closure in docs/bridge-contract.md; lld-outline item 4 RESOLVED; DECISIONS.md round-7 entry.
+- Tracker: #6 resolution comment posted + closed completed; map #11 Decisions-so-far first line appended; #7 scope updated (port resolved). ERROR fixed: a stray PATCH briefly overwrote ticket #6 body with the resolution text — restored from the original body I'd fetched at grill start.
+- Doc changes UNCOMMITTED on orchestrator checkout (attribution rule: no commit without explicit ask) — batch after LLD E closes or as docs PR.
+- Status: Done (ticket #6 closed) — VERIFY: docs-only, L0–L3 n/a; FLIPS: none. NEXT: LLD E (#7) grilling, then map-1 AFK spike.
+
+## 2026-10-30 (orchestrator session, wayfinder ship)
+
+- Data repair (docs-only, no issue): map bodies #11/#12/#13 were EMPTY (creation bug from the wayfinder-conversion session) — restored Destination/Notes/children/blocking/decisions/fog from LOG.md + docs. Inverted `blocked by:` footers on grilling tickets #6/#7 fixed (they had claimed to be blocked by the implementation tickets they feed; body Sequencing is canon). Map restored + footer fix noted in map bodies.
+- Frontier computed: map 3 (#13) is the only pure-AFK map — #3 P0, #5 P0, #10 workflow-shell unblocked NOW; P1s + nightly gated on code from maps 1–2. Maps 1–2 open with HITL grilling tickets (LLD A #6, LLD E #7, then LLD C #8, LLD B #9).
+- Worker thread #1 dispatched on user instruction (gemini flash child model: opencode/omniroute/gemini-flash, fresh worktree off main): wayfinder-ship map 3 end-to-end, single-PR mode, tickets one at a time with texure-implementation-loop. Thread link: <t3-thread://v2/1b2b1840-8750-47a4-a5cc-9ad9f5873c5b/mcp:1cef90f0-ad8b-4a49-a33e-82a0c4c6986b>. One thread at a time per orchestrator policy; next queue: map 1 Phase-1 grilling with the human.
+- Status: Review (awaiting human).
+
 ## 2026-10-30
 - Repo created from grilling session. Docs only: README, ARCHITECTURE, docs/bridge-contract.md, docs/lld-outline.md, DECISIONS.md.
 - Status: Ready. Next: LLD dig-in starting with injection mechanism spike decision; code after contract freeze.
