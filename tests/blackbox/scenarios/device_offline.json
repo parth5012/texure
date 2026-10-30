@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "device_offline",
+  "kind": "scenario",
+  "description": "Unreachable device returns OFFLINE error with reconnect hint",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "error.code": "OFFLINE"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "error.code" }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "rev": 100,
+  "window": "com.texure.sample/.GauntletActivity",
+  "nodes": [
+    {
+      "id": "root_container",
+      "text": null,
+      "cls": "android.widget.FrameLayout",
+      "bounds": [0, 0, 1080, 2400],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "scroll_view",
+      "text": null,
+      "cls": "android.widget.ScrollView",
+      "bounds": [0, 100, 1080, 2300],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "item_1",
+      "text": "Gauntlet Item 1",
+      "cls": "android.widget.TextView",
+      "bounds": [20, 120, 1040, 60],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "item_2",
+      "text": "Gauntlet Item 2",
+      "cls": "android.widget.TextView",
+      "bounds": [20, 190, 1040, 60],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "item_3",
+      "text": "Gauntlet Item 3",
+      "cls": "android.widget.TextView",
+      "bounds": [20, 260, 1040, 60],
+      "clickable": true,
+      "editable": false
+    }
+  ]
+}

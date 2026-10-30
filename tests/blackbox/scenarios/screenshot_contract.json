@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "screenshot_contract",
+  "kind": "scenario",
+  "description": "Screenshot returns PNG image bytes with scale support",
+  "steps": [
+    {
+      "action": "screenshot",
+      "args": { "scale": 0.5 },
+      "expect": { "format": "image/png" }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

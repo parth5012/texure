@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "human_win",
+  "kind": "scenario",
+  "description": "Digitizer touch during session flips state to HUMAN_STEERING and bumps rev",
+  "tags": ["device"],
+  "steps": [
+    {
+      "action": "tap",
+      "args": { "node": 1, "rev": 10 },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "HUMAN_STEERING" }
+  ]
+}

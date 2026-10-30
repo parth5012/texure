@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "NODE_OUTDATED",
+    "message": "tree refreshed since reference; re-run /ui-tree"
+  }
+}

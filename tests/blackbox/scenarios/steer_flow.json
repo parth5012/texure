@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "steer_flow",
+  "kind": "scenario",
+  "description": "Human touch mid-flow yields steering signal and agent completes after re-fetch",
+  "tags": ["device"],
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 1, "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

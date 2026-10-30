@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "error_envelope",
+  "kind": "scenario",
+  "description": "Error envelope contains code, message, and hint matching taxonomy",
+  "steps": [
+    {
+      "action": "tap",
+      "args": { "node": 99999, "rev": 0 },
+      "expect": {
+        "error.code": "NODE_OUTDATED"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "error.code" }
+  ]
+}

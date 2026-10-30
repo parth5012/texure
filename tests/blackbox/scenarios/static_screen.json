@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "static_screen",
+  "kind": "scenario",
+  "description": "Baseline screen inspection asserting node structure, bounds, and properties",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": { "max_depth": 12 },
+      "expect": { "rev": "> 0" }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "node[clickable=true]" },
+    { "pred": "count_lt", "target": "all", "value": 150 },
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

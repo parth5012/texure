@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "busy_second_client",
+  "kind": "scenario",
+  "description": "Second concurrent client gets BUSY error code",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "error.code": "BUSY"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

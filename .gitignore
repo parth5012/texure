@@ -2,6 +2,10 @@
 /target/
 Cargo.lock
 
+# Test evidence / throwaway
+/tmp/
+tmp/
+
 # Android / Gradle
 build/
 .gradle/

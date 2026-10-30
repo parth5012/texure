@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "lock_screen",
+  "kind": "scenario",
+  "description": "Device locked or screen off returns DEVICE_LOCKED / SCREEN_OFF",
+  "tags": ["device"],
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "error.code": "DEVICE_LOCKED"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "REFUSING" }
+  ]
+}

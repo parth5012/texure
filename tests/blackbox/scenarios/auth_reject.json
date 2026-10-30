@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "auth_reject",
+  "kind": "scenario",
+  "description": "Token mismatch returns AUTH_FAILED error code",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "error.code": "AUTH_FAILED"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

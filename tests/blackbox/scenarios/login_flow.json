@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "login_flow",
+  "kind": "scenario",
+  "description": "Agent-driven login and text flow completes unattended on VelaVoice over LAN",
+  "tags": ["device"],
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "type",
+      "args": { "node": 1, "text": "agent@texure.dev", "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 2, "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

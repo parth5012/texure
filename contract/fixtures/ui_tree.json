@@ -1,0 +1,22 @@
+{
+  "rev": 42,
+  "window": "com.velavoice/.MainActivity",
+  "nodes": [
+    {
+      "id": "btn_send",
+      "text": "Send",
+      "cls": "android.widget.Button",
+      "bounds": [12, 340, 108, 56],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "input_message",
+      "text": "Hello world",
+      "cls": "android.widget.EditText",
+      "bounds": [12, 280, 300, 48],
+      "clickable": true,
+      "editable": true
+    }
+  ]
+}

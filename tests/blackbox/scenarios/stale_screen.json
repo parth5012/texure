@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "stale_screen",
+  "kind": "scenario",
+  "description": "Mutating tap against a stale rev returns NODE_OUTDATED",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 3, "rev": "$tree.rev" },
+      "expect": { "error.code": "NODE_OUTDATED" }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

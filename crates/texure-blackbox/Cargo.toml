@@ -1,0 +1,18 @@
+[package]
+name = "texure-blackbox"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Prepared for WS /ws event assertion and async stream handling
+tokio-tungstenite = { version = "0.24", features = ["rustls-pki-types"] }
+futures-util = "0.3"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }

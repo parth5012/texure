@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "BUSY",
+    "message": "bridge owned by another client session"
+  }
+}

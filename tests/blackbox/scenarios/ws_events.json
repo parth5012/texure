@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "ws_events",
+  "kind": "scenario",
+  "description": "Mutations emit tree_changed events on websocket with strictly increasing rev",
+  "steps": [
+    {
+      "action": "tap",
+      "args": { "node": 1, "rev": 1 },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

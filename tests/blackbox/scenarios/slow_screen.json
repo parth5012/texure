@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "slow_screen",
+  "kind": "scenario",
+  "description": "Slow screen wait_for timeout returns ok: false with last_rev",
+  "steps": [
+    {
+      "action": "wait_for",
+      "args": {
+        "where": "text",
+        "value": "NonexistentView",
+        "timeout": 2
+      },
+      "expect": {
+        "ok": false
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}
