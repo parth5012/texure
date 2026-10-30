@@ -71,6 +71,52 @@ Test IDs: `BB-<group><n>`. Every row from behavior-spec is covered or explicitly
 | **P2 real bridge** (issue #1) | spike 1 end | Device target on `android/sample`; B5/B6/B7 device-gated | A-group green on REAL bridge; B5/B6/B7 green on Xiaomi |
 | **P3 VelaVoice** (issue #2) | milestone | One-line integration target; C1/C3 | C1 green = the two-week milestone, measured |
 
+## Scenario / assertion DSL v0 (the missing contract)
+
+Every scenario and fixture is JSON with `schema_version: 1`. Without this grammar P0 cannot be authored; it IS part of the blackbox design, not an implementation detail.
+
+```json
+{
+  "schema_version": 1,
+  "name": "stale_screen",
+  "kind": "scenario",              // scenario | fixture
+  "steps": [
+    { "action": "device_tree", "args": {}, "expect": { "rev": "> 0" } },
+    { "action": "tap",         "args": { "node": 3, "rev": "$tree.rev" }, "expect": { "ok": true } },
+    { "action": "wait_for",    "args": { "where": "text", "value": "Home", "timeout": 30 }, "expect": { "ok": true } }
+  ],
+  "assertions": [
+    { "pred": "exists",  "target": "node[text=Home]" },
+    { "pred": "count_lt","target": "all", "value": 200 },   // token budget guard
+    { "pred": "state",   "target": "bridge", "value": "IDLE" }
+  ]
+}
+```
+
+- `$tree.rev` style refs bind to the last `device_tree` result in the same scenario (scenarios are sequential, bridge is stateful — parallel steps are a later feature and forbidden in v1).
+- Predicates (`exists`, `missing`, `count_lt`, `state`, `bounds_of`) evaluate against the last tree; predicate vocabulary is small by design.
+- The same files serve three roles: FakeBridge script, blackbox scenario, eval-harness input. One grammar, all three consumers.
+
+## Report and CI contract
+
+- `--report out.json`: machine-readable result per test ID (`pass|fail|skip|device-skip`, evidence bundle path on fail, duration).
+- Exit code: 0 iff no unskipped-or-device-skipped FAIL; nonzero otherwise. CI and the nightly cron consume ONLY this shape.
+- Nightly cron maps failures straight into GitHub issues; no human log-diving required.
+Runner runs each target's tests strictly sequentially (stateful bridge under test); parallelism exists only across targets.
+
+## Ownership boundaries (no orphan seams)
+
+- Only bridge routes + MCP tool surface here. The **Gradle plugin's release-leak guard is NOT blackbox**: it is CI build-matrix + plugin unit tests, owned by issue #2.
+- Scenario/fixture schema evolution is versioned via `schema_version`; breaking change = bump + migration note in this doc.
+
+## Extra test IDs closing the audit gaps
+
+| ID | Asserts |
+|---|---|
+| A0 | MCP handshake: server declares ONLY the tools capability; tool list is EXACTLY the frozen 6; unknown tool/param yields a proper MCP error |
+| A6 | Token budget: on the deep gauntlet fixture screen, `device_tree` node count stays under the budget cap (protects agent context) |
+| B11 | Optional device flow (rotate token via overlay): old token → `AUTH_FAILED`, new token → OK; server config must be re-pasted (documented friction, not a bug) |
+
 ## Ground rules
 
 1. Runner never imports server/bridge internals; it talks protocol only.
