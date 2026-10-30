@@ -12,22 +12,17 @@ Things to nail down when we start LLD. Resolve in order.
 3. **Targeting scheme**
    - Array-index-from-last-tree vs stable node id vs raw coords. Pick one for v1 (above doc says index; verify it survives a real refresh flow).
 
-4. **Bridge lifecycle inside the app**
-   - Thread model for the HTTP server; foreground-service vs in-process; how to keep it alive while screen is on but app is backgrounded (common when agent backgrounds the app).
-   - Shutdown path when user leaves debug build.
+4. **Bridge lifecycle inside the app** — part-resolved: debug-only **foreground service**. Remaining: thread model for embedded HTTP server; shutdown path when user leaves debug build.
 
 5. **Gradle plugin mechanics**
    - How to add a dependency + init hook to debug source sets only, from a plugin. Manifest injection vs Application subclass hook vs startup initializer.
-   - Where the pairing token comes from and how it reaches both app and MCP server config.
+   - Pairing token flow: part-resolved (in-app debug overlay shows URL + token; QR deferred).
 
 6. **MCP server shape**
-   - Tool list freeze (5 tools), error taxonomy mapping bridge codes to MCP tool errors, screenshot plumbing (PNG to tool result image).
+   - Tool list freeze: **6 tools** (`device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`). Error taxonomy mapping bridge codes to MCP tool errors, screenshot plumbing (PNG to tool result image).
    - Rust crates: mcp microservice SDK choice, HTTP client, config file location.
 
-7. **Wait/sync semantics**
-   - `/ui-tree` after tap needs client-side polling strategy? Or a `/wait` route with conditions. Decide who owns waits.
-
-8. **Crate/module split freeze**
+7. **Crate/module split freeze**
    - Finalize tree: crates/texure-server, android/bridge, android/gradle-plugin, contract/.
 
 Each item: when resolved, write the answer into `docs/bridge-contract.md` or ARCHITECTURE.md, and log it in DECISIONS.md.
