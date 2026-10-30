@@ -4,6 +4,26 @@ Append-only. One entry per decision: what, why, alternatives, what triggered it.
 
 ---
 
+## 2026-10-30 (behavior spec, grilling round 3)
+
+**Tree source: own view-hierarchy traversal only.** No accessibility service. Verified VelaVoice is Expo/React Native, which renders real native views, so generic traversal covers the first target. Compose = first parked framework adapter. Weak RN ids accepted; spike 1 judges them live.
+
+**Foreground contract: refuse with `APP_NOT_FOREGROUND` + hint.** Bridge never auto-launches its own Activity (Android 10+ background-start rules + MIUI). Agent must bring the app forward as an explicit step.
+
+**Screen state + human steering.** Screen-safe `FLAG_KEEP_SCREEN_ON` debug overlay while a client is active; screen-off and device-lock are hard refusals (`SCREEN_OFF`/`DEVICE_LOCKED`). Human physical touch during agent session ALWAYS wins: cancels injection, bumps rev, surfaces `HUMAN_STEERING` so the agent re-plans. Synthetic injections carry a marker deviceId to make this detectable.
+
+**Tree shaping: interesting nodes + depth cap 12.** clickable/editable/scrollable/text/bearing containers only. Full trees rejected to protect agent token budgets.
+
+**Error surface: one-line `CODE: message` + hint, with opt-in full JSON via `verbose:true` tool param.** Server daemon never dies from tool errors.
+
+**Token lifecycle: stable per install.** Generated on first boot, stored, survives reboots/rebuilds. Manual rotation only (overlay button). Per-install and daily rotation rejected.
+
+**Server config: TOML at standard config dir + `TEXURE_*` env overrides.** JSON-only and env-only rejected.
+
+**Concurrency: single-flight lock.** Second MCP client gets `BUSY` + owner identity. Lock released on disconnect or 60s idle.
+
+Full observable behavior table + shared state machine: [docs/behavior-spec.md](docs/behavior-spec.md).
+
 ## 2026-10-30 (spike placement correction)
 
 **Spike code lives only in texure.** VelaVoice never receives test scaffolding. Spike 1 (mechanism proof) runs in `texure/android/bridge` + `texure/android/sample`, app on-device. Spike 2 (integration proof) publishes the bridge AAR to `mavenLocal` and adds one dependency line to VelaVoice's debug build, manually simulating the plugin. Rationale: throwaway code inside a product repo is future deletion work, and the product's core bet IS the one-line integration, so it should be exercised first, not last.
