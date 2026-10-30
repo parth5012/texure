@@ -36,4 +36,4 @@ Append-only. One entry per decision: what, why, alternatives, what triggered it.
 **Xiaomi any-app workarounds (HID/AOA, accessibility APK, scrcpy+xdotool): explicitly cut.**
 *Why:* Not needed once the bridge runs in-process. Research report methods 2-4 parked; Method 1 (in-app bridge) IS the product.
 
-**Naming: `devhand`.** Placeholder; renaming is cheap at this stage.
+**Naming: `texure`.** First working name was `devhand`, scrapped in discussion. `texure` is a coined word and we own that story. Renaming later is still cheap at this stage.

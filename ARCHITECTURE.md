@@ -1,4 +1,4 @@
-# devhand Architecture
+# texure Architecture
 
 ## One-liner
 
@@ -50,8 +50,8 @@ The entire adoption story is one line for the dev. It:
 ## Module / repo layout (target shape)
 
 ```
-devhand/
-  crates/devhand-server/        # Rust MCP stdio server
+texure/
+  crates/texure-server/         # Rust MCP stdio server
   android/bridge/               # Bridge SDK (Kotlin, publishes to maven local)
   android/gradle-plugin/        # Gradle plugin (the 1-line adoption seam)
   contract/                     # shared HTTP + tool contract (schemas, examples)

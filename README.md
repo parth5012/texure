@@ -1,4 +1,4 @@
-# devhand
+# texure
 
 **Put an agent-controllable bridge inside your debug app. Drive it from any MCP host over your LAN.**
 
@@ -8,7 +8,7 @@ No ADB dependency for touching the device. No emulator. No INJECT_EVENTS hacks. 
 
 ## Why
 
-Agent-driven mobile testing today either boots emulators (kills small dev machines) or fights vendor security (Xiaomi blocks `INJECT_EVENTS` for `shell`). devhand skips both: the app under test serves its own UI state from inside its own process, and the agent's host just connects over the network.
+Agent-driven mobile testing today either boots emulators (kills small dev machines) or fights vendor security (Xiaomi blocks `INJECT_EVENTS` for `shell`). texure skips both: the app under test serves its own UI state from inside its own process, and the agent's host just connects over the network.
 
 ## Status
 

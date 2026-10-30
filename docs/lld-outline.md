@@ -28,6 +28,6 @@ Things to nail down when we start LLD. Resolve in order.
    - `/ui-tree` after tap needs client-side polling strategy? Or a `/wait` route with conditions. Decide who owns waits.
 
 8. **Crate/module split freeze**
-   - Finalize tree: crates/devhand-server, android/bridge, android/gradle-plugin, contract/.
+   - Finalize tree: crates/texure-server, android/bridge, android/gradle-plugin, contract/.
 
 Each item: when resolved, write the answer into `docs/bridge-contract.md` or ARCHITECTURE.md, and log it in DECISIONS.md.
