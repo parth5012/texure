@@ -15,7 +15,8 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Boot with existing token | BB-B3 | Reuses stored token. Dev pairs ONCE per install. |
 | Foreground service | BB-B2, BB-B5 | Starts with active client; keeps process alive while agent session may return. MIUI checklist (battery No restrictions + autostart) is shown in the overlay, and non-blocking: bridge warns, does not refuse if unset. |
 | Overlay | BB-B11 | Debug-only, small, shows URL + token + active state (@IDLE/@ACTIVE/@HUMAN). Includes a rotate-token button. QR deferred (ROADMAP). |
-| Shutdown | BB-B9 | Service stops when: overlay stop, or 10 min with zero clients. WS + HTTP ports close, screen overlay turns off. |
+| Shutdown | BB-B9 | Service stops when: overlay stop, or 10 min with zero clients. WS + HTTP ports close, screen overlay turns off. User stop mid-action = hard teardown: sockets close now, in-flight agent job aborted at the next step boundary with `BRIDGE_STOPPED` (conn-reset) [LLD A round 7]. Uninstall/force-stop = process death, zero code. |
+| Bind conflict | BB-B1, BB-B2 | Fixed port occupied at start: service stops immediately; overlay + notification surface `PORT_IN_USE` + occupier hint. Agents see a connection failure; no fallback port (docs/lld-bridge.md §6) [LLD A round 7]. |
 
 ### 1.2 Screen state
 
@@ -38,12 +39,13 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 
 | Behavior | Test ID | Spec |
 |---|---|---|
-| rev guard [S] | BB-A2, BB-B4 | Mutating call includes the `rev` it acts on. If it ≠ bridge `rev`: `NODE_OUTDATED` + hint to re-fetch. No auto-correct, no late resolve. |
+| rev guard [S] | BB-A2, BB-B4 | Mutating call includes the `rev` it acts on. If it ≠ bridge `rev`: `NODE_OUTDATED` + hint to re-fetch. No auto-correct, no late resolve. **Verify-at-execute [E round 8]:** the worker re-traverses at dispatch and checks the identity chain at the referenced index; mismatch ⇒ `NODE_OUTDATED` too — an unobserved mid-press sub-tree refresh can't land a blind tap. |
 | App foregrounded [S] | BB-B5 | Rule: only foreground-app windows accept mutations. If in background: `APP_NOT_FOREGROUND` + hint. Bridge does not auto-launch its Activity (Android 10+ background-start rules + MIUI harden it). Agent must call launch/platform first. |
 | Injection mechanism | BB-A2, BB-C1 | `Instrumentation.sendPointerSync` (own windows, non-main thread); `dispatchTouchEvent` replay is the documented fallback. See [spike doc](spike-injection.md). Bridge exposes which mechanism is compiled in at runtime via `device_tree` `verbose:true` metadata (parked for v1; discovery needed for test assertions). |
 | Keyboard | BB-A2, BB-C1 | `type` dispatches commit-able text into editable; `keypress` handles the enum `ENTER, BACK, DEL, TAB`. BACK is in-process (via `OnBackPressedDispatcher`/`Activity.dispatchKeyEvent`), not system-level. |
 | Screen on/lock [S] | BB-B6 | `SCREEN_OFF`/`DEVICE_LOCKED` refusals as in 1.2. |
-| Human wins [S] | BB-B7, BB-C3 | Synthetic injection events carry a marker deviceId injected at craft time. Any real digitizer touch observed during an active agent session: cancels in-flight injection, bumps rev, flips state to `HUMAN_STEERING`. The state change is observable so the agent learns human steering happened; agent never auto-fights the human. |
+| Human wins [S] | BB-B7, BB-C3 | Synthetic injection events carry a marker deviceId injected at craft time. Any real digitizer touch observed during an active agent session: cancels in-flight injection, bumps rev, flips state to `HUMAN_STEERING`. A mutation arriving while steering: 409 `HUMAN_STEERING` + re-plan hint [E round 8]. The agent never auto-fights the human. |
+| Node checks [E round 8] | BB-A2, BB-B4 | `tap` on a non-clickable node ⇒ `NODE_NOT_CLICKABLE`; `type` into a non-editable node ⇒ `NODE_NOT_EDITABLE`; unknown `?subtree=<id>` on `/ui-tree` ⇒ `NODE_NOT_FOUND`. Injection failure after both methods ⇒ `INJECT_FAILED`. |
 
 ### 1.5 Screenshot (`/screenshot`)
 
@@ -51,7 +53,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 |---|---|---|
 | Source | BB-A4 | Own window capture. No media projection UX. |
 | Scale | BB-A4 | Query `scale`: `0.25|0.5|1.0`, default `0.5`. |
-| Failure | BB-A4, BB-B6 | `SCREEN_OFF`/`DEVICE_LOCKED`/`APP_NOT_FOREGROUND` refusals like mutations. |
+| Failure | BB-A4, BB-B6 | `SCREEN_OFF`/`DEVICE_LOCKED`/`APP_NOT_FOREGROUND` refusals like mutations; own-window capture failure ⇒ `CAPTURE_FAILED` (reads keep working) [E round 8]. |
 
 ### 1.6 Transport
 

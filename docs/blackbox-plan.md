@@ -35,7 +35,7 @@ Test IDs: `BB-<group><n>`. Every row from behavior-spec is covered or explicitly
 |---|---|
 | A1 | `/ui-tree` shape: `rev`, `window`, nodes with `id,text,cls,bounds,clickable,editable`; interesting-only filter respected; depth cap honored |
 | A2 | `/tap` `/type` `/keypress` `/back` return `{ok:true}` with correct rev echo |
-| A3 | Error envelope: every error has `code`, `message`, and a hint; codes match the taxonomy (`NODE_OUTDATED`, `AUTH_FAILED`, `OFFLINE`, `APP_NOT_FOREGROUND`, `SCREEN_OFF`, `DEVICE_LOCKED`, `APP_BUSY`) |
+| A3 | Error envelope: every error has `code`, `message`, and a hint; codes match the frozen table in bridge-contract.md §Error shape (16 codes; `WAIT_TIMEOUT` asserted as ok:false, NOT an error envelope; `APP_BUSY` must NOT appear anywhere — removed, `BUSY` is the name) |
 | A4 | `/screenshot`: PNG magic bytes; `scale=0.5` default; sizes differ across scales |
 | A5 | `/ws`: mutating action emits `tree_changed {rev}`; rev strictly increases |
 

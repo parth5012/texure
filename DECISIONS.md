@@ -88,7 +88,38 @@ Full plan: [docs/linting-plan.md](docs/linting-plan.md).
 
 **Merge gates: lint + rust-test are gates;** android-build becomes a gate when plugin code lands. ubuntu+windows per PR (windows = ship platform, must stay green); mac at release tag only. Nightly never a gate.
 
-Full LLD: [docs/lld-ci.md](docs/lld-ci.md).
+Full LLD for the bridge itself plus the 8 decisions behind it: [docs/lld-bridge.md](docs/lld-bridge.md).
+
+---
+
+## 2026-10-30 (LLD A: bridge internals, grilling round 7)
+
+Eight decisions, full detail in [docs/lld-bridge.md](docs/lld-bridge.md):
+
+1. **Engine: NanoHTTPD + websocket module.** Route logic lives in the bridge core; engine swappable. Ktor rejected (dep-tree weight for debug-only), hand-rolled rejected (HTTP + RFC 6455 correctness risk).
+2. **Threads: serial bridge worker.** All mutation verbs FIFO on one background thread; `sendPointerSync` runs directly (non-main-thread research law), `dispatchTouchEvent` replay + tree capture hop to main via Handler + result latch with 1s timeout. One concurrency contract at behavior-spec level.
+3. **Injection seam: coords-in adapter.** Tree layer resolves index→coords; adapter is window-physics only (`tap/swipe/text/key`); `sendPointerSync`→`dispatchTouchEvent` auto-fallback frozen inside; no agent-visible mode knob.
+4. **Overlay: activity-scoped debug view.** Zero user grants (no `SYSTEM_ALERT_WINDOW`); service notification carries status while backgrounded; FGS started only from foreground context. MIUI settings-maze avoided by construction.
+5. **FGS type `specialUse`** with honest debug-bridge description. `dataSync` rejected — Android 15's 6h cap would kill long sessions.
+6. **Port fixed `8765`, fail loud.** `SO_REUSEADDR`; bind conflict stops the service with `PORT_IN_USE`; no fallback range (silent config drift worse than loud failure). Port bullet marked resolved here and removed from ticket #7's scope.
+7. **Token: plain app-private SharedPreferences, `allowBackup=false`.** Attacker model: other apps + LAN peers only. `EncryptedSharedPreferences` rejected (deprecated androidx crypto, MIUI Keystore quirks, no new attacker covered). Rotation-only semantics preserved.
+8. **Stop = abort.** User Stop closes sockets immediately, in-flight job cancelled at step boundary; candidate code `BRIDGE_STOPPED` handed to ticket #7's error-table freeze. Uninstall/force-stop cost zero code.
+
+Feeds: #1 (spike implements this), #4, #7, #8, #9.
+
+---
+
+## 2026-10-30 (LLD E: contract freeze leftovers, grilling round 8)
+
+Five decisions, detail in bridge-contract.md:
+
+1. **Mid-press recovery: verify-at-execute.** Mutations re-traverse the tree at dispatch and check the identity chain at the referenced index; mismatch ⇒ `NODE_OUTDATED`. Blind-tap hole closed without new id machinery; semantic-hash ids stay ROADMAP (round 2 rationale unchanged: same recovery UX, extra machinery).
+2. **`wait_for` grammar frozen: `{where: text|tag|visible|hidden, value, timeout}`.** Case-insensitive contains for text, exact for tag, `hidden` = the negative predicate. Int seconds, default 10, cap 30. No and/or composition, no subtree scope, no `enabled` (agents already see per-node state; agents chain calls).
+3. **Error table frozen: 16 codes + `WAIT_TIMEOUT` non-error row.** `APP_BUSY` deleted — `BUSY` wins (contract draft said both; one authority, no aliases). Statuses: 401/409/400 + conn-reset for `BRIDGE_STOPPED`. Hints frozen in-table.
+4. **Authority: the table lives only in bridge-contract.md §Error shape.** Ground contract rule: behavior rows cite codes but never re-list them; `texure-lint` regex-parses the markdown rows (uppercase-snake, orphan check, every code referenced by ≥1 behavior row/scenario). A3's taxonomy updated to match.
+5. **Node shape gains `cd` (contentDescription, nullable, additive — schema_version stays 1).** RN icon-only buttons become addressable. Security annotations: NOT exposed (own-app tree only). `scale` default `0.5` frozen into /screenshot. All four contract open questions closed.
+
+Feeds: #1 (spike implements against frozen contract), #3 (A3 taxonomy + scenario grammar), #5 (docs-gate parses the table), #8 (error-map cross-references this table).
 
 ---
 

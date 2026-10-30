@@ -4,13 +4,16 @@ Things to nail down when we start LLD. Resolve in order.
 
 1. **Injection mechanism (day-1 spike, blocks everything)** — **RESOLVED BY RESEARCH** (see `docs/spike-injection.md`): the Xiaomi INJECT_EVENTS wall only blocks cross-window injection; own-window injection needs no permission. Spike bet: `Instrumentation.sendPointerSync` (own windows, non-main thread), fallback `dispatchTouchEvent` replay. AccessibilityService rejected (MIUI kills accessibility services). Spike experiment defined; not yet executed.
    - Acceptance: the 5 criteria in docs/spike-injection.md.
-2. **Node model and ids**
-   - id source: test tag > view id name > text > class+index fallback? Stability contract across refreshes. Write it into contract doc.
+2. **Node model and ids** — **RESOLVED (2026-10-30, LLD round 8 / ticket #7)**: v1 identity = index-in-last-tree + rev guard + verify-at-execute identity-chain check (`test tag > view id > text > class+index`) at dispatch. Semantic hash ids stay ROADMAP (re-decided with the same rationale as round 2; mid-press refresh recovery = `NODE_OUTDATED` re-fetch, not new machinery). Frozen in bridge-contract.md (`POST /tap`).
 
-3. **Targeting scheme**
-   - Array-index-from-last-tree vs stable node id vs raw coords. Pick one for v1 (above doc says index; verify it survives a real refresh flow).
+3. **Targeting scheme** — **RESOLVED (round 8)**: array-index-from-last-tree confirmed as v1; the "verify it survives a real refresh flow" concern is covered structurally by verify-at-execute (contract) + blackbox B4/`stale_screen` scenarios; live spike still validates on-device.
 
-4. **Bridge lifecycle inside the app** — part-resolved: debug-only **foreground service**. Remaining: thread model for embedded HTTP server; shutdown path when user leaves debug build.
+4. **Bridge lifecycle inside the app** — **RESOLVED (2026-10-30, LLD round 7)**, see `docs/lld-bridge.md`:
+    - Engine: NanoHTTPD + websocket module (route logic in bridge core, engine swappable).
+    - Threads: serial bridge worker; sendPointerSync direct, dispatchTouchEvent/tree capture hop to main with latch + 1s timeout.
+    - Overlay: activity-scoped debug view, zero user grants; FGS `specialUse`, foreground-context start only.
+    - Port: fixed `8765`, `SO_REUSEADDR`, loud `PORT_IN_USE`. Token: app-private plaintext prefs, `allowBackup=false`, overlay-only rotation.
+    - Shutdown: user Stop = hard abort (`BRIDGE_STOPPED` handed to surface E); uninstall/force-stop = zero code.
 
 5. **Gradle plugin mechanics**
    - How to add a dependency + init hook to debug source sets only, from a plugin. Manifest injection vs Application subclass hook vs startup initializer.
