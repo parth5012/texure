@@ -73,14 +73,14 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        if: steps:check-android.outputs.has_android == 'true'
+        if: steps.check-android.outputs.has_android == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Assemble Debug & Probe
-        if: steps:check-android.outputs.has_android == 'true'
+        if: steps.check-android.outputs.has_android == 'true'
         run: |
           cd android && ./gradlew assembleDebug --no-daemon
 
