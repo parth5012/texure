@@ -1,5 +1,12 @@
 # Injection spike (day-1) — research verdict + experiment spec
 
+## Where the spike code lives (corrected 2026-10-30)
+
+Throwaway test code must NOT go into VelaVoice. Spike work happens inside `texure/`:
+
+- **Spike 1 — mechanism proof** lives in `texure/android/bridge` (this becomes the real Bridge SDK module) + `texure/android/sample` (minimal app it injects into). Runs against the sample app on the Xiaomi. App-agnostic: own-window injection is not VelaVoice-specific.
+- **Spike 2 — integration proof**: publish the bridge AAR to `mavenLocal`, add one dependency line to VelaVoice's debug build. Manual simulation of what the Gradle plugin will automate. If a one-line integration hurts here, the plugin design is wrong. Then run the real login/text flow on VelaVoice.
+
 ## Research verdict (2026-10-30, sourced)
 
 Claims verified against Stack Overflow + TouchInjector (emanuele-f) docs + Android Instrumentation reference + dontkillmyapp/xiaomi:

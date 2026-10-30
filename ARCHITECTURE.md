@@ -52,13 +52,14 @@ The entire adoption story is one line for the dev. It:
 ```
 texure/
   crates/texure-server/         # Rust MCP stdio server
-  android/bridge/               # Bridge SDK (Kotlin, publishes to maven local)
+  android/bridge/               # Bridge SDK (Kotlin AAR, publishes to maven local)
   android/gradle-plugin/        # Gradle plugin (the 1-line adoption seam)
+  android/sample/               # minimal app used by the day-1 spike and tests
   contract/                     # shared HTTP + tool contract (schemas, examples)
   docs/
 ```
 
-`contract/` is the single source of truth both implementations build against. No implementations without the contract doc being right first.
+`contract/` is the single source of truth both implementations build against. No implementations without the contract doc being right first. Spike throwaway code lives in `android/sample`, never inside target-app repos (VelaVoice only ever receives the dependency line, exactly like the plugin will add).
 
 ## Risks (ranked)
 
