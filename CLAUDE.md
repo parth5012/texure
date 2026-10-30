@@ -2,6 +2,11 @@
 
 Agent-controllable Android bridge (one Gradle line into debug builds) + Rust MCP server. Agents test YOUR OWN app over LAN.
 
+## Skills (load before working, not after)
+- Always load the best-practices skill for the language/layer in play BEFORE writing or reviewing non-trivial code: Rust crates → Rust patterns skill; Android/Kotlin/Gradle → Android patterns skill; MCP protocol → the closest protocol/agent-harness skill available.
+- Module/API shaping → `codebase-design` (deep modules, seams). TDD work → `tdd` skill workflows.
+- If no matching skill is installed for a layer, proceed with documented styles from that layer's docs, and note the missing skill in `LOG.md` so the gap can be filled.
+
 ## Source of truth
 1. `docs/bridge-contract.md` → 2. `docs/behavior-spec.md` → 3. code
 - Change contract/behavior docs BEFORE code. Breaking change = bump `schema_version` + `DECISIONS.md` entry
