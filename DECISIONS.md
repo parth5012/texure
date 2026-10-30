@@ -60,7 +60,21 @@ Full plan: [docs/linting-plan.md](docs/linting-plan.md).
 
 ---
 
-## Earlier (2026-10-30)
+## 2026-10-30 (CI/CD + distribution, LLD round 5)
+
+**Rust dist: prebuilt + cargo.** Release-tag cross-builds (windows-msvc/linux-gnu/apple-darwin) + checksums on gh release; `cargo install --locked` secondary; quickstart shows prebuilt first. Semver, breaking MCP contract change = major.
+
+**Android dist: mavenLocal + in-repo examples/.** No separate quickstart repo v1 (user call: convenience vs overhead; parked to Later with "secret repo" fallback). JitPack/Plugin Portal/Central = not-doing until post-spike.
+
+**Nightly device runs: T3 Code scheduled tasks** own the schedule, run on this PC, FAILs open issues via gh. GitHub Actions has no device role (LAN-only). Not cron-system, not Task Scheduler — user preference for T3-native scheduling.
+
+**Merge gates: lint + rust-test are gates;** android-build becomes a gate when plugin code lands. ubuntu+windows per PR (windows = ship platform, must stay green); mac at release tag only. Nightly never a gate.
+
+Full LLD: [docs/lld-ci.md](docs/lld-ci.md).
+
+---
+
+## 2026-10-30 (earlier planning rounds)
 
 **Product scope: devs test their OWN apps.** In-app bridge model. Generic any-app control is explicitly cut.
 *Why:* Kills the Xiaomi/INJECT_EVENTS problem by construction; defines a shippable product (one Gradle line) instead of a fragile universal controller. *Alternative cut:* accessibility APK sidecar / HID emulation; abandoned because vendor security makes them whack-a-mole.

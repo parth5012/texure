@@ -23,4 +23,13 @@ Things to nail down when we start LLD. Resolve in order.
 7. **Crate/module split freeze**
    - Finalize tree: crates/texure-server, android/bridge, android/gradle-plugin, contract/.
 
+8. **CI/CD + distribution (surface D)** — **RESOLVED (2026-10-30, grilling round 5)**, see `docs/lld-ci.md`:
+    - Merge gates: lint → rust-test are PR gates; android-build becomes a gate once plugin code lands; nightly device runs never gate.
+    - OS targets: ubuntu + windows per PR (windows = ship platform); mac at release tag only.
+    - Rust dist: prebuilt gh-release binaries (windows-msvc/linux-gnu/apple-darwin) + checksums; `cargo install --locked` secondary.
+    - Android dist: mavenLocal + in-repo `examples/` quickstart (separate repo parked, see ROADMAP.Later).
+    - Release recipe: tag v* → cross-build → checksum → gh release → cargo publish; semver, breaking MCP contract change = major.
+    - Nightly device runs: T3 Code scheduled tasks on this PC; FAILs open issues via gh. GitHub Actions has no device role.
+    - Remaining open: NIGHTLY-INVOCATION exact task shape (blocked by #1); crates.io name check at first publish.
+
 Each item: when resolved, write the answer into `docs/bridge-contract.md` or ARCHITECTURE.md, and log it in DECISIONS.md.

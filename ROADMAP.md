@@ -45,6 +45,9 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 - **Emulator + scrcpy support:** window/keyboard mirroring as an observation channel, not as injection.
 - **Web-build testing hooks** (same flows replayed against an Expo web build for cross-engine checks).
 - **Battery killer auto-detection** on MIUI/HyperOS: detect restrictions and show a guided fix page instead of failing silently.
+- **texure-quickstart repo**: `examples/` in-repo ships v1 (decided in [docs/lld-ci.md](docs/lld-ci.md)); revisit only if external adoption justifies the split.
+- **Android publishing (JitPack / Plugin Portal / Maven Central)**: mavenLocal + quickstart README is v1 distribution; real publishing post-spike.
+- **cargo-dist / package-manager manifests (winget, scoop, homebrew)**: prebuilt gh-release binaries + `cargo install` suffice for v1.
 
 ## Not doing (revisit only with real user pain)
 
