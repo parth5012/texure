@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "backgrounded",
+  "kind": "scenario",
+  "description": "Backgrounded app returns APP_NOT_FOREGROUND on mutating action",
+  "tags": ["device"],
+  "steps": [
+    {
+      "action": "tap",
+      "args": { "node": 1, "rev": 1 },
+      "expect": {
+        "error.code": "APP_NOT_FOREGROUND"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "REFUSING_MUTATIONS" }
+  ]
+}

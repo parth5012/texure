@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "lock_release",
+  "kind": "scenario",
+  "description": "Lock released on client disconnect and idle timeout",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

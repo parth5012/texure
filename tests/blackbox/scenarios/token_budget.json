@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "token_budget",
+  "kind": "scenario",
+  "description": "Deep gauntlet screen node count stays under token budget cap",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": { "max_depth": 12 },
+      "expect": { "rev": "> 0" }
+    }
+  ],
+  "assertions": [
+    { "pred": "count_lt", "target": "all", "value": 200 }
+  ]
+}

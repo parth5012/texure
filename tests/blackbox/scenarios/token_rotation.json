@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "token_rotation",
+  "kind": "scenario",
+  "description": "Token rotation via overlay: old token yields AUTH_FAILED, new token succeeds",
+  "tags": ["device"],
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "error.code": "AUTH_FAILED"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "mutating_actions",
+  "kind": "scenario",
+  "description": "Mutating actions tap, type, keypress, back return {ok: true}",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 1, "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "type",
+      "args": { "node": 2, "text": "test", "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "keypress",
+      "args": { "key": "ENTER" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "back",
+      "args": {},
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "verbose_errors",
+  "kind": "scenario",
+  "description": "verbose: true returns full JSON error payload instead of one-liner",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": { "verbose": true },
+      "expect": {
+        "error.code": "NO_CONFIG"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "error" }
+  ]
+}

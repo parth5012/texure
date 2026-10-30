@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "mcp_handshake",
+  "kind": "scenario",
+  "description": "Server declares only tools capability with exactly 6 tools",
+  "steps": [
+    {
+      "action": "mcp_handshake",
+      "args": {},
+      "expect": {
+        "tools_count": 6
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "count_lt", "target": "tools", "value": 7 }
+  ]
+}

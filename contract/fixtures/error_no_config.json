@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "NO_CONFIG",
+    "message": "missing config file; set ~/.config/texure/config.toml or TEXURE_URL/TEXURE_TOKEN"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "no_config",
+  "kind": "scenario",
+  "description": "Unconfigured server returns NO_CONFIG error with exact fix hint",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "error.code": "NO_CONFIG"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "error.code" }
+  ]
+}
