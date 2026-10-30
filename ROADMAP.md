@@ -12,6 +12,8 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 
 ## Next (v1.1-ish)
 
+- **Custom linters** (see [docs/linting-plan.md](docs/linting-plan.md)): `texure-lint` docs-gate + scenario DSL crate FIRST (P0, no code needed), forbidden-API ast-grep YAML rules when code exists. perfgym dogfood, time-boxed; `sg scan` fallback. Parked as issue #5.
+
 - **Agent eval harness** (see [docs/testing-architecture.md](docs/testing-architecture.md)): scenario runner CLI, deterministic replay + goal-based pass-rate modes, evidence bundles on failure. First pass rides issue #2.
 - **Record & replay human workflows.** Bridge records its own window's real MotionEvents during a debug-overlay "record" mode, exports as scenario JSON (the shared DSL with the blackbox suite/eval harness), agents replay via tools with the rev guard. Also exports a **codemode script** form: a plain tool-call sequence agents can execute/reuse directly in their harness (OpenCode etc.), so agents get programmatic control with or without the scenario runner. Concept synergy: "human wins" steering doubles as a recording input.
 - **Crash/ANR capture — ASAP tier (user-prioritized).** Debug-only `UncaughtExceptionHandler` in the bridge: on uncaught exception/ANR signal, export a bundle (crash stack, last known ui-tree, last actions, build info) and surface it to the next connected agent/dev session. Cheap; hooks bridge init in issue #1 scope; implement in the same pass as the spike. See issue #4.

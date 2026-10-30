@@ -10,6 +10,7 @@
 - ROADMAP.md added (now/next/later/not-doing).
 - Spike scaffold request PARKED by user as GitHub issues: #1 spike 1 (bridge + sample + 5 criteria), #2 spike 2 (VelaVoice one-liner + agent flow). Implementation deferred.
 - AGENTS.md designed per agents-md skill with user merges. docs/repo-map.md (layout + commands with honest status column) and docs/guardrails.md (13 hard limits) split out per user call. Attribution omitted until toolchain setup completes.
+- Custom linting designed via grilling round 4: two classes (docs-gate Rust crate + ast-grep YAML guardrails), perfgym dogfood time-boxed with sg fallback, FAIL/WARN tiers, in-repo lint/ rules. Plan in docs/linting-plan.md, parked as issue #5, ROADMAP.Next entry added. Skills section added to AGENTS.md (CLAUDE.md re-synced).
 - NOTE: CLAUDE.md is a plain COPY of AGENTS.md (Windows symlink needs elevated privilege). Re-copy whenever AGENTS.md changes.
 - docs/testing-architecture.md added: test plan through the three seams, FakeBridge second adapter, scenario DSL, agent eval harness; build order mapped to issues #1/#2.
 - docs/blackbox-plan.md added + implementation parked as issue #3 (BB runner P0/P1). Suite is write-first: runs red before implementation, flips green across #1/#2 milestones.

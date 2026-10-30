@@ -42,7 +42,25 @@ Full observable behavior table + shared state machine: [docs/behavior-spec.md](d
 
 ---
 
-## 2026-10-30 (earlier)
+## 2026-10-30 (custom linters, grilling round 4)
+
+**Lint surface: docs + code.** texure's top silent-failure mode is doc/code drift, so lints cover both. Class D (docs/contract/scenarios) = Rust crate `texure-lint` (serde); Class C (code anti-patterns) = ast-grep YAML rules indexing guardrails.md G1/G4/G5/G6, except release-leak final say stays with the Gradle-plugin check.
+
+**Executor: perfgym dogfood, time-boxed 2 weeks.** Rules are portable YAML so perfgym's linter and plain `sg scan` are interchangeable executors; adoption criteria: runs full ruleset, stable exit codes, sg-baseline parity. No hard dependency on perfgym's version. Semgrep rejected (overlaps ast-grep capability, extra toolchain), detekt customs rejected (heavier per-language authoring).
+
+**Severity: FAIL/WARN tiers.** Guardrail + contract + scenario-schema breaks = FAIL (nonzero exit). Doc freshness = WARN. Single orchestrator entrypoint (`texure-lint`) merges both engines into `lint-report.json`, parsed nightly into issues.
+
+**Scope freeze v1:** docs-gate + scenario DSL + hygiene + fixture checks + 3 guardrail rule families. Architecture/lint defers (A6 token budget already enforced by blackbox; no duplicate).
+
+**Where it runs:** CI job first in matrix + local; nightly cron opens issues from `lint-report.json`.
+
+**Rule home:** in-repo `lint/ast-grep/`; rules versioned with the codebase they guard.
+
+Full plan: [docs/linting-plan.md](docs/linting-plan.md).
+
+---
+
+## Earlier (2026-10-30)
 
 **Product scope: devs test their OWN apps.** In-app bridge model. Generic any-app control is explicitly cut.
 *Why:* Kills the Xiaomi/INJECT_EVENTS problem by construction; defines a shippable product (one Gradle line) instead of a fragile universal controller. *Alternative cut:* accessibility APK sidecar / HID emulation; abandoned because vendor security makes them whack-a-mole.
