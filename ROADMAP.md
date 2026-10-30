@@ -12,6 +12,8 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 
 ## Next (v1.1-ish)
 
+- **Agent eval harness** (see [docs/testing-architecture.md](docs/testing-architecture.md)): scenario runner CLI, deterministic replay + goal-based pass-rate modes, evidence bundles on failure. First pass rides issue #2.
+
 - **Gradle plugin hardening.** Release-leak guardrails (build fail, not warn), both Groovy and Kotlin-DSL module shapes, pairing token generation.
 - **QR pairing.** In-app debug overlay renders QR encoding URL + token; MCP server camera-side is out of scope, so QR is for phone-to-phone or local viewer use.
 - **Stable node ids** (beyond rev + index): semantic hash identity so agent memory of a node survives refreshes.
