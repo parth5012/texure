@@ -6,6 +6,7 @@ Agent-controllable Android bridge (one Gradle line into debug builds) + Rust MCP
 - Always load the best-practices skill for the language/layer in play BEFORE writing or reviewing non-trivial code: Rust crates → Rust patterns skill; Android/Kotlin/Gradle → Android patterns skill; MCP protocol → the closest protocol/agent-harness skill available.
 - Module/API shaping → `codebase-design` (deep modules, seams). TDD work → `tdd` skill workflows.
 - If no matching skill is installed for a layer, proceed with documented styles from that layer's docs, and note the missing skill in `LOG.md` so the gap can be filled.
+- Execution loop for any ticket: `texure-implementation-loop` (`.agents/skills/texure-implementation-loop/SKILL.md`, also user-level) — red blackbox → unit → minimum impl → L0..L3 gauntlet → adversarial review lanes → PR + bots. Verification tiers in `docs/agent-test-loop.md`.
 
 ## Source of truth
 1. `docs/bridge-contract.md` → 2. `docs/behavior-spec.md` → 3. code
