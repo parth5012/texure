@@ -28,6 +28,7 @@ Agent-controllable Android bridge (one Gradle line into debug builds) + Rust MCP
 - Experiment/throwaway code lives ONLY in `android/sample`; target-app repos receive exactly one dependency line (via issue #2 only)
 
 ## Testing rules
+- Verification protocol for every implementation agent: `docs/agent-test-loop.md` — L0 static → L1 unit → L2 fake-bridge blackbox → L3 device ladder; self-serve up to L2, L3 only via `docs/runbook-device.md`, red = evidence bundle + BLOCKED comment, never improvise
 - Blackbox suite is protocol-only (MCP stdio / HTTP contract), never internals
 - Each behavior-spec row maps to a blackbox test ID; a missing mapping is a suite bug — fix the suite first
 - Device-only tests tagged `device`; skipped cleanly without a phone (never a build failure)
