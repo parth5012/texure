@@ -13,12 +13,11 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 ## Next (v1.1-ish)
 
 - **Agent eval harness** (see [docs/testing-architecture.md](docs/testing-architecture.md)): scenario runner CLI, deterministic replay + goal-based pass-rate modes, evidence bundles on failure. First pass rides issue #2.
-- **Record & replay human workflows.** Bridge records its own window's real MotionEvents during a debug-overlay "record" mode, exports as scenario JSON (the shared DSL with the blackbox suite/eval harness), agents replay via tools with the rev guard. Concept synergy: "human wins" steering doubles as a recording input.
-- **Regression tracking.** Deterministic C-group scenario runs per build, results stored (JSONL/sqlite keyed by versionName + build hash), HTML trend report; failures keep evidence bundles. A "no new concept" feature: scenario runner + a store.
-- **Crash/ANR capture.** Debug-only UncaughtExceptionHandler in bridge: on crash, export an internal bundle + scenario-diff hint (what was the last tree) so agents can file clean bugs.
-- **ADB bootstrap utility.** Install/launch/screen-wake/bootstrap via USB or wireless ADB as SETUP-ONLY tooling; runtime agent interaction stays ADB-free (product honesty rule).
+- **Record & replay human workflows.** Bridge records its own window's real MotionEvents during a debug-overlay "record" mode, exports as scenario JSON (the shared DSL with the blackbox suite/eval harness), agents replay via tools with the rev guard. Also exports a **codemode script** form: a plain tool-call sequence agents can execute/reuse directly in their harness (OpenCode etc.), so agents get programmatic control with or without the scenario runner. Concept synergy: "human wins" steering doubles as a recording input.
+- **Crash/ANR capture — ASAP tier (user-prioritized).** Debug-only `UncaughtExceptionHandler` in the bridge: on uncaught exception/ANR signal, export a bundle (crash stack, last known ui-tree, last actions, build info) and surface it to the next connected agent/dev session. Cheap; hooks bridge init in issue #1 scope; implement in the same pass as the spike. See issue #4.
+- **ADB bootstrap utility — OPTIONAL only (user-confirmed, never required).** Install/launch/screen-wake/bootstrap via USB or wireless ADB as SETUP-ONLY, opt-in tooling. Runtime agent interaction NEVER requires ADB (product honesty rule: if ADB becomes required, the locked-down-phone claim dies).
 - **Trace viewer.** Evidence bundles evolve into a Playwright-style HTML timeline of steps + screenshots + trees.
-
+- **Regression tracking.** Deterministic C-group scenario runs per build, results stored (JSONL/sqlite keyed by versionName + build hash), HTML trend report; failures keep evidence bundles. A "no new concept" feature: scenario runner + a store.
 - **Gradle plugin hardening.** Release-leak guardrails (build fail, not warn), both Groovy and Kotlin-DSL module shapes, pairing token generation.
 - **QR pairing.** In-app debug overlay renders QR encoding URL + token; MCP server camera-side is out of scope, so QR is for phone-to-phone or local viewer use.
 - **Stable node ids** (beyond rev + index): semantic hash identity so agent memory of a node survives refreshes.
