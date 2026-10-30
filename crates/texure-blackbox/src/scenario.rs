@@ -105,7 +105,10 @@ impl Scenario {
 }
 
 /// Evaluates `$tree.*` variable references against a captured device_tree JSON
-pub fn resolve_variable(expr: &str, context: &HashMap<String, serde_json::Value>) -> Result<serde_json::Value, ScenarioError> {
+pub fn resolve_variable(
+    expr: &str,
+    context: &HashMap<String, serde_json::Value>,
+) -> Result<serde_json::Value, ScenarioError> {
     if let Some(stripped) = expr.strip_prefix("$tree.") {
         if let Some(tree) = context.get("tree") {
             if stripped == "rev" {
@@ -231,4 +234,3 @@ mod tests {
         assert_eq!(node_subfield, "deep_val");
     }
 }
-

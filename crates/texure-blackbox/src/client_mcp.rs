@@ -154,7 +154,11 @@ impl McpStdioClient {
         self.send_request("tools/list", None).await
     }
 
-    pub async fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, McpClientError> {
+    pub async fn call_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, McpClientError> {
         self.send_request(
             "tools/call",
             Some(serde_json::json!({

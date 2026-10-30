@@ -53,7 +53,11 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         }
         count += 1;
 
-        let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let filename = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let rel_file = format!("tests/blackbox/scenarios/{filename}");
 
         let content = match fs::read_to_string(&path) {
@@ -203,7 +207,9 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
                             rule: "scenario-dsl/unknown-predicate".to_string(),
                             file: rel_file.clone(),
                             line: 1,
-                            message: format!("Assertion {assert_idx} has unknown predicate '{pred}'"),
+                            message: format!(
+                                "Assertion {assert_idx} has unknown predicate '{pred}'"
+                            ),
                         });
                     }
                 } else {
@@ -275,7 +281,10 @@ mod tests {
         };
         let findings = check_scenarios(root);
         let fails: Vec<_> = findings.iter().filter(|f| f.severity == "FAIL").collect();
-        assert!(fails.is_empty(), "Expected 0 FAIL findings, found: {:?}", fails);
+        assert!(
+            fails.is_empty(),
+            "Expected 0 FAIL findings, found: {:?}",
+            fails
+        );
     }
 }
-

@@ -16,7 +16,9 @@ pub fn check_hygiene(root_dir: &Path) -> Vec<Finding> {
                     rule: "hygiene/agents-md-line-budget".to_string(),
                     file: "AGENTS.md".to_string(),
                     line: line_count,
-                    message: format!("AGENTS.md line count ({line_count}) exceeds budget of 60 lines"),
+                    message: format!(
+                        "AGENTS.md line count ({line_count}) exceeds budget of 60 lines"
+                    ),
                 });
             }
         }
@@ -45,7 +47,8 @@ pub fn check_hygiene(root_dir: &Path) -> Vec<Finding> {
                     rule: "hygiene/log-freshness".to_string(),
                     file: "LOG.md".to_string(),
                     line: 1,
-                    message: "LOG.md does not contain a recent session entry (## 2026-MM-DD)".to_string(),
+                    message: "LOG.md does not contain a recent session entry (## 2026-MM-DD)"
+                        .to_string(),
                 });
             }
         }
@@ -91,7 +94,11 @@ pub fn check_hygiene(root_dir: &Path) -> Vec<Finding> {
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                    let filename = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let filename = p
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     if let Ok(c) = fs::read_to_string(&p) {
                         if serde_json::from_str::<serde_json::Value>(&c).is_err() {
                             findings.push(Finding {
@@ -99,7 +106,9 @@ pub fn check_hygiene(root_dir: &Path) -> Vec<Finding> {
                                 rule: "hygiene/invalid-contract-fixture".to_string(),
                                 file: format!("contract/fixtures/{filename}"),
                                 line: 1,
-                                message: format!("Fixture 'contract/fixtures/{filename}' is not valid JSON"),
+                                message: format!(
+                                    "Fixture 'contract/fixtures/{filename}' is not valid JSON"
+                                ),
                             });
                         }
                     }

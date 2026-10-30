@@ -43,9 +43,9 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
 
     // Expected full BB suite IDs
     let all_expected_bb_ids = [
-        "BB-A0", "BB-A1", "BB-A2", "BB-A3", "BB-A4", "BB-A5", "BB-A6",
-        "BB-B1", "BB-B2", "BB-B3", "BB-B4", "BB-B5", "BB-B6", "BB-B7", "BB-B8", "BB-B9", "BB-B10", "BB-B11",
-        "BB-C1", "BB-C2", "BB-C3",
+        "BB-A0", "BB-A1", "BB-A2", "BB-A3", "BB-A4", "BB-A5", "BB-A6", "BB-B1", "BB-B2", "BB-B3",
+        "BB-B4", "BB-B5", "BB-B6", "BB-B7", "BB-B8", "BB-B9", "BB-B10", "BB-B11", "BB-C1", "BB-C2",
+        "BB-C3",
     ];
 
     let mut mapped_bb_ids = HashSet::new();
@@ -67,16 +67,16 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
                 .strip_prefix('|')
                 .and_then(|s| s.strip_suffix('|'))
                 .unwrap_or(trimmed);
-            let cells: Vec<String> = inner
-                .split('|')
-                .map(|s| s.trim().to_string())
-                .collect();
+            let cells: Vec<String> = inner.split('|').map(|s| s.trim().to_string()).collect();
 
             if cells.is_empty() {
                 continue;
             }
 
-            if cells.iter().all(|c| c.chars().all(|ch| ch == '-' || ch == ':')) {
+            if cells
+                .iter()
+                .all(|c| c.chars().all(|ch| ch == '-' || ch == ':'))
+            {
                 // Separator line
                 in_table = true;
                 continue;
@@ -84,17 +84,27 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
 
             if !in_table {
                 // Header row
-                behavior_col_idx = cells.iter().position(|c| c.eq_ignore_ascii_case("behavior") || c.eq_ignore_ascii_case("tool"));
-                test_id_col_idx = cells.iter().position(|c| c.eq_ignore_ascii_case("test id") || c.eq_ignore_ascii_case("test"));
+                behavior_col_idx = cells.iter().position(|c| {
+                    c.eq_ignore_ascii_case("behavior") || c.eq_ignore_ascii_case("tool")
+                });
+                test_id_col_idx = cells.iter().position(|c| {
+                    c.eq_ignore_ascii_case("test id") || c.eq_ignore_ascii_case("test")
+                });
                 has_test_id_column = test_id_col_idx.is_some();
             } else if test_id_col_idx.is_some() {
                 // Data row
-                let behavior_name = behavior_col_idx.and_then(|idx| cells.get(idx)).cloned().unwrap_or_default();
+                let behavior_name = behavior_col_idx
+                    .and_then(|idx| cells.get(idx))
+                    .cloned()
+                    .unwrap_or_default();
                 if behavior_name.is_empty() || behavior_name.starts_with("---") {
                     continue;
                 }
 
-                let test_id_str = test_id_col_idx.and_then(|idx| cells.get(idx)).cloned().unwrap_or_default();
+                let test_id_str = test_id_col_idx
+                    .and_then(|idx| cells.get(idx))
+                    .cloned()
+                    .unwrap_or_default();
                 let found_ids: Vec<String> = BB_REGEX
                     .find_iter(&test_id_str)
                     .map(|m| m.as_str().to_string())
@@ -130,7 +140,8 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
             rule: "docs-gate/no-tables".to_string(),
             file: "docs/behavior-spec.md".to_string(),
             line: 1,
-            message: "No behavior tables with Test ID column found in docs/behavior-spec.md".to_string(),
+            message: "No behavior tables with Test ID column found in docs/behavior-spec.md"
+                .to_string(),
         });
     }
 
@@ -151,7 +162,14 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
     let contract_path = root_dir.join("docs/bridge-contract.md");
     if contract_path.exists() {
         if let Ok(c_content) = fs::read_to_string(&contract_path) {
-            let frozen_tools = ["device_tree", "tap", "type", "keypress", "screenshot", "wait_for"];
+            let frozen_tools = [
+                "device_tree",
+                "tap",
+                "type",
+                "keypress",
+                "screenshot",
+                "wait_for",
+            ];
             for tool in frozen_tools {
                 if !c_content.contains(tool) {
                     findings.push(Finding {
@@ -159,12 +177,22 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
                         rule: "docs-gate/frozen-tool-missing".to_string(),
                         file: "docs/bridge-contract.md".to_string(),
                         line: 1,
-                        message: format!("Frozen tool '{}' missing from docs/bridge-contract.md", tool),
+                        message: format!(
+                            "Frozen tool '{}' missing from docs/bridge-contract.md",
+                            tool
+                        ),
                     });
                 }
             }
 
-            let required_routes = ["/ui-tree", "/tap", "/type", "/keypress", "/screenshot", "/ws"];
+            let required_routes = [
+                "/ui-tree",
+                "/tap",
+                "/type",
+                "/keypress",
+                "/screenshot",
+                "/ws",
+            ];
             for route in required_routes {
                 if !c_content.contains(route) {
                     findings.push(Finding {
@@ -172,7 +200,10 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
                         rule: "docs-gate/route-missing".to_string(),
                         file: "docs/bridge-contract.md".to_string(),
                         line: 1,
-                        message: format!("Required contract route '{}' missing from docs/bridge-contract.md", route),
+                        message: format!(
+                            "Required contract route '{}' missing from docs/bridge-contract.md",
+                            route
+                        ),
                     });
                 }
             }
@@ -196,7 +227,10 @@ mod tests {
         };
         let findings = check_docs_gate(root);
         let fails: Vec<_> = findings.iter().filter(|f| f.severity == "FAIL").collect();
-        assert!(fails.is_empty(), "Expected 0 FAIL findings, found: {:?}", fails);
+        assert!(
+            fails.is_empty(),
+            "Expected 0 FAIL findings, found: {:?}",
+            fails
+        );
     }
 }
-
