@@ -2,10 +2,8 @@
 
 Things to nail down when we start LLD. Resolve in order.
 
-1. **Injection mechanism (day-1 spike, blocks everything)**
-   - Candidates: Instrumentation#sendPointerSync from app process, View.dispatchTouchEvent replay, dispatchGesture via in-app accessibility banner. Confirm which works under Xiaomi/MIUI, and whether instrumentation grants INJECT_EVENTS to the app being instrumented.
-   - Acceptance: a tap lands on a button in VelaVoice debug build over LAN, no SecurityException, no settings toggles the dev must flip beyond enabling the plugin.
-
+1. **Injection mechanism (day-1 spike, blocks everything)** — **RESOLVED BY RESEARCH** (see `docs/spike-injection.md`): the Xiaomi INJECT_EVENTS wall only blocks cross-window injection; own-window injection needs no permission. Spike bet: `Instrumentation.sendPointerSync` (own windows, non-main thread), fallback `dispatchTouchEvent` replay. AccessibilityService rejected (MIUI kills accessibility services). Spike experiment defined; not yet executed.
+   - Acceptance: the 5 criteria in docs/spike-injection.md.
 2. **Node model and ids**
    - id source: test tag > view id name > text > class+index fallback? Stability contract across refreshes. Write it into contract doc.
 

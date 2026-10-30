@@ -62,15 +62,20 @@ texure/
 
 ## Risks (ranked)
 
-1. **Injection mechanism feasibility (day-1 spike).** Can the app inject touches into its own windows from inside its own process (Instrumentation / dispatchGesture) without Xiaomi blocks backing down? If this fails, the plan downshifts and everything else waits.
+1. **Injection mechanism feasibility (day-1 spike).** Research says the Xiaomi wall only blocks cross-window injection; own-window injection needs no permission. Spike must still prove it live on a real MIUI device before we trust it.
 2. **UI-tree fidelity.** Views without test tags get poor node ids. Mitigation: fall back to text/class, provide `set_tag` route, document tag recommendation for devs.
 3. **Token-efficient tree size.** Deep view hierarchies can flood the agent's context. Mitigation: compact node schema, subtree filters, maybe depth caps in the agent-facing tool.
-4. **LAN-only adoption friction** (dev on different networks, hotspot quirks, AP isolation). Document as error message in v1; Tailscale is the roadmapped cure.
+4. **MIUI battery killer** (foreground service lifetime). Documented dev checklist: battery "No restrictions" + autostart; detection libs exist (MIUI-autostart) to warn instead of silently dying.
 5. **Release-build leak.** Gradle plugin must actively protect against it; it's also the product's trust story.
+6. **LAN-only adoption friction** (dev on different networks, hotspot quirks, AP isolation). Document as error message in v1; Tailscale is the roadmapped cure.
 
 ## First target app
 
-VelaVoice (Gradle Android project) at `D:\work\projects\VelaVoice`. All spikes and the first end-to-end flow run there.
+VelaVoice (Gradle Android project) at `D:\work\projects\VelaVoice`. Structure: monorepo with `sdk/` (Kotlin DSL, vela-core/common/voice-ui/whisper/cleaner), `velaboard/` (app, Kotlin DSL, minSdk 24 / target 35), and `velavoice app/android/` (Groovy DSL, minSdk 23 / target 34). The spike targets the `velavoice app/android` module first since that is the app build the Gradle plugin will inject into; plugin design must accommodate both Groovy and Kotlin-DSL module shapes across the monorepo.
+
+## Injection mechanism (researched)
+
+The Xiaomi INJECT_EVENTS wall exists only for cross-window/system-wide injection. In-app injection into the app's own windows needs no extra permission: `Instrumentation.sendPointerSync` (own windows, non-main thread) and/or `view.dispatchTouchEvent` replay. AccessibilityService-based injection is rejected (MIUI kills accessibility services). Details + spike spec: [docs/spike-injection.md](docs/spike-injection.md).
 
 ## Framework adapter roadmap (parked, deliberate)
 
