@@ -13,6 +13,11 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 ## Next (v1.1-ish)
 
 - **Agent eval harness** (see [docs/testing-architecture.md](docs/testing-architecture.md)): scenario runner CLI, deterministic replay + goal-based pass-rate modes, evidence bundles on failure. First pass rides issue #2.
+- **Record & replay human workflows.** Bridge records its own window's real MotionEvents during a debug-overlay "record" mode, exports as scenario JSON (the shared DSL with the blackbox suite/eval harness), agents replay via tools with the rev guard. Concept synergy: "human wins" steering doubles as a recording input.
+- **Regression tracking.** Deterministic C-group scenario runs per build, results stored (JSONL/sqlite keyed by versionName + build hash), HTML trend report; failures keep evidence bundles. A "no new concept" feature: scenario runner + a store.
+- **Crash/ANR capture.** Debug-only UncaughtExceptionHandler in bridge: on crash, export an internal bundle + scenario-diff hint (what was the last tree) so agents can file clean bugs.
+- **ADB bootstrap utility.** Install/launch/screen-wake/bootstrap via USB or wireless ADB as SETUP-ONLY tooling; runtime agent interaction stays ADB-free (product honesty rule).
+- **Trace viewer.** Evidence bundles evolve into a Playwright-style HTML timeline of steps + screenshots + trees.
 
 - **Gradle plugin hardening.** Release-leak guardrails (build fail, not warn), both Groovy and Kotlin-DSL module shapes, pairing token generation.
 - **QR pairing.** In-app debug overlay renders QR encoding URL + token; MCP server camera-side is out of scope, so QR is for phone-to-phone or local viewer use.
@@ -28,6 +33,12 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
   - Expo/React Native config plugin
   - Flutter module
   - Rust-built apps (Tauri etc.) — the "rust app plugins" idea from the original plan
+- **Screen mirroring for agents.** scrcpy-source MCP frame provider (requires the ADB bootstrap utility first; scrcpy needs ADB). Vision grounding on top of the JSON tree when pixel truth matters.
+- **Config matrix.** Same scenario replayed under rotation, dark mode, or a locale change; scenario runner scripts the config change before each replay.
+- **Deep-link/entry matrix.** Same flow via deep link / notification / cold start.
+- **Performance probes.** Choreographer frame time + cold start per flow, persisted into the regression trend UI.
+- **Assertion SDK for devs.** Kotlin DSL over the bridge for non-agent tests in plain instrumented suites.
+- **Multi-device runs.** Two+ phones concurrently for cross-device regressions (single-flight lock rework required).
 - **Wireless beyond LAN:** adb wireless debugging pairing flow; Tailscale/WireGuard transport adapters.
 - **CI mode:** USB runner suite, device persists across runs, junit-style results out of flow scripts.
 - **Emulator + scrcpy support:** window/keyboard mirroring as an observation channel, not as injection.
