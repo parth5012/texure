@@ -292,9 +292,16 @@ async fn main() {
 
     println!("================================================================================");
     println!("Texure Blackbox Test Suite (Runner P0)");
-    println!("Target filter: {} | Selected tests: {}", args.target, selected_tests.len());
+    println!(
+        "Target filter: {} | Selected tests: {}",
+        args.target,
+        selected_tests.len()
+    );
     println!("================================================================================");
-    println!("{:<8} {:<10} {:<12} {:>8}   REASON", "ID", "TARGET", "STATUS", "DURATION");
+    println!(
+        "{:<8} {:<10} {:<12} {:>8}   REASON",
+        "ID", "TARGET", "STATUS", "DURATION"
+    );
     println!("--------------------------------------------------------------------------------");
 
     let mut results = Vec::new();

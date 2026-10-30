@@ -39,8 +39,9 @@ impl HttpBridgeClient {
     fn headers(&self) -> Result<HeaderMap, HttpBridgeError> {
         let mut headers = HeaderMap::new();
         if let Some(token) = &self.token {
-            let val = HeaderValue::from_str(&format!("Bearer {token}"))
-                .map_err(|e| HttpBridgeError::InvalidHeader(format!("Invalid auth token header: {e}")))?;
+            let val = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|e| {
+                HttpBridgeError::InvalidHeader(format!("Invalid auth token header: {e}"))
+            })?;
             headers.insert(AUTHORIZATION, val);
         }
         Ok(headers)
@@ -65,8 +66,8 @@ impl HttpBridgeClient {
             return Err(HttpBridgeError::StatusError { status, body });
         }
 
-        let json: Value = serde_json::from_str(&body)
-            .map_err(|e| HttpBridgeError::StatusError {
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
                 status,
                 body: format!("Invalid JSON response: {e}"),
             })?;
@@ -94,15 +95,20 @@ impl HttpBridgeClient {
             return Err(HttpBridgeError::StatusError { status, body });
         }
 
-        let json: Value = serde_json::from_str(&body)
-            .map_err(|e| HttpBridgeError::StatusError {
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
                 status,
                 body: format!("Invalid JSON response: {e}"),
             })?;
         Ok(json)
     }
 
-    pub async fn type_text(&self, node: u64, text: &str, rev: u64) -> Result<Value, HttpBridgeError> {
+    pub async fn type_text(
+        &self,
+        node: u64,
+        text: &str,
+        rev: u64,
+    ) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/type", self.base_url);
         let payload = serde_json::json!({
             "node": node,
@@ -124,8 +130,8 @@ impl HttpBridgeClient {
             return Err(HttpBridgeError::StatusError { status, body });
         }
 
-        let json: Value = serde_json::from_str(&body)
-            .map_err(|e| HttpBridgeError::StatusError {
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
                 status,
                 body: format!("Invalid JSON response: {e}"),
             })?;
@@ -152,8 +158,8 @@ impl HttpBridgeClient {
             return Err(HttpBridgeError::StatusError { status, body });
         }
 
-        let json: Value = serde_json::from_str(&body)
-            .map_err(|e| HttpBridgeError::StatusError {
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
                 status,
                 body: format!("Invalid JSON response: {e}"),
             })?;
@@ -175,8 +181,8 @@ impl HttpBridgeClient {
             return Err(HttpBridgeError::StatusError { status, body });
         }
 
-        let json: Value = serde_json::from_str(&body)
-            .map_err(|e| HttpBridgeError::StatusError {
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
                 status,
                 body: format!("Invalid JSON response: {e}"),
             })?;

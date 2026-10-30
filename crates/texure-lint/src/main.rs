@@ -69,8 +69,13 @@ fn main() {
     if findings.is_empty() {
         println!("All checks passed! Zero lint findings.");
     } else {
-        println!("{:<8} {:<32} {:<30} MESSAGE", "SEVERITY", "RULE", "LOCATION");
-        println!("--------------------------------------------------------------------------------");
+        println!(
+            "{:<8} {:<32} {:<30} MESSAGE",
+            "SEVERITY", "RULE", "LOCATION"
+        );
+        println!(
+            "--------------------------------------------------------------------------------"
+        );
         for f in &findings {
             let loc = format!("{}:{}", f.file, f.line);
             println!("{:<8} {:<32} {:<30} {}", f.severity, f.rule, loc, f.message);
@@ -78,7 +83,12 @@ fn main() {
     }
 
     println!("--------------------------------------------------------------------------------");
-    println!("Summary: {} total finding(s) | {} FAIL | {} WARN", findings.len(), fails, warns);
+    println!(
+        "Summary: {} total finding(s) | {} FAIL | {} WARN",
+        findings.len(),
+        fails,
+        warns
+    );
     println!("================================================================================");
 
     let report_findings: Vec<FindingJson> = findings
@@ -104,7 +114,10 @@ fn main() {
     if let Some(ref report_path) = args.report {
         if let Some(parent) = report_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                eprintln!("Warning: failed to create directory {}: {e}", parent.display());
+                eprintln!(
+                    "Warning: failed to create directory {}: {e}",
+                    parent.display()
+                );
             }
         }
         match serde_json::to_string_pretty(&report) {
