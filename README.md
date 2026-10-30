@@ -12,7 +12,7 @@ Agent-driven mobile testing today either boots emulators (kills small dev machin
 
 ## Status
 
-Docs and decisions first. See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/](docs/). Code lands after the day-1 injection spike is proven.
+Docs and decisions first. See [ARCHITECTURE.md](ARCHITECTURE.md), [ROADMAP.md](ROADMAP.md), and [docs/](docs/). Code lands after the day-1 injection spike is proven.
 
 - Target: 2-week slice = one app (VelaVoice), one real flow, driven unattended by an agent over LAN.
 - Roadmap: framework adapters (Expo/RN config plugin, Rust-built apps via Tauri etc.), wireless pairing, Tailscale/WireGuard transports, CI USB runner.

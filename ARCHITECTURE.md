@@ -79,4 +79,4 @@ The Xiaomi INJECT_EVENTS wall exists only for cross-window/system-wide injection
 
 ## Framework adapter roadmap (parked, deliberate)
 
-Same bridge HTTP contract, different injectors per framework: Expo/RN config plugin, Flutter, Rust-built apps (Tauri etc.). Each adapter is an implementation behind the SAME transport seam. None of this is v1 ambition. Any-app control and vendor-security workarounds are explicitly cut things we do not build.
+Same bridge HTTP contract, different injectors per framework: Expo/RN config plugin, Flutter, Rust-built apps (Tauri etc.). Each adapter is an implementation behind the SAME transport seam. None of this is v1 ambition; the full parked list lives in [ROADMAP.md](ROADMAP.md). Any-app control and vendor-security workarounds are explicitly cut things we do not build.
