@@ -75,6 +75,28 @@ Returns `image/png`. Query `scale`: `0.25|0.5|1.0`, **default `0.5`** (LLD E rou
 
 WebSocket. Bridge pushes `{ "type": "tree_changed", "rev": N }`. Extra event types later are additive; the route name does not change.
 
+### GET /last-crash
+
+Returns the newest debug crash/ANR bundle exported to app-private storage (ticket #4):
+
+```json
+{
+  "timestamp": 1730370000000,
+  "stack_trace": "java.lang.RuntimeException: Sample crash\n\tat com.texure.sample.MainActivity...",
+  "last_tree": { "rev": 42, "window": "com.texure.sample/.MainActivity", "nodes": [] },
+  "last_actions": [
+    { "action": "tap", "node": 3, "rev": 42, "result": "ok" }
+  ],
+  "build_info": {
+    "application_id": "com.texure.sample",
+    "version_name": "1.0",
+    "bridge_rev": "0.1.0"
+  }
+}
+```
+
+If no crash bundle exists, returns HTTP 404 with standard error envelope (`{ "error": { "code": "NOT_FOUND", "message": "no crash bundle available" } }`). Bearer auth required.
+
 ### (tool note, agent-facing)
 
 MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`.
