@@ -50,15 +50,15 @@ texure/
 
 | Task | Command | Status |
 |------|---------|--------|
-| Docs-gate lint (L0) | `cargo run -p texure-lint` | planned (#5 P0) |
-| Lint report only | `cargo run -p texure-lint -- --report lint-report.json` | planned (#5 P0) |
-| Blackbox full run | `cargo run -p texure-blackbox -- --target all --report out.json` | planned (#3) |
+| Docs-gate lint (L0) | `cargo run -p texure-lint` | live (#5 P0) |
+| Lint report only | `cargo run -p texure-lint -- --report lint-report.json` | live (#5 P0) |
+| Blackbox full run | `cargo run -p texure-blackbox -- --target all --report out.json` | live runner, targets pending |
 | Blackbox, CI only (L2) | `cargo run -p texure-blackbox -- --target mcp-fake` | planned (#3) |
 | Blackbox vs device (L3) | `cargo run -p texure-blackbox -- --target http --url <phone-ip>:<port>` | planned (#1) |
 | Server unit tests | `cargo test -p texure-server` | planned (#1/#2) |
 | Contract fixture check | `cargo test -p texure-contract` | planned (#3) |
-| Bridge unit tests | `./gradlew :android:bridge:testDebug` | planned (#1) |
-| Sample app build | `./gradlew :android:sample:assembleDebug` | planned (#1) |
-| Device mechanism regression | `./gradlew :android:sample:connectedDebugAndroidTest` | planned (#1) |
+| Bridge unit tests | `./gradlew :bridge:testDebug` | live (#1, #4) |
+| Sample app build | `./gradlew :sample:assembleDebug` | live (#1) |
+| Device mechanism regression | `./gradlew :sample:connectedDebugAndroidTest` | live (#1 harness ready) |
 
 Keep this table honest: flip status to "live" only when the command actually runs in this repo.

@@ -156,3 +156,21 @@ Feeds: #1 (spike implements against frozen contract), #3 (A3 taxonomy + scenario
 *Why:* Not needed once the bridge runs in-process. Research report methods 2-4 parked; Method 1 (in-app bridge) IS the product.
 
 **Naming: `texure`.** First working name was `devhand`, scrapped in discussion. `texure` is a coined word and we own that story. Renaming later is still cheap at this stage.
+
+---
+
+## 2026-10-31 (Spike 1 & Crash Capture implementation, issues #1 & #4)
+
+1. **Spike 1 bridge architecture implemented in `android/bridge` and `android/sample`:**
+   - Server: Embedded NanoHTTPD + NanoWSD on fixed port 8765.
+   - Worker: Single-thread serial execution for mutation verbs with verify-at-execute identity checks to avoid race conditions.
+   - Injection: `DefaultInjectionAdapter` with `sendPointerSync` primary and `dispatchTouchEvent` fallback on decor view, recycling all MotionEvent instances.
+   - Extractor: `BridgeTreeExtractor` with depth cap 12, interesting nodes filtering, and stable resource-id resolution.
+   - Overlay: Activity-scoped debug overlay with token rotation and manual controls.
+   - Guardrail G1 verification: Strict verification that release builds (`:sample:assembleRelease`) contain 0 bridge classes or references.
+
+2. **Crash/ANR capture implemented (ticket #4):**
+   - Uncaught exception handler registered during bridge initialization.
+   - Crash bundle exported to app-private storage: timestamp, stack trace, last known ui-tree, last bridge actions, and build info.
+   - Contract addition `GET /last-crash` returns newest crash bundle (HTTP 200) or standard error envelope (HTTP 404).
+   - Overlay surfaces last crash status directly in-app.

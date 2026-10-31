@@ -1,5 +1,18 @@
 # Log
 
+## 2026-10-31 (Wayfinder map 1 AFK tickets #1 & #4 implementation)
+- Map 1 AFK tickets claimed and implemented on branch `wf/11-injection-spike`:
+  - Ticket #1 (Spike 1 injection mechanism proof): Android library `android/bridge`, sample host app `android/sample`, root `gradlew` wrapper, embedded NanoHTTPD/NanoWSD server on fixed port 8765, serial single-thread `BridgeWorker` with verify-at-execute check, `DefaultInjectionAdapter` with `sendPointerSync` primary and `dispatchTouchEvent` fallback, `BridgeTreeExtractor` with depth cap 12 and interesting-node filtering, `BridgeOverlay` activity-scoped debug controls.
+  - Ticket #4 (Crash/ANR capture): `BridgeCrashHandler` registering `UncaughtExceptionHandler`, app-private bundle export (timestamp, stack trace, last known ui-tree, last N actions, build info), `GET /last-crash` route documented in `docs/bridge-contract.md` and implemented with 200/404 semantics.
+- Guardrail G1 verified: `:sample:assembleRelease` produces APK with 0 bridge classes, server references, or overlay code.
+- Verification:
+  - L0: `cargo run -p texure-lint` pass (0 findings), `cargo clippy --workspace` pass (0 warnings), Gradle lint vital pass.
+  - L1: 15 Robolectric unit tests in `bridge` and `sample` pass, 6 cargo unit tests pass.
+  - L2: n/a (FakeBridge runner target pending #3 P0).
+  - L3: Blocked: device-disconnected (no adb device attached; full acceptance suite ready in `android/sample/src/androidTest/kotlin/com/texure/sample/SpikeInjectionDeviceTest.kt`).
+- OCR review: completed with 21 findings, all addressed (MessageDigest constant-time token comparison, MotionEvent recycling, @Synchronized locks on token manager and single-flight lock, cleartext HTTP flag in AndroidManifest, lifecycle cleanup in MainActivity onDestroy).
+- Status: Done. VERIFY: L0 pass · L1 pass · L2 n/a · L3 blocked:device-disconnected. EVIDENCE: tmp/evidence/1/red-run.txt, tmp/evidence/4/red-run.txt. FLIPS: none.
+
 ## 2026-10-30 (LLD E grilling session, orchestrator thread — same-day continuation)
 - LLD E (ticket #7) claimed and grilled HITL, 5 questions, human confirmed. Decisions: verify-at-execute identity-chain recovery (mid-press refresh ⇒ NODE_OUTDATED, no semantic hashes); wait_for grammar frozen {text|tag|visible|hidden, int timeout default 10 cap 30, hidden=negative, no composition}; 16-code error table frozen + WAIT_TIMEOUT ok:false row + APP_BUSY deleted (BUSY wins) + BRIDGE_STOPPED/PORT_IN_USE/CAPTURE_FAILED/HUMAN_STEERING/NODE_NOT_FOUND given behavior rows; contract table = sole lint-parseable authority (A3 taxonomy retargeted); /ui-tree gains additive cd field (schema stays v1), security annotations rejected, scale default 0.5.
 - bridge-contract.md: open questions ALL closed (port + node-id + tree-shape + scale bullets resolved). behavior-spec rows updated (1.1 shutdown+bind, 1.4 rev guard/human wins/node checks, 1.5 capture failure). lld-outline items 2+3 RESOLVED. DECISIONS.md round-8 entry.
