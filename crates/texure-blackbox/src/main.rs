@@ -1,5 +1,8 @@
 pub mod client_http;
 pub mod client_mcp;
+pub mod fake_bridge;
+pub mod fake_mcp;
+pub mod runner;
 pub mod scenario;
 
 use clap::Parser;
@@ -11,7 +14,7 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[command(
     name = "texure-blackbox",
-    about = "Texure blackbox test runner (P0 skeleton)"
+    about = "Texure blackbox test runner"
 )]
 struct Args {
     /// Target mode: all | mcp | http | mcp-fake | fake
@@ -27,7 +30,7 @@ struct Args {
     report: Option<PathBuf>,
 
     /// Bridge HTTP URL for device/live testing
-    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    #[arg(long, default_value = "http://127.0.0.1:8765")]
     url: String,
 
     /// Auth token for bridge
@@ -37,6 +40,14 @@ struct Args {
     /// Scenarios directory
     #[arg(long, default_value = "tests/blackbox/scenarios")]
     scenarios_dir: PathBuf,
+
+    /// Repository root directory
+    #[arg(long, default_value = ".")]
+    root: PathBuf,
+
+    /// Run in fake MCP stdio mode (used for MCP testing)
+    #[arg(long)]
+    fake_mcp: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,7 +88,7 @@ pub struct ReportSummary {
     pub duration_ms: u64,
 }
 
-fn get_all_tests() -> Vec<TestDef> {
+pub fn get_all_tests() -> Vec<TestDef> {
     vec![
         // Group A: Contract shape
         TestDef {
@@ -232,39 +243,22 @@ fn get_all_tests() -> Vec<TestDef> {
     ]
 }
 
-fn write_evidence_bundle(test_id: &str, test_name: &str, reason: &str) -> String {
-    let bundle_dir = PathBuf::from("tmp/evidence").join(test_id);
-    let _ = fs::create_dir_all(&bundle_dir);
-
-    let summary = serde_json::json!({
-        "test_id": test_id,
-        "name": test_name,
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "reason": reason,
-        "trace": [
-            format!("Starting blackbox test {test_id}"),
-            format!("Evaluating prerequisites for {test_id}"),
-            format!("FAILED: {reason}")
-        ]
-    });
-
-    let _ = fs::write(
-        bundle_dir.join("summary.json"),
-        serde_json::to_string_pretty(&summary).unwrap_or_default(),
-    );
-    let _ = fs::write(
-        bundle_dir.join("red-run.txt"),
-        format!("TEST {test_id}: {test_name}\nSTATUS: FAIL\nREASON: {reason}\n"),
-    );
-
-    bundle_dir.to_string_lossy().to_string()
-}
-
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let start_time = Instant::now();
 
+    // Check if running as fake MCP stdio server
+    if args.fake_mcp {
+        let sc = args.scenario.unwrap_or_else(|| "static_screen".to_string());
+        let server = fake_mcp::FakeMcpServer::new(sc, Some(args.url));
+        if let Err(e) = server.run_stdio() {
+            eprintln!("fake-mcp stdio error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    let start_time = Instant::now();
     let all_tests = get_all_tests();
 
     // Filter tests by target and scenario
@@ -284,14 +278,14 @@ async fn main() {
                 "all" => true,
                 "mcp" => t.target == "mcp",
                 "http" => t.target == "http",
-                "mcp-fake" | "fake" => t.target == "mcp-fake" || t.target == "fake",
+                "mcp-fake" | "fake" => t.target == "mcp-fake" || t.target == "fake" || t.target == "mcp",
                 other => t.target == other,
             }
         })
         .collect();
 
     println!("================================================================================");
-    println!("Texure Blackbox Test Suite (Runner P0)");
+    println!("Texure Blackbox Test Suite");
     println!(
         "Target filter: {} | Selected tests: {}",
         args.target,
@@ -307,66 +301,14 @@ async fn main() {
     let mut results = Vec::new();
 
     for test in selected_tests {
-        let test_start = Instant::now();
-
-        // Check if scenario file exists and is valid DSL
-        let scenario_path = args.scenarios_dir.join(&test.scenario_file);
-        let scenario_check = if scenario_path.exists() {
-            scenario::Scenario::load_from_file(&scenario_path)
-        } else {
-            Err(scenario::ScenarioError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!(
-                    "scenario file {} not found in {}",
-                    test.scenario_file,
-                    args.scenarios_dir.display()
-                ),
-            )))
-        };
-
-        let result = if test.is_device {
-            // Device tests are tagged device and skip cleanly when no phone is configured
-            let duration_ms = test_start.elapsed().as_millis() as u64;
-            TestResult {
-                id: test.id.clone(),
-                name: test.name.clone(),
-                target: test.target.clone(),
-                status: "device-skip".to_string(),
-                duration_ms,
-                reason: Some("device test skipped (no phone configured/connected)".to_string()),
-                evidence_bundle: None,
-            }
-        } else {
-            // In P0, no server or bridge implementation exists yet.
-            // All non-device tests fail with a clean reason and generate evidence bundles.
-            let duration_ms = test_start.elapsed().as_millis() as u64;
-            let reason = if let Err(e) = scenario_check {
-                format!("Scenario validation failed: {e}")
-            } else {
-                match test.target.as_str() {
-                    "mcp" => {
-                        "MCP client error: texure-server binary not found; server not implemented yet"
-                            .to_string()
-                    }
-                    "http" => {
-                        format!("HTTP bridge connection failed: {} offline (not implemented yet)", args.url)
-                    }
-                    _ => "FakeBridge target not implemented yet (pending #1)".to_string(),
-                }
-            };
-
-            let bundle_path = write_evidence_bundle(&test.id, &test.name, &reason);
-
-            TestResult {
-                id: test.id.clone(),
-                name: test.name.clone(),
-                target: test.target.clone(),
-                status: "fail".to_string(),
-                duration_ms,
-                reason: Some(reason),
-                evidence_bundle: Some(bundle_path),
-            }
-        };
+        let result = runner::run_test(
+            &test,
+            &args.scenarios_dir,
+            &args.root,
+            &args.url,
+            args.token.as_deref(),
+        )
+        .await;
 
         println!(
             "{:<8} {:<10} {:<12} {:>6}ms   {}",
