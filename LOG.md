@@ -1,5 +1,25 @@
 # Log
 
+## 2026-11-01 (Wayfinder map 2 Phase 1 HITL tickets #8 & #9 grilling & resolution)
+- Map 2 Phase 1 grilling completed with human on branch `t3/wayfinder-map2-agent-flow`:
+  - Ticket #8 (LLD C: MCP server internals):
+    - MCP SDK choice: Hand-rolled stdio JSON-RPC 2.0 loop via `tokio` + `serde_json` (lean, ~4-6MB binary, fast compile, fits 6GB RAM; `rmcp` cut).
+    - Config schema: `~/.config/texure/config.toml`, hybrid top-level keys (`url`, `token`, `timeout_secs`) + `[profiles.<name>]` table foundation for multi-device; env var override `TEXURE_*`.
+    - Reconnect: Background WS supervisor with 1s->5s->15s backoff; lazy HTTP dial (3s timeout) returning `OFFLINE` if unreachable; `wait_for` falls back to 500ms HTTP polling.
+    - Error map: Single-line formatted text with `isError: true` matching bridge-contract table; full JSON with `verbose: true`.
+    - Screenshot: PNG bytes fetched and Base64 encoded into MCP image content block.
+    - Crate layout: Workspace split into `crates/texure-contract` (shared wire types/errors) consumed by `crates/texure-server`, `crates/texure-blackbox`, and `crates/texure-lint`.
+    - Deliverables: Authored `docs/lld-server.md`, updated `DECISIONS.md`, marked `docs/lld-outline.md` items 6 & 7 resolved, posted resolution comment on issue #8, closed issue #8, appended line to map #12 `Decisions so far`.
+  - Ticket #9 (LLD B: Gradle plugin mechanics):
+    - Debug-only wiring: Debug ContentProvider (`TexureInitProvider`) in `android/bridge` registering `Application.ActivityLifecycleCallbacks`. Zero user code required in target apps (honoring Guardrail G2), automatic overlay attachment on debug Activities, and 100% stripped in release builds.
+    - Release-leak check: Dedicated `checkTexureReleaseLeak` Gradle task hooked into release build pipeline, scanning resolved compile/runtime configurations and merged manifest for `com.texure:bridge`. Hard build failure on leak (Guardrail G1).
+    - Plugin distribution: Single Gradle plugin ID `com.texure.bridge` published to `mavenLocal` via `publishToMavenLocal`, supporting Groovy DSL and Kotlin DSL target projects.
+    - Deliverables: Authored `docs/lld-plugin.md`, updated `DECISIONS.md`, marked `docs/lld-outline.md` item 5 resolved, posted resolution comment on issue #9, closed issue #9, appended line to map #12 `Decisions so far`.
+- Phase 2 AFK unblocked: Ticket #2 (Spike 2: VelaVoice integration proof + first agent flow) is now unblocked.
+- Verification: L0 (`cargo run -p texure-lint`) pass (0 findings), L1 (`cargo test --workspace` and `./gradlew testDebugUnitTest`) pass, release build `:sample:assembleRelease` pass (0 leak).
+- Status: Phase 1 Done. VERIFY: L0 pass · L1 pass. NEXT: Ticket #2 AFK implementation (device required per runbook).
+
+
 ## 2026-10-31 (Wayfinder map 1 AFK tickets #1 & #4 implementation)
 - Map 1 AFK tickets claimed and implemented on branch `wf/11-injection-spike`:
   - Ticket #1 (Spike 1 injection mechanism proof): Android library `android/bridge`, sample host app `android/sample`, root `gradlew` wrapper, embedded NanoHTTPD/NanoWSD server on fixed port 8765, serial single-thread `BridgeWorker` with verify-at-execute check, `DefaultInjectionAdapter` with `sendPointerSync` primary and `dispatchTouchEvent` fallback, `BridgeTreeExtractor` with depth cap 12 and interesting-node filtering, `BridgeOverlay` activity-scoped debug controls.

@@ -174,3 +174,44 @@ Feeds: #1 (spike implements against frozen contract), #3 (A3 taxonomy + scenario
    - Crash bundle exported to app-private storage: timestamp, stack trace, last known ui-tree, last bridge actions, and build info.
    - Contract addition `GET /last-crash` returns newest crash bundle (HTTP 200) or standard error envelope (HTTP 404).
    - Overlay surfaces last crash status directly in-app.
+
+---
+
+## 2026-11-01 (LLD C: MCP server internals, grilling round 9, issue #8)
+
+1. **MCP SDK Choice: Hand-rolled Stdio JSON-RPC 2.0.**
+   - *What:* Minimal asynchronous loop over stdin/stdout via `tokio` and `serde_json`.
+   - *Why:* Zero bloat, ~4-6MB static binary, fast compile, fits 6GB desktop constraint, perfectly matches the 6 frozen tools.
+   - *Alternatives cut:* `rmcp` SDK (heavier deps, slower compile, excessive abstractions for fixed tools).
+
+2. **Config Schema: Hybrid Top-Level + Profiles.**
+   - *What:* Flat `url`, `token`, `timeout_secs` top-level keys for v1 single-device simplicity, with an optional `active_profile` and `[profiles.<name>]` table reserved for multi-device.
+   - *Why:* Zero friction for single-device while eliminating future migration breaking changes when multi-device lands.
+
+3. **Reconnect & Mid-Call Strategy: Lazy HTTP + Background WS Backoff.**
+   - *What:* Background tokio supervisor manages WS connection with 1s->5s->15s backoff; tool calls dial HTTP lazily with a 3-second timeout.
+   - *Why:* Server daemon never blocks or terminates on device disconnect; mutating calls fail-fast with `OFFLINE` if unreachable, while `wait_for` falls back to 500ms HTTP polling when WS flaps.
+
+4. **Crate Workspace Structure: Shared `texure-contract` Crate.**
+   - *What:* Split into `crates/texure-contract` (shared wire types/errors), `crates/texure-server` (stdio MCP binary), `crates/texure-blackbox`, and `crates/texure-lint`.
+   - *Why:* Strict single-source-of-truth for Rust data types, eliminating duplication between server, blackbox tester, and lint crates.
+
+Full LLD for server internals: [docs/lld-server.md](docs/lld-server.md).
+
+---
+
+## 2026-11-01 (LLD B: Gradle plugin mechanics, grilling round 10, issue #9)
+
+1. **Debug-Only Wiring: Debug ContentProvider (`TexureInitProvider`).**
+   - *What:* Automatic registration of `Application.ActivityLifecycleCallbacks` on debug builds.
+   - *Why:* Zero user code in target apps (honoring Guardrail G2), automatic overlay attachment to active Activities, and 100% stripped in release builds.
+   - *Alternatives cut:* Bytecode transformations (fragile across AGP versions) and custom Application subclasses (violates zero-code-change requirement).
+
+2. **Release Leak Enforcement: Dedicated `checkTexureReleaseLeak` Task.**
+   - *What:* Inspection task attached to release build pipeline scanning resolved compile/runtime classpaths and merged manifest for `com.texure:bridge`.
+   - *Why:* Guarantees hard build failure if bridge code leaks into release variants (Guardrail G1).
+
+3. **Plugin Identity & Distribution: `com.texure.bridge` published to `mavenLocal`.**
+   - *What:* Single Gradle plugin ID published via `publishToMavenLocal`, usable in both Groovy DSL and Kotlin DSL target projects.
+
+Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
