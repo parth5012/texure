@@ -130,7 +130,7 @@ class BridgeOverlay(
         decorView.addView(container)
         overlayContainer = container
 
-        bindBridgeService()
+        startForegroundService()
         updateDisplay()
     }
 

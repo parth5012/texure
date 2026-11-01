@@ -78,6 +78,7 @@ class BridgeService : Service() {
             server = newServer
             isPortInUse = false
             updateNotification("Bridge running on port $currentPort (@IDLE)")
+            android.util.Log.i("TexureBridge", "Pairing token: ${tm.getToken()} (port $currentPort)")
         } catch (e: IOException) {
             // Bind conflict -> stop immediately and surface PORT_IN_USE
             isPortInUse = true
