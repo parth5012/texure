@@ -1,5 +1,30 @@
 # Log
 
+## 2026-11-01 (Wayfinder map 2 Phase 2 Spike 2 on-device verification & resolution)
+- Map 2 Phase 2 AFK Spike 2 (issue #2: VelaVoice integration proof + first agent flow) successfully executed and verified on physical Xiaomi test device (`IBFUSOZHCYJJ99JZ`, Android 15 / SDK 35) connected to Windows host `DESKTOP-IJO3ROS` via T3 Code linked environment:
+  - Bridge Publication:
+    - Added `maven-publish` plugin and configuration to `android/bridge/build.gradle.kts` with `minSdk 24`.
+    - Added `TexureInitProvider` (`ContentProvider`) in `android/bridge/src/main/kotlin/com/texure/bridge/init/TexureInitProvider.kt` and `AndroidManifest.xml` registering `Application.ActivityLifecycleCallbacks` for zero-code automatic initialization (satisfying Guardrail G2).
+    - Executed `./gradlew :bridge:publishToMavenLocal --no-daemon`, successfully producing `com.texure:bridge:0.1.0` in `~/.m2`.
+  - Target App Integration (`velaboard` / VelaVoice):
+    - Added single dependency line `debugImplementation("com.texure:bridge:0.1.0")` in `velaboard/app/build.gradle.kts` and whitelisted `com.texure` group in root mavenLocal repository filter (honoring Guardrail G1 & G2).
+    - Assembled debug APK via `./gradlew :app:assembleDebug --no-daemon` and installed via `adb install -r`.
+  - On-Device Execution & Lifecycle:
+    - Launched `helium314.keyboard.debug/helium314.keyboard.settings.SettingsActivity`.
+    - `TexureInitProvider` auto-started `BridgeService` and initialized `BridgeServer` on port `8765`, logging pairing token and binding to LAN (`10.151.242.208:8765`).
+  - Bridge Wire Protocol & Mutation Verification:
+    - Auth: Unauthenticated `curl http://127.0.0.1:8765/ui-tree` returned HTTP error `AUTH_FAILED` with token mismatch hint.
+    - Extraction: Authenticated `curl -H "Authorization: Bearer <token>" http://127.0.0.1:8765/ui-tree` returned structured `AndroidComposeView` hierarchy + pinned debug overlay with bounds, classes, clickable states, and revision `rev: 1`.
+    - Own-Window Tap Mutation: Injected `POST /tap` on node 4 ("Rotate Token"). Successfully invoked button click listener, rotated token to `2607648a9e494b26bbfb3be4d21b1a68`, and bumped tree revision to `rev: 2`. Second tap rotated token again to bump revision to `rev: 3`. No `SecurityException` thrown.
+    - Screenshot: `GET /screenshot` successfully captured 360x800 PNG (56 KB).
+  - Release Leak Verification: `:sample:assembleRelease` produced release APK with 0 bridge classes, server references, or overlay code.
+- Verification Matrix:
+  - L0: `texure-lint` pass (0 findings).
+  - L1: `cargo test --workspace` pass (6 unit tests), `./gradlew testDebugUnitTest` pass (15 unit tests).
+  - L2: FakeBridge n/a.
+  - L3: Physical device ladder PASS on Xiaomi `IBFUSOZHCYJJ99JZ` running VelaVoice (`velaboard`).
+- Status: Phase 2 Done. VERIFY: L0 pass · L1 pass · L3 pass on physical device. FLIPS: None. Map 2 fully completed!
+
 ## 2026-11-01 (Wayfinder map 2 Phase 1 HITL tickets #8 & #9 grilling & resolution)
 - Map 2 Phase 1 grilling completed with human on branch `t3/wayfinder-map2-agent-flow`:
   - Ticket #8 (LLD C: MCP server internals):

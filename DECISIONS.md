@@ -215,3 +215,17 @@ Full LLD for server internals: [docs/lld-server.md](docs/lld-server.md).
    - *What:* Single Gradle plugin ID published via `publishToMavenLocal`, usable in both Groovy DSL and Kotlin DSL target projects.
 
 Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
+
+---
+
+## 2026-11-01 (Spike 2: VelaVoice on-device integration proof, issue #2)
+
+1. **Auto-Initialization Seam: `TexureInitProvider`.**
+   - *What:* Implemented `TexureInitProvider` (`ContentProvider`) in `android/bridge` registering `Application.ActivityLifecycleCallbacks` and auto-booting `BridgeService` upon first Activity resume.
+   - *Why:* Proves Guardrail G2 in practice on a real third-party target application (`velaboard` / VelaVoice): exactly zero Kotlin/Java lines added to target app code.
+   - *Alternatives cut:* Manual `TexureBridge.init(this)` call in target Application class (violates zero-code rule).
+
+2. **Target App Seam: `debugImplementation` + MavenLocal Repository Filter.**
+   - *What:* Integrated via a single `debugImplementation("com.texure:bridge:0.1.0")` line in target module and whitelisted `com.texure` group in root `mavenLocal`.
+   - *Verification:* Verified on physical Xiaomi device (`IBFUSOZHCYJJ99JZ`, Android 15 / SDK 35): `/ui-tree` extraction, own-window tap injection on "Rotate Token" button, token rotation, and screenshot capturing executed cleanly without `SecurityException`.
+
