@@ -20,10 +20,13 @@ import android.widget.TextView
 import com.texure.bridge.crash.BridgeCrashHandler
 import com.texure.bridge.service.BridgeService
 import com.texure.bridge.storage.BridgeTokenManager
+import java.lang.ref.WeakReference
 
 class BridgeOverlay(
-    private val activity: Activity
+    activity: Activity
 ) {
+    private val activityRef = WeakReference(activity)
+    private val activity: Activity? get() = activityRef.get()
 
     private var overlayContainer: LinearLayout? = null
     private var infoText: TextView? = null
@@ -31,8 +34,8 @@ class BridgeOverlay(
     private var bridgeService: BridgeService? = null
     private var isBound = false
 
-    private val tokenManager = BridgeTokenManager(activity)
-    private val crashHandler = BridgeCrashHandler(activity)
+    private val tokenManager = BridgeTokenManager(activity.applicationContext)
+    private val crashHandler = BridgeCrashHandler(activity.applicationContext)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -49,17 +52,22 @@ class BridgeOverlay(
         }
     }
 
+    /**
+     * Attaches the debug overlay to the current active activity decor view.
+     * Starts and binds [BridgeService] if not already running.
+     */
     fun attach() {
         if (overlayContainer != null) return
+        val act = activity ?: return
 
-        BridgeService.activeActivity = activity
+        BridgeService.activeActivity = act
 
         // Attach keep screen on for active debug sessions
-        activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        act.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val decorView = activity.window.decorView as? ViewGroup ?: return
+        val decorView = act.window.decorView as? ViewGroup ?: return
 
-        val container = LinearLayout(activity).apply {
+        val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#E6202028"))
             setPadding(16, 16, 16, 16)
@@ -72,7 +80,7 @@ class BridgeOverlay(
             }
         }
 
-        val title = TextView(activity).apply {
+        val title = TextView(act).apply {
             text = "Texure Bridge (Debug Overlay)"
             setTextColor(Color.parseColor("#00E676"))
             textSize = 14f
@@ -80,26 +88,26 @@ class BridgeOverlay(
         }
         container.addView(title)
 
-        infoText = TextView(activity).apply {
+        infoText = TextView(act).apply {
             setTextColor(Color.WHITE)
             textSize = 12f
             setPadding(0, 8, 0, 8)
         }
         container.addView(infoText)
 
-        crashText = TextView(activity).apply {
+        crashText = TextView(act).apply {
             setTextColor(Color.parseColor("#FF5252"))
             textSize = 11f
             visibility = View.GONE
         }
         container.addView(crashText)
 
-        val buttonBar = LinearLayout(activity).apply {
+        val buttonBar = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 8, 0, 0)
         }
 
-        val startStopBtn = Button(activity).apply {
+        val startStopBtn = Button(act).apply {
             text = "Start Service"
             textSize = 11f
             setOnClickListener {
@@ -115,7 +123,7 @@ class BridgeOverlay(
         }
         buttonBar.addView(startStopBtn)
 
-        val rotateBtn = Button(activity).apply {
+        val rotateBtn = Button(act).apply {
             text = "Rotate Token"
             textSize = 11f
             setOnClickListener {
@@ -135,22 +143,27 @@ class BridgeOverlay(
     }
 
     private fun startForegroundService() {
-        val intent = Intent(activity, BridgeService::class.java)
+        val act = activity ?: return
+        val intent = Intent(act, BridgeService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activity.startForegroundService(intent)
+            act.startForegroundService(intent)
         } else {
-            activity.startService(intent)
+            act.startService(intent)
         }
         bindBridgeService()
     }
 
     private fun bindBridgeService() {
+        val act = activity ?: return
         if (!isBound) {
-            val intent = Intent(activity, BridgeService::class.java)
-            activity.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            val intent = Intent(act, BridgeService::class.java)
+            act.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         }
     }
 
+    /**
+     * Refreshes the overlay text with current bridge IP, token, state, and recent crash info.
+     */
     fun updateDisplay() {
         val token = tokenManager.getToken()
         val ip = bridgeService?.getLocalIpAddress() ?: "127.0.0.1"
@@ -178,12 +191,19 @@ class BridgeOverlay(
         }
     }
 
+    /**
+     * Detaches the overlay view from the window hierarchy, unbinds from [BridgeService],
+     * and clears the keep-screen-on window flag.
+     */
     fun detach() {
-        if (BridgeService.activeActivity == activity) {
+        val act = activity
+        if (BridgeService.activeActivity == act) {
             BridgeService.activeActivity = null
         }
-        if (isBound) {
-            activity.unbindService(serviceConnection)
+        if (isBound && act != null) {
+            try {
+                act.unbindService(serviceConnection)
+            } catch (_: Exception) {}
             isBound = false
         }
         overlayContainer?.let {
@@ -191,10 +211,13 @@ class BridgeOverlay(
             parent?.removeView(it)
         }
         overlayContainer = null
-        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        act?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     companion object {
+        /**
+         * Instantiates and attaches a [BridgeOverlay] to the specified [activity].
+         */
         fun install(activity: Activity): BridgeOverlay {
             val overlay = BridgeOverlay(activity)
             overlay.attach()

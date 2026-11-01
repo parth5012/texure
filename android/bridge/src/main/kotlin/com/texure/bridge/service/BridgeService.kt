@@ -97,6 +97,7 @@ class BridgeService : Service() {
     fun rotateToken(): String {
         val tm = tokenManager ?: BridgeTokenManager(this).also { tokenManager = it }
         val newToken = tm.rotateToken()
+        android.util.Log.i("TexureBridge", "Pairing token rotated: $newToken (port $currentPort)")
         updateNotification("Bridge running on port $currentPort (@IDLE)")
         return newToken
     }

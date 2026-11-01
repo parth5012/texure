@@ -93,7 +93,7 @@ timeout_secs = 15
   OFFLINE: device unreachable (same LAN? app open? fg service alive?)
   ```
 - **`wait_for` fallback:**
-  - If WS is connected, `wait_for` awaits `tree_changed` signals matching the condition.
+  - If WS is connected, `wait_for` subscribes to `tree_changed`, immediately fetches `/ui-tree` once to evaluate the condition, and re-evaluates upon every incoming `tree_changed` signal.
   - If WS is disconnected or flaps, `wait_for` falls back to polling `/ui-tree` every 500ms via HTTP.
   - If HTTP also fails during `wait_for`, it surfaces `OFFLINE`.
   - On timeout (default 10s, cap 30s), returns `{ "ok": false, "last_rev": N }` plus the fresh snapshot (non-error result).
