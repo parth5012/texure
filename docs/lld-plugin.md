@@ -67,6 +67,8 @@ To honor the zero-code-changes guardrail on the host application, the bridge use
 ## 4. Release-Leak Enforcement (Guardrail G1)
 
 ### 4.1 Dedicated Gradle Task: `checkTexureReleaseLeak`
+> **Status:** Planned design. This PR specifies the architecture; the task implementation will be delivered when `android/gradle-plugin` is authored.
+
 The plugin registers a verification task for every release variant:
 - **Task Name:** `checkTexureReleaseLeak<VariantName>` (e.g. `checkTexureReleaseLeakRelease`).
 - **Hook Point:** Depends on `resolveReleaseRuntimeClasspath` and runs before `packageRelease` / `assembleRelease`.
