@@ -54,11 +54,11 @@ To honor the zero-code-changes guardrail on the host application, the bridge use
 
 ## 3. Pairing Token Plumbing
 
-- Generated and managed on-device by `BridgeTokenManager` (`SharedPreferences` file `texure_bridge_pairing`, plaintext, app-private, `allowBackup=false`).
+- Generated and managed on-device by `BridgeTokenManager` (`SharedPreferences` file `texure_bridge_pairing`, plaintext, app-private).
 - Initialized on first boot, stable across rebuilds.
 - Surfaced via:
   1. The in-app debug overlay (`BridgeOverlay`) pinned to the bottom of the active debug Activity.
-  2. The foreground service notification (`texure-bridge` channel).
+  2. (Not shown in the foreground service notification; notification displays connection and lifecycle status text only).
   3. Logcat debug tag `TexureBridge: Pairing token: <token>`.
 - Rotation: dev clicks "Rotate Token" on overlay → writes new token → immediately invalidates old holders with HTTP 401 `AUTH_FAILED`.
 
@@ -116,13 +116,14 @@ plugins {
 Per `docs/lld-ci.md` §3 (Android distribution):
 1. **Module setup:**
    - `android/bridge`: Android library module, publishes AAR (`com.texure:bridge:0.1.0`).
-   - `android/gradle-plugin`: Gradle plugin module (JVM / Kotlin), publishes plugin marker and artifact (`com.texure.bridge:com.texure.bridge.gradle.plugin:0.1.0`).
+   - `android/gradle-plugin`: Planned Gradle plugin module (JVM / Kotlin). When implemented, it will publish plugin marker and artifact (`com.texure.bridge:com.texure.bridge.gradle.plugin:0.1.0`).
 2. **Local publication command:**
    ```bash
    ./gradlew publishToMavenLocal
    ```
 3. **Consumer requirement:**
-   Target app's `settings.gradle` / `build.gradle` includes `mavenLocal()` in its repository blocks.
+   - Target app's `settings.gradle` includes `mavenLocal()` in `pluginManagement { repositories { } }` to resolve the plugin marker (once plugin module is present).
+   - Target app's project `repositories { }` (or `dependencyResolutionManagement`) includes `mavenLocal()` to resolve library `com.texure:bridge:0.1.0`.
 
 ---
 

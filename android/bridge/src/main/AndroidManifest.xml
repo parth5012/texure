@@ -10,8 +10,7 @@
         <provider
             android:name="com.texure.bridge.init.TexureInitProvider"
             android:authorities="${applicationId}.texure.init-provider"
-            android:exported="false"
-            android:multiprocess="true" />
+            android:exported="false" />
 
         <service
             android:name="com.texure.bridge.service.BridgeService"

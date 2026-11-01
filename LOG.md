@@ -38,7 +38,7 @@
   - Ticket #9 (LLD B: Gradle plugin mechanics):
     - Debug-only wiring: Debug ContentProvider (`TexureInitProvider`) in `android/bridge` registering `Application.ActivityLifecycleCallbacks`. Zero user code required in target apps (honoring Guardrail G2), automatic overlay attachment on debug Activities, and 100% stripped in release builds.
     - Release-leak check: Dedicated `checkTexureReleaseLeak` Gradle task hooked into release build pipeline, scanning resolved compile/runtime configurations and merged manifest for `com.texure:bridge`. Hard build failure on leak (Guardrail G1).
-    - Plugin distribution: Single Gradle plugin ID `com.texure.bridge` published to `mavenLocal` via `publishToMavenLocal`, supporting Groovy DSL and Kotlin DSL target projects.
+    - Plugin distribution: Planned Gradle plugin ID `com.texure.bridge` (design in `docs/lld-plugin.md`). Not implemented: no `android/gradle-plugin` module or plugin marker exists. Only the library `com.texure:bridge:0.1.0` is published to `mavenLocal`.
     - Deliverables: Authored `docs/lld-plugin.md`, updated `DECISIONS.md`, marked `docs/lld-outline.md` item 5 resolved, posted resolution comment on issue #9, closed issue #9, appended line to map #12 `Decisions so far`.
 - Phase 2 AFK unblocked: Ticket #2 (Spike 2: VelaVoice integration proof + first agent flow) is now unblocked.
 - Verification: L0 (`cargo run -p texure-lint`) pass (0 findings), L1 (`cargo test --workspace` and `./gradlew testDebugUnitTest`) pass, release build `:sample:assembleRelease` pass (0 leak).

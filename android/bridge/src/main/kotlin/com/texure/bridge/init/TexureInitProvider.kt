@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.pm.ApplicationInfo
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
@@ -12,12 +13,26 @@ import com.texure.bridge.overlay.BridgeOverlay
 import com.texure.bridge.service.BridgeService
 import java.util.WeakHashMap
 
+/**
+ * Automatic initialization ContentProvider for the Texure debug bridge.
+ *
+ * Runs on application startup in debug builds to attach [Application.ActivityLifecycleCallbacks],
+ * initialize the debug overlay, and configure the bridge crash handler without requiring
+ * any manual initialization code in the host application.
+ */
 class TexureInitProvider : ContentProvider() {
 
     private val overlays = WeakHashMap<Activity, BridgeOverlay>()
 
+    /**
+     * Initializes the bridge if the host application is debuggable.
+     *
+     * Returns true immediately in non-debuggable release builds or if context is unavailable.
+     */
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return true
+        val isDebuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!isDebuggable) return true
 
         try {
             BridgeCrashHandler(app).install()
