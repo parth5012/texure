@@ -25,6 +25,7 @@ texure/
     agent-test-loop.md    # verification protocol for implementation agents (L0..L3)
     repo-map.md           # this file
     guardrails.md
+    framework-adapters.md # multi-framework architecture: RN, Flutter, Tauri, Capacitor, CDP
   contract/               # fixtures land here with issue #3
 ```
 

@@ -30,10 +30,12 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 
 ## Later (roadmap, deliberate separates)
 
-- **Framework adapters** (same bridge HTTP contract, different injectors/packaging):
-  - Expo/React Native config plugin
-  - Flutter module
-  - Rust-built apps (Tauri etc.) — the "rust app plugins" idea from the original plan
+- **Framework adapters** (same bridge HTTP/WS contract, different injectors/packaging — see [docs/framework-adapters.md](docs/framework-adapters.md)):
+  - **React Native & Expo:** Config plugin (`@texure/expo-plugin` / `@texure/react-native`) mapping `testID` to native tags.
+  - **Flutter:** Pub module (`texure_flutter`) bridging Flutter's `SemanticsOwner` tree and `GestureBinding`.
+  - **Tauri Mobile:** Plugin (`tauri-plugin-texure`) for Tauri v2 Android apps bridging WebView DOM + native decorView.
+  - **Capacitor & Ionic:** npm plugin (`@texure/capacitor`) for hybrid mobile apps.
+  - **Embedded WebViews / Electron-style shells:** Chromium DevTools Protocol (CDP) abstract socket adapter (`crates/texure-cdp`) for full DOM accessibility inspection.
 - **Screen mirroring for agents.** scrcpy-source MCP frame provider (requires the ADB bootstrap utility first; scrcpy needs ADB). Vision grounding on top of the JSON tree when pixel truth matters.
 - **Config matrix.** Same scenario replayed under rotation, dark mode, or a locale change; scenario runner scripts the config change before each replay.
 - **Deep-link/entry matrix.** Same flow via deep link / notification / cold start.

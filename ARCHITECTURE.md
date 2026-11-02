@@ -35,6 +35,8 @@ The entire adoption story is one line for the dev. It:
 - generates/embeds a pairing token,
 - fails the build if the bridge leaks into release variants (a LAN listener in a release build is a remote exploit).
 
+*(For non-Gradle ecosystems like React Native, Flutter, Tauri Mobile, and Capacitor, see [docs/framework-adapters.md](docs/framework-adapters.md) for how the adoption seam adapts per framework while keeping the bridge HTTP/WS contract frozen).*
+
 ### 3. MCP Server (agent seam, Rust)
 
 - **Interface:** 5 tools, no more: `device_tree`, `tap`, `type`, `keypress`, `screenshot`.
