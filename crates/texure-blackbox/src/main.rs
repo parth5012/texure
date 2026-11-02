@@ -12,10 +12,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "texure-blackbox",
-    about = "Texure blackbox test runner"
-)]
+#[command(name = "texure-blackbox", about = "Texure blackbox test runner")]
 struct Args {
     /// Target mode: all | mcp | http | mcp-fake | fake
     #[arg(long, default_value = "all")]
@@ -278,7 +275,9 @@ async fn main() {
                 "all" => true,
                 "mcp" => t.target == "mcp",
                 "http" => t.target == "http",
-                "mcp-fake" | "fake" => t.target == "mcp-fake" || t.target == "fake" || t.target == "mcp",
+                "mcp-fake" | "fake" => {
+                    t.target == "mcp-fake" || t.target == "fake" || t.target == "mcp"
+                }
                 other => t.target == other,
             }
         })

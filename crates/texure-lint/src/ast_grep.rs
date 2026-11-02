@@ -161,7 +161,9 @@ fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
         return Ok(json);
     }
 
-    Err(format!("npx ast-grep produced non-JSON output. stdout: {stdout}, stderr: {stderr}"))
+    Err(format!(
+        "npx ast-grep produced non-JSON output. stdout: {stdout}, stderr: {stderr}"
+    ))
 }
 
 fn extract_json_array(output: &str) -> Option<String> {
@@ -180,7 +182,11 @@ mod tests {
 
     #[test]
     fn test_ast_grep_rule_files_exist() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
         let rules_dir = root.join("lint/ast-grep");
         assert!(rules_dir.exists(), "lint/ast-grep must exist");
         assert!(rules_dir.join("g1-release-leak.yml").exists());

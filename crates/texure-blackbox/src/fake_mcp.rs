@@ -154,10 +154,20 @@ impl FakeMcpServer {
             "tools/call" => {
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                let verbose = args.get("verbose").and_then(|v| v.as_bool()).unwrap_or(false);
+                let verbose = args
+                    .get("verbose")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
                 // Frozen 6 tool list check
-                let allowed_tools = ["device_tree", "tap", "type", "keypress", "screenshot", "wait_for"];
+                let allowed_tools = [
+                    "device_tree",
+                    "tap",
+                    "type",
+                    "keypress",
+                    "screenshot",
+                    "wait_for",
+                ];
                 if !allowed_tools.contains(&name) {
                     return Some(json!({
                         "jsonrpc": "2.0",

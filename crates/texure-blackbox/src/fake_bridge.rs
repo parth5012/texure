@@ -45,12 +45,18 @@ pub struct FakeBridgeServer {
 }
 
 impl FakeBridgeServer {
-    pub async fn start(config: FakeBridgeConfig) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn start(
+        config: FakeBridgeConfig,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).await?;
         let addr = listener.local_addr()?;
         let (ws_sender, _) = broadcast::channel(32);
 
-        let initial_rev = if config.scenario_name == "token_budget" { 100 } else { 42 };
+        let initial_rev = if config.scenario_name == "token_budget" {
+            100
+        } else {
+            42
+        };
 
         let state = Arc::new(FakeBridgeState {
             rev: AtomicU64::new(initial_rev),
@@ -106,7 +112,11 @@ impl Drop for FakeBridgeServer {
     }
 }
 
-async fn handle_connection(mut stream: TcpStream, client_addr: SocketAddr, state: Arc<FakeBridgeState>) {
+async fn handle_connection(
+    mut stream: TcpStream,
+    client_addr: SocketAddr,
+    state: Arc<FakeBridgeState>,
+) {
     let mut buf = vec![0u8; 8192];
     let n = match stream.peek(&mut buf).await {
         Ok(n) if n > 0 => n,
@@ -397,7 +407,9 @@ async fn route_request(
             }
 
             // In stale_screen scenario, after returning the tree once, simulate a background mutation
-            if state.scenario_name == "stale_screen" && !state.has_mutated_stale.swap(true, Ordering::SeqCst) {
+            if state.scenario_name == "stale_screen"
+                && !state.has_mutated_stale.swap(true, Ordering::SeqCst)
+            {
                 state.rev.fetch_add(1, Ordering::SeqCst);
             }
 
@@ -637,7 +649,10 @@ mod tests {
             .expect("screenshot");
         assert_eq!(ss_resp.status(), 200);
         let bytes = ss_resp.bytes().await.expect("bytes");
-        assert_eq!(&bytes[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        assert_eq!(
+            &bytes[..8],
+            &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+        );
 
         // Test auth failure
         let auth_fail = client

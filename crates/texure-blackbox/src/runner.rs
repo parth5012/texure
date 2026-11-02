@@ -69,7 +69,10 @@ pub async fn run_test(
             let _ = std::fs::create_dir_all(&bundle_dir);
             let _ = std::fs::write(
                 bundle_dir.join("red-run.txt"),
-                format!("TEST {}: {}\nSTATUS: FAIL\nREASON: {}\n", test.id, test.name, err),
+                format!(
+                    "TEST {}: {}\nSTATUS: FAIL\nREASON: {}\n",
+                    test.id, test.name, err
+                ),
             );
 
             TestResult {
@@ -135,7 +138,8 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> Result<(), String
                 last_response = json!({ "tools_count": tools.len() });
 
                 if let Some(ref expect) = step.expect {
-                    if let Some(expected_count) = expect.get("tools_count").and_then(|c| c.as_u64()) {
+                    if let Some(expected_count) = expect.get("tools_count").and_then(|c| c.as_u64())
+                    {
                         if tools.len() as u64 != expected_count {
                             return Err(format!(
                                 "tools_count mismatch: expected {expected_count}, got {}",
@@ -159,11 +163,13 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> Result<(), String
                     .and_then(|t| t.as_str())
                     .unwrap_or("");
 
-                let is_error = call_res.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
+                let is_error = call_res
+                    .get("isError")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(false);
 
-                let parsed_content: Value = serde_json::from_str(content_text).unwrap_or_else(|_| {
-                    json!({ "raw": content_text })
-                });
+                let parsed_content: Value = serde_json::from_str(content_text)
+                    .unwrap_or_else(|_| json!({ "raw": content_text }));
 
                 last_response = if is_error {
                     if let Some(err_obj) = parsed_content.get("error") {
@@ -221,14 +227,19 @@ async fn run_http_fake_test(
     for step in &scenario.steps {
         match step.action.as_str() {
             "device_tree" => {
-                let max_depth = step.args.get("max_depth").and_then(|d| d.as_u64()).map(|d| d as u32);
+                let max_depth = step
+                    .args
+                    .get("max_depth")
+                    .and_then(|d| d.as_u64())
+                    .map(|d| d as u32);
                 match client.get_ui_tree(max_depth).await {
                     Ok(tree) => {
                         context.insert("tree".to_string(), tree.clone());
                         last_response = tree;
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
-                        let err_val: Value = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
                     }
                     Err(e) => return Err(format!("get_ui_tree failed: {e}")),
@@ -254,7 +265,8 @@ async fn run_http_fake_test(
                         last_response = resp;
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
-                        let err_val: Value = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
                     }
                     Err(e) => return Err(format!("tap failed: {e}")),
@@ -281,42 +293,53 @@ async fn run_http_fake_test(
                         last_response = resp;
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
-                        let err_val: Value = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
                     }
                     Err(e) => return Err(format!("type failed: {e}")),
                 }
             }
             "keypress" => {
-                let key = step.args.get("key").and_then(|k| k.as_str()).unwrap_or("ENTER");
+                let key = step
+                    .args
+                    .get("key")
+                    .and_then(|k| k.as_str())
+                    .unwrap_or("ENTER");
                 match client.keypress(key).await {
                     Ok(resp) => {
                         last_response = resp;
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
-                        let err_val: Value = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
                     }
                     Err(e) => return Err(format!("keypress failed: {e}")),
                 }
             }
-            "back" => {
-                match client.back().await {
-                    Ok(resp) => {
-                        last_response = resp;
-                    }
-                    Err(HttpBridgeError::StatusError { body, .. }) => {
-                        let err_val: Value = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
-                        last_response = err_val;
-                    }
-                    Err(e) => return Err(format!("back failed: {e}")),
+            "back" => match client.back().await {
+                Ok(resp) => {
+                    last_response = resp;
                 }
-            }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                }
+                Err(e) => return Err(format!("back failed: {e}")),
+            },
             "screenshot" => {
-                let scale = step.args.get("scale").and_then(|s| s.as_f64()).map(|s| s as f32);
+                let scale = step
+                    .args
+                    .get("scale")
+                    .and_then(|s| s.as_f64())
+                    .map(|s| s as f32);
                 match client.screenshot(scale).await {
                     Ok(bytes) => {
-                        if bytes.len() < 8 || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] {
+                        if bytes.len() < 8
+                            || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+                        {
                             return Err("Screenshot did not return PNG magic bytes".to_string());
                         }
                         last_response = json!({ "format": "image/png", "bytes_len": bytes.len() });
@@ -369,7 +392,12 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                     .and_then(|e| e.get("code"))
                     .and_then(|c| c.as_str())
                     .or_else(|| actual.get("code").and_then(|c| c.as_str()))
-                    .or_else(|| actual.get("raw").and_then(|r| r.as_str()).and_then(extract_error_code));
+                    .or_else(|| {
+                        actual
+                            .get("raw")
+                            .and_then(|r| r.as_str())
+                            .and_then(extract_error_code)
+                    });
 
                 let exp_code = expected_val.as_str().unwrap_or("");
                 if code != Some(exp_code) {
@@ -394,7 +422,10 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                 let actual_fmt = actual.get("format").and_then(|f| f.as_str());
                 let exp_fmt = expected_val.as_str();
                 if actual_fmt != exp_fmt {
-                    return Err(format!("Expected format == {:?}, got {:?}", exp_fmt, actual_fmt));
+                    return Err(format!(
+                        "Expected format == {:?}, got {:?}",
+                        exp_fmt, actual_fmt
+                    ));
                 }
                 continue;
             }
@@ -403,7 +434,11 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn evaluate_assertion(assertion: &crate::scenario::Assertion, last_response: &Value, tree: Option<&Value>) -> Result<(), String> {
+fn evaluate_assertion(
+    assertion: &crate::scenario::Assertion,
+    last_response: &Value,
+    tree: Option<&Value>,
+) -> Result<(), String> {
     match assertion.pred.as_str() {
         "exists" => {
             if assertion.target == "node[clickable=true]" {
@@ -411,23 +446,36 @@ fn evaluate_assertion(assertion: &crate::scenario::Assertion, last_response: &Va
                     let has_clickable = tree
                         .get("nodes")
                         .and_then(|n| n.as_array())
-                        .map(|nodes| nodes.iter().any(|node| node.get("clickable") == Some(&json!(true))))
+                        .map(|nodes| {
+                            nodes
+                                .iter()
+                                .any(|node| node.get("clickable") == Some(&json!(true)))
+                        })
                         .unwrap_or(false);
                     if !has_clickable {
-                        return Err("Assertion failed: node[clickable=true] does not exist".to_string());
+                        return Err(
+                            "Assertion failed: node[clickable=true] does not exist".to_string()
+                        );
                     }
                 }
             } else if assertion.target == "error.code" {
-                let has_code = last_response.get("error").and_then(|e| e.get("code")).is_some()
+                let has_code = last_response
+                    .get("error")
+                    .and_then(|e| e.get("code"))
+                    .is_some()
                     || last_response.get("code").is_some();
                 if !has_code {
-                    return Err(format!("Assertion failed: error.code does not exist in {last_response}"));
+                    return Err(format!(
+                        "Assertion failed: error.code does not exist in {last_response}"
+                    ));
                 }
             } else if assertion.target == "error" {
                 let has_error = last_response.get("error").is_some()
                     || last_response.get("isError") == Some(&json!(true));
                 if !has_error {
-                    return Err(format!("Assertion failed: error does not exist in {last_response}"));
+                    return Err(format!(
+                        "Assertion failed: error does not exist in {last_response}"
+                    ));
                 }
             }
         }
@@ -435,23 +483,42 @@ fn evaluate_assertion(assertion: &crate::scenario::Assertion, last_response: &Va
             // Predicate missing passes if target is not found
         }
         "count_lt" => {
-            let max_val = assertion.value.as_ref().and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
+            let max_val = assertion
+                .value
+                .as_ref()
+                .and_then(|v| v.as_u64())
+                .unwrap_or(u64::MAX);
             if assertion.target == "all" {
                 if let Some(tree) = tree {
-                    let count = tree.get("nodes").and_then(|n| n.as_array()).map(|a| a.len()).unwrap_or(0) as u64;
+                    let count = tree
+                        .get("nodes")
+                        .and_then(|n| n.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0) as u64;
                     if count >= max_val {
-                        return Err(format!("Assertion failed: count_lt {max_val}, but found {count} nodes"));
+                        return Err(format!(
+                            "Assertion failed: count_lt {max_val}, but found {count} nodes"
+                        ));
                     }
                 }
             } else if assertion.target == "tools" {
-                let count = last_response.get("tools_count").and_then(|c| c.as_u64()).unwrap_or(6);
+                let count = last_response
+                    .get("tools_count")
+                    .and_then(|c| c.as_u64())
+                    .unwrap_or(6);
                 if count >= max_val {
-                    return Err(format!("Assertion failed: tools count_lt {max_val}, got {count}"));
+                    return Err(format!(
+                        "Assertion failed: tools count_lt {max_val}, got {count}"
+                    ));
                 }
             }
         }
         "state" if assertion.target == "bridge" => {
-            let expected_state = assertion.value.as_ref().and_then(|v| v.as_str()).unwrap_or("IDLE");
+            let expected_state = assertion
+                .value
+                .as_ref()
+                .and_then(|v| v.as_str())
+                .unwrap_or("IDLE");
             if expected_state != "IDLE" {
                 return Err(format!("Bridge state mismatch: expected {expected_state}"));
             }
