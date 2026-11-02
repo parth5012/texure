@@ -1,0 +1,14 @@
+id: g1-release-leak
+message: "Bridge imports must never appear in non-debug or release source sets (Guardrail G1)"
+severity: error
+language: Kotlin
+ignores:
+  - "android/bridge/**"
+  - "**/src/debug/**"
+  - "**/src/test/**"
+  - "**/src/androidTest/**"
+  - "tests/**"
+rule:
+  any:
+    - pattern: import com.texure.bridge.$$$REST
+    - pattern: import com.texure.bridge.*

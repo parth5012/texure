@@ -1,5 +1,23 @@
 # Log
 
+## 2026-11-02 (Wayfinder map 3 tickets #3 & #5 AFK resolution)
+- Executed and resolved remaining map 3 P1 tickets on branch `t3/wayfinder-map3-leftovers`:
+  - Ticket #3 (BB-P0/P1: blackbox runner + FakeBridge scenario suite):
+    - Implemented in-process HTTP and WebSocket FakeBridge in `crates/texure-blackbox/src/fake_bridge.rs` supporting all contract endpoints and scenario states.
+    - Implemented `FakeMcpServer` in `crates/texure-blackbox/src/fake_mcp.rs` for stdio JSON-RPC 2.0 conformance testing with frozen 6-tool schema and scenario error simulation.
+    - Implemented blackbox scenario runner in `crates/texure-blackbox/src/runner.rs`.
+    - Applied concrete OCR review findings (bounded buffers, WebSocket peek consumption fix, notification handling).
+    - Verified: `cargo run -p texure-blackbox -- --target mcp-fake`: 14/14 PASS (39ms); `cargo run -p texure-blackbox -- --target all`: 15 PASS, 6 DEVICE-SKIP, 0 FAIL.
+    - Ticket closed and committed.
+  - Ticket #5 (Custom linters: texure-lint P0 + ast-grep rules P1):
+    - Authored YAML AST pattern rules in `lint/ast-grep/` (`g1-release-leak.yml`, `g4-no-adb-system-exec.yml`, `g5-g6-forbidden-injection.yml`) mapped to Guardrails G1, G4, G5/G6.
+    - Created root `sgconfig.yml` pointing to `lint/ast-grep`.
+    - Integrated Class C executor into `crates/texure-lint/src/ast_grep.rs` with perfgym dogfood attempt and CLI/npx `ast-grep scan --json` fallback.
+    - Logged perfgym dogfood experiment evaluation in `DECISIONS.md`.
+    - Verified: `cargo run -p texure-lint -- --report tmp/evidence/5/lint-report.json`: 0 findings (0 FAIL, 0 WARN).
+- Verification: L0 (`texure-lint`, clippy 0 warnings), L1 (`cargo test --workspace` 9 passed), L2 (14/14 blackbox fake passed).
+- Status: Map 3 Phase 2 AFK Done. Single PR ready to open.
+
 ## 2026-11-01 (Wayfinder map 2 Phase 2 Spike 2 on-device verification & resolution)
 - Map 2 Phase 2 AFK Spike 2 (issue #2: VelaVoice integration proof + first agent flow) successfully executed and verified on physical Xiaomi test device (`IBFUSOZHCYJJ99JZ`, Android 15 / SDK 35) connected to Windows host `DESKTOP-IJO3ROS` via T3 Code linked environment:
   - Bridge Publication:

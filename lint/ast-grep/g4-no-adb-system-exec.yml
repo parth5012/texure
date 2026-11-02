@@ -1,0 +1,12 @@
+id: g4-no-adb-system-exec
+message: "Runtime execution of ADB, su, or shell commands is forbidden (Guardrail G4)"
+severity: error
+language: Kotlin
+files:
+  - "android/**"
+rule:
+  any:
+    - pattern: Runtime.getRuntime().exec($$$ARGS)
+    - pattern: java.lang.Runtime.getRuntime().exec($$$ARGS)
+    - pattern: ProcessBuilder($$$ARGS)
+    - pattern: java.lang.ProcessBuilder($$$ARGS)
