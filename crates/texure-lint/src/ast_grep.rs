@@ -139,7 +139,8 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
 
 fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
     // 1. Try `ast-grep scan --json`
-    match Command::new("ast-grep")
+    let ast_grep_cmd = if cfg!(windows) { "ast-grep.cmd" } else { "ast-grep" };
+    match Command::new(ast_grep_cmd)
         .args(["scan", "--json"])
         .current_dir(root_dir)
         .output()
@@ -190,11 +191,12 @@ fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
     }
 
     // 3. Fall back to `npx -y -p @ast-grep/cli ast-grep scan --json`
-    let npx_res = Command::new("npx")
+    let npx_cmd = if cfg!(windows) { "npx.cmd" } else { "npx" };
+    let npx_res = Command::new(npx_cmd)
         .args(["-y", "-p", "@ast-grep/cli", "ast-grep", "scan", "--json"])
         .current_dir(root_dir)
         .output()
-        .map_err(|e| format!("Failed to spawn npx @ast-grep/cli: {e}"))?;
+        .map_err(|e| format!("Failed to spawn {npx_cmd} @ast-grep/cli: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&npx_res.stdout).to_string();
     let stderr = String::from_utf8_lossy(&npx_res.stderr).to_string();

@@ -2,6 +2,7 @@ pub mod client_http;
 pub mod client_mcp;
 pub mod fake_bridge;
 pub mod fake_mcp;
+pub mod history;
 pub mod runner;
 pub mod scenario;
 
@@ -12,7 +13,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Parser, Debug)]
-#[command(name = "texure-blackbox", about = "Texure blackbox test runner")]
+#[command(name = "texure-blackbox", about = "Texure blackbox test runner & regression tracking")]
 struct Args {
     /// Target mode: all | mcp | http | mcp-fake | fake
     #[arg(long, default_value = "all")]
@@ -45,6 +46,22 @@ struct Args {
     /// Run in fake MCP stdio mode (used for MCP testing)
     #[arg(long)]
     fake_mcp: bool,
+
+    /// Query regression run history from SQLite
+    #[arg(long)]
+    history: bool,
+
+    /// History query limit (default: 20)
+    #[arg(long, default_value = "20")]
+    limit: usize,
+
+    /// History output format: table | json (default: table)
+    #[arg(long, default_value = "table")]
+    format: String,
+
+    /// Path to custom history SQLite database (default: .texure/history.db)
+    #[arg(long)]
+    history_db: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,6 +261,29 @@ pub fn get_all_tests() -> Vec<TestDef> {
 async fn main() {
     let args = Args::parse();
 
+    // Check if querying history
+    if args.history {
+        let db_path = args
+            .history_db
+            .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH));
+        match history::HistoryStore::open_at(db_path) {
+            Ok(store) => match store.render_history_cli(args.limit, &args.format) {
+                Ok(output) => {
+                    print!("{output}");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("Error rendering history: {e}");
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("Error opening history store: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Check if running as fake MCP stdio server
     if args.fake_mcp {
         let sc = args.scenario.unwrap_or_else(|| "static_screen".to_string());
@@ -348,7 +388,7 @@ async fn main() {
             device_skipped,
             duration_ms: total_duration_ms,
         },
-        tests: results,
+        tests: results.clone(),
     };
 
     if let Some(ref report_path) = args.report {
@@ -358,6 +398,66 @@ async fn main() {
         if let Ok(json_str) = serde_json::to_string_pretty(&report) {
             let _ = fs::write(report_path, json_str);
             println!("Report written to: {}", report_path.display());
+        }
+    }
+
+    // Auto-record to SQLite history store
+    let db_path = args
+        .history_db
+        .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH));
+    match history::HistoryStore::open_at(db_path) {
+        Ok(store) => {
+            let run_id = history::generate_run_id();
+            let branch = std::process::Command::new("git")
+                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string());
+            let build_hash = std::process::Command::new("git")
+                .args(["rev-parse", "--short", "HEAD"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string());
+
+            let run_record = history::RunRecord {
+                run_id: run_id.clone(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                app_version_name: None,
+                build_hash,
+                branch,
+                total_scenarios: results.len(),
+                passed,
+                failed,
+                duration_ms: total_duration_ms,
+            };
+
+            let scenario_records: Vec<history::ScenarioResultRecord> = results
+                .iter()
+                .map(|r| history::ScenarioResultRecord {
+                    id: None,
+                    run_id: run_id.clone(),
+                    scenario_id: r.id.clone(),
+                    name: r.name.clone(),
+                    status: r.status.to_uppercase(),
+                    duration_ms: r.duration_ms,
+                    error_code: r
+                        .reason
+                        .as_deref()
+                        .and_then(|res| res.split(':').next())
+                        .map(|s| s.trim().to_string()),
+                    error_message: r.reason.clone(),
+                    evidence_bundle_path: r.evidence_bundle.clone(),
+                })
+                .collect();
+
+            if let Err(e) = store.record_run(&run_record, &scenario_records, &[]) {
+                eprintln!("Warning: failed to record run history into SQLite: {e}");
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to initialize SQLite history store: {e}");
         }
     }
 
