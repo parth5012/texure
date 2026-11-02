@@ -5,6 +5,7 @@ Cargo.lock
 # Test evidence / throwaway
 /tmp/
 tmp/
+.texure/
 
 # Android / Gradle
 build/

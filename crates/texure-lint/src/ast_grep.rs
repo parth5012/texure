@@ -138,27 +138,36 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
 }
 
 fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
-    // 1. Try `ast-grep scan --json`
-    match Command::new("ast-grep")
-        .args(["scan", "--json"])
-        .current_dir(root_dir)
-        .output()
-    {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            if let Some(json) = extract_json_array(&stdout) {
-                return Ok(json);
+    // 1. Try `ast-grep scan --json`. On Windows try the extension-neutral
+    //    name first, then retry with `ast-grep.cmd` when the first spawn is
+    //    not found (npx shims install the .cmd wrapper).
+    let sg_attempts: &[&str] = if cfg!(windows) {
+        &["ast-grep", "ast-grep.cmd"]
+    } else {
+        &["ast-grep"]
+    };
+    for ast_grep_cmd in sg_attempts {
+        match Command::new(ast_grep_cmd)
+            .args(["scan", "--json"])
+            .current_dir(root_dir)
+            .output()
+        {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                if let Some(json) = extract_json_array(&stdout) {
+                    return Ok(json);
+                }
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                return Err(format!(
+                    "ast-grep failed (status: {}): {stderr}",
+                    out.status
+                ));
             }
-            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-            return Err(format!(
-                "ast-grep failed (status: {}): {stderr}",
-                out.status
-            ));
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("Failed to execute ast-grep: {e}"));
+            }
+            Err(_) => continue,
         }
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            return Err(format!("Failed to execute ast-grep: {e}"));
-        }
-        Err(_) => {}
     }
 
     // 2. Try `sg scan --json` (only if sg is ast-grep, not util-linux sg)
@@ -189,12 +198,36 @@ fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
         }
     }
 
-    // 3. Fall back to `npx -y -p @ast-grep/cli ast-grep scan --json`
-    let npx_res = Command::new("npx")
-        .args(["-y", "-p", "@ast-grep/cli", "ast-grep", "scan", "--json"])
-        .current_dir(root_dir)
-        .output()
-        .map_err(|e| format!("Failed to spawn npx @ast-grep/cli: {e}"))?;
+    // 3. Fall back to `npx -y -p @ast-grep/cli ast-grep scan --json`.
+    //    On Windows try `npx.cmd` first, retrying with `npx` only when the
+    //    shim itself is not found. Other spawn failures surface as errors.
+    let npx_attempts: &[&str] = if cfg!(windows) { &["npx.cmd", "npx"] } else { &["npx"] };
+    let mut npx_res: Option<std::process::Output> = None;
+    let mut spawn_err: Option<String> = None;
+    for npx_cmd in npx_attempts {
+        match Command::new(npx_cmd)
+            .args(["-y", "-p", "@ast-grep/cli", "ast-grep", "scan", "--json"])
+            .current_dir(root_dir)
+            .output()
+        {
+            Ok(out) => {
+                npx_res = Some(out);
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                spawn_err = Some(format!("Failed to spawn {npx_cmd} @ast-grep/cli: {e}"));
+                break;
+            }
+        }
+    }
+    let npx_res = match (npx_res, spawn_err) {
+        (Some(out), _) => out,
+        (None, Some(e)) => return Err(e),
+        (None, None) => {
+            return Err("Failed to spawn npx @ast-grep/cli: command not found".to_string())
+        }
+    };
 
     let stdout = String::from_utf8_lossy(&npx_res.stdout).to_string();
     let stderr = String::from_utf8_lossy(&npx_res.stderr).to_string();
