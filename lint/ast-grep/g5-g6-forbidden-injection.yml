@@ -1,0 +1,16 @@
+id: g5-g6-forbidden-injection
+message: "Forbidden input injection or AccessibilityService outside injection adapter (Guardrail G5/G6)"
+severity: error
+language: Kotlin
+ignores:
+  - "android/bridge/src/main/kotlin/com/texure/bridge/injection/**"
+  - "android/bridge/src/test/**"
+  - "tests/**"
+rule:
+  any:
+    - pattern: $OBJ.injectInputEvent($$$ARGS)
+    - pattern: $OBJ.getDeclaredMethod("injectInputEvent", $$$ARGS)
+    - pattern: $OBJ.getMethod("injectInputEvent", $$$ARGS)
+    - pattern: 'class $NAME : AccessibilityService'
+    - pattern: 'class $NAME : AccessibilityService()'
+    - pattern: 'class $NAME : AccessibilityService($$$ARGS)'

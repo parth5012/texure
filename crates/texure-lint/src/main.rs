@@ -1,3 +1,4 @@
+pub mod ast_grep;
 pub mod docs_gate;
 pub mod hygiene;
 pub mod scenario_dsl;
@@ -10,7 +11,7 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(
     name = "texure-lint",
-    about = "Custom linter for texure documentation, contracts, scenarios, and hygiene (P0)"
+    about = "Custom linter for texure documentation, contracts, scenarios, and guardrails (P0+P1)"
 )]
 struct Args {
     /// Path to emit machine-readable JSON report
@@ -50,20 +51,23 @@ fn main() {
 
     let mut findings = Vec::new();
 
-    // 1. Docs-gate checks
+    // 1. Docs-gate checks (Class D)
     findings.extend(docs_gate::check_docs_gate(root));
 
-    // 2. Scenario DSL checks
+    // 2. Scenario DSL checks (Class D)
     findings.extend(scenario_dsl::check_scenarios(root));
 
-    // 3. Hygiene checks
+    // 3. Hygiene checks (Class D)
     findings.extend(hygiene::check_hygiene(root));
+
+    // 4. ast-grep Guardrail checks (Class C)
+    findings.extend(ast_grep::check_ast_grep(root));
 
     let fails = findings.iter().filter(|f| f.severity == "FAIL").count();
     let warns = findings.iter().filter(|f| f.severity == "WARN").count();
 
     println!("================================================================================");
-    println!("Texure Custom Linter (texure-lint P0)");
+    println!("Texure Custom Linter (texure-lint P0+P1)");
     println!("================================================================================");
 
     if findings.is_empty() {

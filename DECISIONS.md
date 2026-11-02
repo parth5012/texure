@@ -229,3 +229,20 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
    - *What:* Integrated via a single `debugImplementation("com.texure:bridge:0.1.0")` line in target module and whitelisted `com.texure` group in root `mavenLocal`.
    - *Verification:* Verified on physical Xiaomi device (`IBFUSOZHCYJJ99JZ`, Android 15 / SDK 35): `/ui-tree` extraction, own-window tap injection on "Rotate Token" button, token rotation, and screenshot capturing executed cleanly without `SecurityException`.
 
+---
+
+## 2026-11-02 (Guardrail ast-grep rules & perfgym dogfood evaluation, issue #5)
+
+1. **Guardrail ast-grep Rules: `lint/ast-grep/` (G1, G4, G5/G6).**
+   - *What:* Authored declarative AST pattern rules in `lint/ast-grep/`:
+     - `g1-release-leak.yml`: Tripwire detecting `com.texure.bridge` imports in non-debug or release source sets outside `android/bridge`.
+     - `g4-no-adb-system-exec.yml`: Flags any `Runtime.getRuntime().exec` or `ProcessBuilder` shell calls.
+     - `g5-g6-forbidden-injection.yml`: Detects `injectInputEvent`, reflection method lookup of `injectInputEvent`, and `AccessibilityService` inheritance outside `android/bridge/injection/`.
+   - *Why:* Mechanically prevents architecture regressions and guardrail violations prior to CI/device execution.
+
+2. **Perfgym Dogfood Evaluation & Executor Fallback Seam.**
+   - *What:* Evaluated perfgym CLI (`node perfgym.js lint`) against texure's Kotlin codebase per the 2-week time-boxed dogfood policy in `docs/linting-plan.md`.
+   - *Finding:* Perfgym v0.1 embeds `@ast-grep/napi` (0.51.0), which only compiles Tree-Sitter grammars for TS, JS, TSX, HTML, and CSS in-process. When presented with Kotlin AST rules, perfgym throws `Error: kotlin is not supported in napi`.
+   - *Outcome:* Triggered the documented fallback policy: `texure-lint` attempts in-process/local perfgym execution, detects language engine limitations, and falls back to `sg scan` / `ast-grep scan --json` (via CLI / `@ast-grep/cli`) seamlessly with zero rule rewrites.
+   - *Report contract:* `texure-lint` unifies Class D (docs/DSL/hygiene) and Class C (ast-grep guardrails) into a single unified `lint-report.json`.
+
