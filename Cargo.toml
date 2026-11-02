@@ -7,6 +7,6 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2026"
 authors = ["texure contributors"]
 license = "MIT OR Apache-2.0"
