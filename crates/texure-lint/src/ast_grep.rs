@@ -54,9 +54,9 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
                             .and_then(|f| f.as_str())
                             .unwrap_or("unknown");
                         let file = if let Ok(rel) = Path::new(raw_file).strip_prefix(root_dir) {
-                            rel.to_string_lossy().to_string()
+                            rel.to_string_lossy().replace('\\', "/")
                         } else {
-                            raw_file.trim_start_matches("./").to_string()
+                            raw_file.trim_start_matches("./").replace('\\', "/")
                         };
                         let line = item
                             .get("range")
@@ -83,7 +83,7 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
                 }
                 Ok(_) => {
                     findings.push(Finding {
-                        severity: "WARN".to_string(),
+                        severity: "FAIL".to_string(),
                         rule: "ast-grep/invalid-json-output".to_string(),
                         file: "lint/ast-grep".to_string(),
                         line: 1,
@@ -92,7 +92,7 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
                 }
                 Err(e) => {
                     findings.push(Finding {
-                        severity: "WARN".to_string(),
+                        severity: "FAIL".to_string(),
                         rule: "ast-grep/parse-error".to_string(),
                         file: "lint/ast-grep".to_string(),
                         line: 1,
@@ -103,7 +103,7 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
         }
         Err(e) => {
             findings.push(Finding {
-                severity: "WARN".to_string(),
+                severity: "FAIL".to_string(),
                 rule: "ast-grep/executor-unavailable".to_string(),
                 file: "lint/ast-grep".to_string(),
                 line: 1,
@@ -117,15 +117,26 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
 
 fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
     // 1. Try `ast-grep scan --json`
-    if let Ok(out) = Command::new("ast-grep")
+    match Command::new("ast-grep")
         .args(["scan", "--json"])
         .current_dir(root_dir)
         .output()
     {
-        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-        if let Some(json) = extract_json_array(&stdout) {
-            return Ok(json);
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+            if let Some(json) = extract_json_array(&stdout) {
+                return Ok(json);
+            }
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            return Err(format!(
+                "ast-grep failed (status: {}): {stderr}",
+                out.status
+            ));
         }
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!("Failed to execute ast-grep: {e}"));
+        }
+        Err(_) => {}
     }
 
     // 2. Try `sg scan --json` (only if sg is ast-grep, not util-linux sg)
@@ -136,15 +147,23 @@ fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
         .unwrap_or(false);
 
     if is_ast_grep_sg {
-        if let Ok(out) = Command::new("sg")
+        match Command::new("sg")
             .args(["scan", "--json"])
             .current_dir(root_dir)
             .output()
         {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            if let Some(json) = extract_json_array(&stdout) {
-                return Ok(json);
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                if let Some(json) = extract_json_array(&stdout) {
+                    return Ok(json);
+                }
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                return Err(format!("sg failed (status: {}): {stderr}", out.status));
             }
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("Failed to execute sg: {e}"));
+            }
+            Err(_) => {}
         }
     }
 
@@ -167,13 +186,23 @@ fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
 }
 
 fn extract_json_array(output: &str) -> Option<String> {
-    let start = output.find('[')?;
-    let end = output.rfind(']')?;
-    if end >= start {
-        Some(output[start..=end].to_string())
-    } else {
-        None
+    let trimmed = output.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        return Some(trimmed.to_string());
     }
+
+    let end_idx = output.rfind(']')?;
+    // Find the opening bracket that yields a valid JSON value when sliced to end_idx
+    for (start_idx, _) in output.match_indices('[') {
+        if start_idx <= end_idx {
+            let candidate = &output[start_idx..=end_idx];
+            if serde_json::from_str::<Value>(candidate).is_ok() {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

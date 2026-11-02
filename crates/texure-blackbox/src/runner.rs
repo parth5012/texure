@@ -90,8 +90,11 @@ pub async fn run_test(
 
 async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> Result<(), String> {
     let current_exe = env::current_exe().map_err(|e| format!("Cannot locate current exe: {e}"))?;
+    let current_exe_str = current_exe
+        .to_str()
+        .ok_or_else(|| "Current executable path is not valid UTF-8".to_string())?;
     let mut client = McpStdioClient::spawn(
-        current_exe.to_str().unwrap(),
+        current_exe_str,
         &["--fake-mcp", "--scenario", &scenario.name],
     )
     .map_err(|e| format!("Failed to spawn fake MCP server: {e}"))?;
@@ -480,7 +483,28 @@ fn evaluate_assertion(
             }
         }
         "missing" => {
-            // Predicate missing passes if target is not found
+            if assertion.target == "error" {
+                let has_error = last_response.get("error").is_some()
+                    || last_response.get("isError") == Some(&json!(true));
+                if has_error {
+                    return Err(format!(
+                        "Assertion failed: target '{}' should be missing, but found in {last_response}",
+                        assertion.target
+                    ));
+                }
+            } else if assertion.target == "error.code" {
+                let has_code = last_response
+                    .get("error")
+                    .and_then(|e| e.get("code"))
+                    .is_some()
+                    || last_response.get("code").is_some();
+                if has_code {
+                    return Err(format!(
+                        "Assertion failed: target '{}' should be missing, but found in {last_response}",
+                        assertion.target
+                    ));
+                }
+            }
         }
         "count_lt" => {
             let max_val = assertion
