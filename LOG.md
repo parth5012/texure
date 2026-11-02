@@ -34,6 +34,23 @@
 - Verified pre-commit: probe 19/19, `cargo run -p texure-lint` 0 findings, `cargo test --workspace` green (28 passed).
 - Committed probe + LOG onto PR #93 branch for merge into main (map 4 #18+#19+#94).
 
+## 2026-11-02 (Wayfinder Map 7 Ticket #26 AFK implementation & verification)
+- Executed and resolved Map 7 Ticket #26 (Regression tracking datastore: embedded SQLite run history & query CLI) on branch `wf/28-26-history-store`:
+  - SQLite storage engine in `crates/texure-blackbox/src/history.rs`:
+    - Auto-initialized `.texure/history.db` with WAL mode, normal synchronous, foreign keys, and busy timeout.
+    - Schema: `runs`, `scenario_results`, and `step_records` tables with query indexes.
+    - Added `record_run`, `list_runs`, `get_run`, `get_scenario_steps`, and CLI table/JSON renderer.
+  - Blackbox Runner Integration (`crates/texure-blackbox/src/main.rs`):
+    - Added `--history`, `--limit`, `--format`, and `--history-db` CLI flags.
+    - Auto-recorded run summary, test outcomes, error codes, and evidence paths into SQLite on suite execution.
+  - Cross-platform Windows batch execution fix in `crates/texure-lint/src/ast_grep.rs` for `npx.cmd` and `ast-grep.cmd`.
+  - Added `.texure/` to `.gitignore`.
+  - Verification Matrix:
+    - L0: `cargo run -p texure-lint` pass (0 findings).
+    - L1: `cargo test -p texure-blackbox` pass (8 unit tests passed).
+    - L2: `cargo run -p texure-blackbox -- --target mcp-fake` pass (14/14 passed) + `--history` verified.
+- Status: Ticket #26 Done. Ready for PR.
+
 ## 2026-11-02 (Wayfinder map 3 tickets #3 & #5 AFK resolution)
 - Executed and resolved remaining map 3 P1 tickets on branch `t3/wayfinder-map3-leftovers`:
   - Ticket #3 (BB-P0/P1: blackbox runner + FakeBridge scenario suite):
