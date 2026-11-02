@@ -227,7 +227,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-C2".to_string(),
             name: "slow_screen wait_for timeout <= 30s + HTTP fallback".to_string(),
             scenario_file: "slow_screen.json".to_string(),
-            target: "mcp-fake".to_string(),
+            target: "mcp".to_string(),
             is_device: false,
         },
         TestDef {

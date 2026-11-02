@@ -432,6 +432,8 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                 }
                 continue;
             }
+
+            return Err(format!("Unsupported expect key: {k}"));
         }
     }
     Ok(())

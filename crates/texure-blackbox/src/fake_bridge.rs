@@ -127,6 +127,36 @@ async fn handle_connection(
 
     // Check if this is a WebSocket upgrade request
     if req_str.contains("Upgrade: websocket") || req_str.contains("upgrade: websocket") {
+        let expected_auth = format!("Bearer {}", state.expected_token);
+        let has_valid_auth = req_str.lines().any(|l| {
+            let l_trimmed = l.trim();
+            if l_trimmed.to_lowercase().starts_with("authorization:") {
+                let val = l_trimmed["authorization:".len()..].trim();
+                val == expected_auth
+            } else {
+                false
+            }
+        });
+
+        if !has_valid_auth || state.scenario_name == "auth_reject" {
+            let err = json!({
+                "error": {
+                    "code": "AUTH_FAILED",
+                    "message": "Authorization header missing or invalid on WebSocket upgrade",
+                    "hint": "re-paste fresh token from overlay"
+                }
+            });
+            let body = serde_json::to_vec(&err).unwrap();
+            let resp = format!(
+                "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                String::from_utf8_lossy(&body)
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+            let _ = stream.flush().await;
+            return;
+        }
+
         if let Ok(mut ws_stream) = tokio_tungstenite::accept_async(stream).await {
             let mut ws_rx = state.ws_sender.subscribe();
             loop {

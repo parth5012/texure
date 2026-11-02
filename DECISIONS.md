@@ -243,6 +243,6 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 2. **Perfgym Dogfood Evaluation & Executor Fallback Seam.**
    - *What:* Evaluated perfgym CLI (`node perfgym.js lint`) against texure's Kotlin codebase per the 2-week time-boxed dogfood policy in `docs/linting-plan.md`.
    - *Finding:* Perfgym v0.1 embeds `@ast-grep/napi` (0.51.0), which only compiles Tree-Sitter grammars for TS, JS, TSX, HTML, and CSS in-process. When presented with Kotlin AST rules, perfgym throws `Error: kotlin is not supported in napi`.
-   - *Outcome:* Triggered the documented fallback policy: `texure-lint` attempts in-process/local perfgym execution, detects language engine limitations, and falls back to `sg scan` / `ast-grep scan --json` (via CLI / `@ast-grep/cli`) seamlessly with zero rule rewrites.
+   - *Outcome:* Adopted the documented fallback policy with zero rule rewrites. `texure-lint` runs `ast-grep scan --json`, then `sg scan --json` when `sg` is ast-grep, then `npx -y -p @ast-grep/cli ast-grep scan --json`. It does not run perfgym.
    - *Report contract:* `texure-lint` unifies Class D (docs/DSL/hygiene) and Class C (ast-grep guardrails) into a single unified `lint-report.json`.
 

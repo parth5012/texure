@@ -7,5 +7,6 @@ files:
 rule:
   any:
     - pattern: Runtime.getRuntime().exec($$$ARGS)
-    - pattern: $RUNTIME.exec($$$ARGS)
+    - pattern: java.lang.Runtime.getRuntime().exec($$$ARGS)
     - pattern: ProcessBuilder($$$ARGS)
+    - pattern: java.lang.ProcessBuilder($$$ARGS)

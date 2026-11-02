@@ -18,6 +18,28 @@ pub fn check_ast_grep(root_dir: &Path) -> Vec<Finding> {
         return findings;
     }
 
+    // Verify sgconfig.yml configuration targets lint/ast-grep
+    let sgconfig_path = root_dir.join("sgconfig.yml");
+    if !sgconfig_path.exists() {
+        findings.push(Finding {
+            severity: "FAIL".to_string(),
+            rule: "ast-grep/sgconfig-missing".to_string(),
+            file: "sgconfig.yml".to_string(),
+            line: 1,
+            message: "sgconfig.yml not found at repo root".to_string(),
+        });
+    } else if let Ok(content) = std::fs::read_to_string(&sgconfig_path) {
+        if !content.contains("lint/ast-grep") {
+            findings.push(Finding {
+                severity: "FAIL".to_string(),
+                rule: "ast-grep/sgconfig-rules-missing".to_string(),
+                file: "sgconfig.yml".to_string(),
+                line: 1,
+                message: "sgconfig.yml ruleDirs does not include lint/ast-grep".to_string(),
+            });
+        }
+    }
+
     // Verify presence of required guardrail rule files
     let expected_rules = [
         ("g1-release-leak.yml", "G1"),
@@ -221,6 +243,9 @@ mod tests {
         assert!(rules_dir.join("g1-release-leak.yml").exists());
         assert!(rules_dir.join("g4-no-adb-system-exec.yml").exists());
         assert!(rules_dir.join("g5-g6-forbidden-injection.yml").exists());
+        assert!(rules_dir
+            .join("g5-g6-forbidden-injection-java.yml")
+            .exists());
     }
 
     #[test]

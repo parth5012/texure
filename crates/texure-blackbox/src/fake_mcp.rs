@@ -26,7 +26,21 @@ impl FakeMcpServer {
 
             let req: Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
-                Err(_) => continue,
+                Err(_) => {
+                    let parse_err = json!({
+                        "jsonrpc": "2.0",
+                        "id": Value::Null,
+                        "error": {
+                            "code": -32700,
+                            "message": "Parse error"
+                        }
+                    });
+                    let mut out = serde_json::to_string(&parse_err)?;
+                    out.push('\n');
+                    stdout.write_all(out.as_bytes())?;
+                    stdout.flush()?;
+                    continue;
+                }
             };
 
             let id = req.get("id").cloned();
