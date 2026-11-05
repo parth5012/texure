@@ -113,9 +113,14 @@ impl ErrorCode {
 
     /// Format single-line error text for the standard MCP tool response:
     /// `CODE: message; hint` (guardrail: one-line `CODE: message` + hint always).
+    /// Line breaks are collapsed so a multi-line bridge body stays one line.
     pub fn formatted_single_line(&self, custom_msg: Option<&str>) -> String {
         let msg = custom_msg.unwrap_or_else(|| self.default_message());
-        format!("{}: {}; {}", self.as_str(), msg, self.agent_hint())
+        let flat: String = msg
+            .chars()
+            .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+            .collect();
+        format!("{}: {}; {}", self.as_str(), flat, self.agent_hint())
     }
 }
 

@@ -10,6 +10,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, error, info, warn};
 
+/// Upper bound for a single WebSocket dial (connect + handshake).
+const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Supervisor managing background WebSocket connection to the Android Bridge.
 #[derive(Clone)]
 pub struct WsSupervisor {
@@ -70,8 +73,11 @@ impl WsSupervisor {
                     req.headers_mut().insert("Authorization", val);
                 }
 
-                match connect_async(req).await {
-                    Ok((ws_stream, _)) => {
+                // connect_async has no internal timeout: a bridge that accepts
+                // TCP but never completes the handshake would stall the
+                // supervisor before the backoff sleep, stopping reconnection.
+                match tokio::time::timeout(DIAL_TIMEOUT, connect_async(req)).await {
+                    Ok(Ok((ws_stream, _))) => {
                         info!("Connected to bridge WebSocket at {ws_url}");
                         connected.store(true, Ordering::SeqCst);
                         backoff = Duration::from_secs(1);
@@ -98,9 +104,13 @@ impl WsSupervisor {
                         connected.store(false, Ordering::SeqCst);
                         warn!("Bridge WebSocket disconnected; beginning reconnection loop");
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         connected.store(false, Ordering::SeqCst);
                         debug!("WebSocket connection attempt failed: {e}");
+                    }
+                    Err(_) => {
+                        connected.store(false, Ordering::SeqCst);
+                        warn!("WebSocket handshake timed out after {DIAL_TIMEOUT:?}");
                     }
                 }
 

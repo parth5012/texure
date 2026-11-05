@@ -76,9 +76,14 @@ impl TexureConfig {
             .or_else(|| profile.and_then(|p| p.token.clone()))
             .or_else(|| self.token.clone());
 
+        // timeout_secs = 0 would make reqwest's total timeout expire
+        // immediately (every call fails as if the device were offline);
+        // treat it as unset so the documented default applies.
         let timeout_secs = env_timeout
-            .or_else(|| profile.and_then(|p| p.timeout_secs))
+            .filter(|t| *t > 0)
+            .or_else(|| profile.and_then(|p| p.timeout_secs).filter(|t| *t > 0))
             .or(self.timeout_secs)
+            .filter(|t| *t > 0)
             .unwrap_or(10);
 
         match (url, token) {
@@ -156,5 +161,21 @@ mod tests {
         let config = TexureConfig::default();
         let res = config.resolve(|_| None);
         assert_eq!(res, Err(ErrorCode::NoConfig));
+    }
+
+    #[test]
+    fn test_zero_timeout_falls_back_to_default() {
+        let config = TexureConfig {
+            url: Some("http://device:8765".to_string()),
+            token: Some("tok".to_string()),
+            timeout_secs: Some(0),
+            active_profile: None,
+            profiles: HashMap::new(),
+        };
+
+        let resolved = config
+            .resolve(|key| (key == "TEXURE_TIMEOUT").then(|| "0".to_string()))
+            .expect("resolve");
+        assert_eq!(resolved.timeout_secs, 10);
     }
 }

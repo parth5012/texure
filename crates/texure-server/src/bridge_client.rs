@@ -83,11 +83,16 @@ pub struct BridgeClient {
 }
 
 impl BridgeClient {
-    pub fn new(config: ResolvedDeviceConfig) -> Result<Self, String> {
+    pub fn new(config: ResolvedDeviceConfig) -> Result<Self, BridgeCallError> {
         let mut headers = HeaderMap::new();
         let auth_val = format!("Bearer {}", config.token);
-        let header_val = HeaderValue::from_str(&auth_val)
-            .map_err(|e| format!("Invalid auth token header: {e}"))?;
+        let header_val = HeaderValue::from_str(&auth_val).map_err(|_| {
+            // Never echo token material; say what is wrong, not what it is.
+            BridgeCallError::new(
+                ErrorCode::NoConfig,
+                "config token contains invalid characters",
+            )
+        })?;
         headers.insert(AUTHORIZATION, header_val);
 
         let client = Client::builder()
@@ -95,7 +100,12 @@ impl BridgeClient {
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+            .map_err(|e| {
+                BridgeCallError::new(
+                    ErrorCode::Offline,
+                    format!("Failed to create HTTP client: {e}"),
+                )
+            })?;
 
         Ok(Self { client, config })
     }
@@ -109,25 +119,15 @@ impl BridgeClient {
         max_depth: Option<u32>,
         subtree: Option<&str>,
     ) -> Result<UiTree, BridgeCallError> {
-        let mut url = self.url("/ui-tree");
-        let mut query = Vec::new();
+        let mut req = self.client.get(self.url("/ui-tree"));
         if let Some(depth) = max_depth {
-            query.push(format!("max_depth={depth}"));
+            req = req.query(&[("max_depth", depth.to_string())]);
         }
         if let Some(sub) = subtree {
-            query.push(format!("subtree={sub}"));
-        }
-        if !query.is_empty() {
-            url.push('?');
-            url.push_str(&query.join("&"));
+            req = req.query(&[("subtree", sub)]);
         }
 
-        let resp = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| self.map_reqwest_error(e))?;
+        let resp = req.send().await.map_err(|e| self.map_reqwest_error(e))?;
 
         if !resp.status().is_success() {
             return Err(self.map_http_error(resp).await);

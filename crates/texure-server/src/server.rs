@@ -46,10 +46,24 @@ impl McpServer {
                 continue;
             }
 
-            let request: JsonRpcRequest = match serde_json::from_str(trimmed) {
-                Ok(req) => req,
+            // Unparseable JSON is -32700; valid JSON that fails to form a
+            // 2.0 request is -32600 (JsonRpcError::invalid_request()).
+            let parsed: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
                 Err(_) => {
                     let err_resp = JsonRpcResponse::error(None, JsonRpcError::parse_error());
+                    let mut out = serde_json::to_string(&err_resp)?;
+                    out.push('\n');
+                    stdout.write_all(out.as_bytes()).await?;
+                    stdout.flush().await?;
+                    continue;
+                }
+            };
+
+            let request: JsonRpcRequest = match serde_json::from_value::<JsonRpcRequest>(parsed) {
+                Ok(req) if req.jsonrpc == "2.0" => req,
+                Ok(_) | Err(_) => {
+                    let err_resp = JsonRpcResponse::error(None, JsonRpcError::invalid_request());
                     let mut out = serde_json::to_string(&err_resp)?;
                     out.push('\n');
                     stdout.write_all(out.as_bytes()).await?;
@@ -144,7 +158,7 @@ impl McpServer {
                 "description": "Tap an Android UI node by id with rev check",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["node", "rev"],
+                    "required": ["rev"],
                     "properties": {
                         "node": { "type": "integer" },
                         "index": { "type": "integer" },
@@ -158,7 +172,7 @@ impl McpServer {
                 "description": "Type text into an editable Android node",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["node", "text", "rev"],
+                    "required": ["text", "rev"],
                     "properties": {
                         "node": { "type": "integer" },
                         "index": { "type": "integer" },
@@ -231,20 +245,21 @@ impl McpServer {
             )));
         }
 
+        // Parse arguments BEFORE initializing the bridge: a malformed call
+        // must yield -32602 even when no device is configured.
+        let parsed = parse_tool_args(name, args)?;
+
         // Lazy configuration and bridge connection setup
         let (bridge, ws) = match self.get_or_init_bridge().await {
             Ok(pair) => pair,
-            Err(code) => {
-                let msg = code.default_message();
-                return Ok(CallToolResult::error(code, Some(msg), verbose, None));
+            Err((code, msg)) => {
+                let msg = msg.unwrap_or_else(|| code.default_message().to_string());
+                return Ok(CallToolResult::error(code, Some(&msg), verbose, None));
             }
         };
 
-        match name {
-            "device_tree" => {
-                let dt_params: DeviceTreeParams = serde_json::from_value(args).map_err(|e| {
-                    JsonRpcError::invalid_params(&format!("Invalid device_tree arguments: {e}"))
-                })?;
+        match parsed {
+            ToolArgs::DeviceTree(dt_params) => {
                 match bridge
                     .get_ui_tree(dt_params.max_depth, dt_params.subtree.as_deref())
                     .await
@@ -258,11 +273,7 @@ impl McpServer {
                     }
                 }
             }
-            "tap" => {
-                let tap_params: TapParams = serde_json::from_value(args).map_err(|e| {
-                    JsonRpcError::invalid_params(&format!("Invalid tap arguments: {e}"))
-                })?;
-
+            ToolArgs::Tap(tap_params) => {
                 let mut req = TapRequest::new(tap_params.rev);
                 if let Some(n) = tap_params.node {
                     req = req.with_node(n);
@@ -281,11 +292,7 @@ impl McpServer {
                     }
                 }
             }
-            "type" => {
-                let type_params: TypeParams = serde_json::from_value(args).map_err(|e| {
-                    JsonRpcError::invalid_params(&format!("Invalid type arguments: {e}"))
-                })?;
-
+            ToolArgs::TypeText(type_params) => {
                 let mut req = TypeRequest::new(type_params.text, type_params.rev);
                 if let Some(n) = type_params.node {
                     req = req.with_node(n);
@@ -304,11 +311,7 @@ impl McpServer {
                     }
                 }
             }
-            "keypress" => {
-                let key_params: KeyPressParams = serde_json::from_value(args).map_err(|e| {
-                    JsonRpcError::invalid_params(&format!("Invalid keypress arguments: {e}"))
-                })?;
-
+            ToolArgs::KeyPress(key_params) => {
                 let req = KeyPressRequest::new(key_params.key);
                 match bridge.keypress(&req).await {
                     Ok(resp) => {
@@ -320,35 +323,24 @@ impl McpServer {
                     }
                 }
             }
-            "screenshot" => {
-                let ss_params: ScreenshotParams = serde_json::from_value(args).map_err(|e| {
-                    JsonRpcError::invalid_params(&format!("Invalid screenshot arguments: {e}"))
-                })?;
-                match bridge.screenshot(ss_params.scale).await {
-                    Ok(bytes) => {
-                        let base64_png = BASE64.encode(&bytes);
-                        let mut res = CallToolResult::success_image(base64_png);
-                        if verbose {
-                            let meta = serde_json::json!({
-                                "bytes_length": bytes.len(),
-                                "scale": ss_params.scale.unwrap_or(0.5),
-                            });
-                            res.content.push(texure_contract::tools::McpContent::text(
-                                serde_json::to_string(&meta).unwrap_or_default(),
-                            ));
-                        }
-                        Ok(res)
+            ToolArgs::Screenshot(ss_params) => match bridge.screenshot(ss_params.scale).await {
+                Ok(bytes) => {
+                    let base64_png = BASE64.encode(&bytes);
+                    let mut res = CallToolResult::success_image(base64_png);
+                    if verbose {
+                        let meta = serde_json::json!({
+                            "bytes_length": bytes.len(),
+                            "scale": ss_params.scale.unwrap_or(0.5),
+                        });
+                        res.content.push(texure_contract::tools::McpContent::text(
+                            serde_json::to_string(&meta).unwrap_or_default(),
+                        ));
                     }
-                    Err(err) => {
-                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
-                    }
+                    Ok(res)
                 }
-            }
-            "wait_for" => {
-                let wf_params: WaitForParams = serde_json::from_value(args).map_err(|e| {
-                    JsonRpcError::invalid_params(&format!("Invalid wait_for arguments: {e}"))
-                })?;
-
+                Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+            },
+            ToolArgs::WaitFor(wf_params) => {
                 match execute_wait_for(&wf_params, &bridge, &ws).await {
                     Ok(res) => Ok(res),
                     Err(err) => {
@@ -356,22 +348,22 @@ impl McpServer {
                     }
                 }
             }
-            _ => Err(JsonRpcError::invalid_params(&format!(
-                "Unknown tool: {name}"
-            ))),
         }
     }
 
-    async fn get_or_init_bridge(&self) -> Result<(BridgeClient, WsSupervisor), ErrorCode> {
+    async fn get_or_init_bridge(
+        &self,
+    ) -> Result<(BridgeClient, WsSupervisor), (ErrorCode, Option<String>)> {
         let mut guard = self.bridge.lock().await;
         if let Some((ref client, ref ws)) = *guard {
             return Ok((client.clone(), ws.clone()));
         }
 
-        let resolved = load_resolved_config(self.custom_config_path.as_deref())?;
+        let resolved =
+            load_resolved_config(self.custom_config_path.as_deref()).map_err(|c| (c, None))?;
         let client = BridgeClient::new(resolved.clone()).map_err(|e| {
-            error!("Bridge client creation failed: {e}");
-            ErrorCode::Offline
+            error!("Bridge client creation failed: {}", e.message);
+            (e.code, Some(e.message))
         })?;
 
         let ws = WsSupervisor::new(resolved);
@@ -379,6 +371,55 @@ impl McpServer {
 
         *guard = Some((client.clone(), ws.clone()));
         Ok((client, ws))
+    }
+}
+
+/// Parsed, validated arguments for one of the 6 frozen tools.
+enum ToolArgs {
+    DeviceTree(DeviceTreeParams),
+    Tap(TapParams),
+    TypeText(TypeParams),
+    KeyPress(KeyPressParams),
+    Screenshot(ScreenshotParams),
+    WaitFor(WaitForParams),
+}
+
+fn parse_tool_args(name: &str, args: Value) -> Result<ToolArgs, JsonRpcError> {
+    let invalid = |e: serde_json::Error| {
+        JsonRpcError::invalid_params(&format!("Invalid {name} arguments: {e}"))
+    };
+    match name {
+        "device_tree" => Ok(ToolArgs::DeviceTree(
+            serde_json::from_value(args).map_err(invalid)?,
+        )),
+        "tap" => Ok(ToolArgs::Tap(
+            serde_json::from_value(args).map_err(invalid)?,
+        )),
+        "type" => Ok(ToolArgs::TypeText(
+            serde_json::from_value(args).map_err(invalid)?,
+        )),
+        "keypress" => Ok(ToolArgs::KeyPress(
+            serde_json::from_value(args).map_err(invalid)?,
+        )),
+        "screenshot" => {
+            let p: ScreenshotParams = serde_json::from_value(args).map_err(invalid)?;
+            if let Some(s) = p.scale {
+                let known =
+                    (s - 0.25).abs() < 0.01 || (s - 0.5).abs() < 0.01 || (s - 1.0).abs() < 0.01;
+                if !known {
+                    return Err(JsonRpcError::invalid_params(
+                        "screenshot scale must be one of 0.25, 0.5, 1.0",
+                    ));
+                }
+            }
+            Ok(ToolArgs::Screenshot(p))
+        }
+        "wait_for" => Ok(ToolArgs::WaitFor(
+            serde_json::from_value(args).map_err(invalid)?,
+        )),
+        _ => Err(JsonRpcError::invalid_params(&format!(
+            "Unknown tool: {name}"
+        ))),
     }
 }
 
