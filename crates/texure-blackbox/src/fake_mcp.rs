@@ -340,7 +340,7 @@ impl FakeMcpServer {
         let text = if verbose {
             serde_json::to_string(&err_json).unwrap()
         } else {
-            format!("{code}: {message} (hint: {hint})")
+            format!("{code}: {message}; {hint}")
         };
 
         json!({

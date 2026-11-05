@@ -19,9 +19,10 @@ tests/blackbox/
 ```
 
 Targets (one suite, run against progressively more-real things):
-1. `--target mcp` — spawns the REAL texure-server binary over stdio (full blackbox, the agent's actual path).
-2. `--target http --url phone:port` — real bridge on the sample app (device needed).
-3. `--target mcp-fake` — server configured against FakeBridge for CI-speed runs.
+1. `--target mcp-fake` — direct FakeBridge HTTP/WS scenarios; CI-speed contract runs with no server binary at all.
+2. `--target mcp` — the bundled fake MCP stdio server (`--fake-mcp`): handshake, tool list, and server-state error surfaces without the real binary.
+3. `--target mcp-real` — spawns the REAL texure-server binary over stdio, configured against FakeBridge; same scenario suite as mcp-fake (full blackbox, the agent's actual path).
+4. `--target http --url phone:port` — real bridge on the sample app (device needed).
 
 FakeBridge scenarios and blackbox scenarios are THE SAME JSON files; the runner can play a scenario server-side (FakeBridge mode) or assert against a real device session.
 

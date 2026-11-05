@@ -1,0 +1,37 @@
+pub mod bridge_client;
+pub mod config;
+pub mod server;
+pub mod wait_for;
+pub mod ws_supervisor;
+
+use clap::Parser;
+use server::McpServer;
+use std::path::PathBuf;
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "texure-server",
+    about = "Rust MCP stdio server for the texure Android bridge"
+)]
+struct Args {
+    /// Optional path to custom configuration file
+    #[arg(long)]
+    config: Option<PathBuf>,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Stderr-only logging to avoid corrupting standard I/O JSON-RPC transport on stdout
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
+    let args = Args::parse();
+    let server = McpServer::new(args.config);
+
+    server.run_stdio().await
+}

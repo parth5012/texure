@@ -14,7 +14,7 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[command(name = "texure-blackbox", about = "Texure blackbox test runner")]
 struct Args {
-    /// Target mode: all | mcp | http | mcp-fake | fake
+    /// Target mode: all | mcp | http | mcp-fake | mcp-real
     #[arg(long, default_value = "all")]
     target: String,
 
@@ -259,7 +259,7 @@ async fn main() {
     let all_tests = get_all_tests();
 
     // Filter tests by target and scenario
-    let selected_tests: Vec<TestDef> = all_tests
+    let mut selected_tests: Vec<TestDef> = all_tests
         .into_iter()
         .filter(|t| {
             if let Some(ref sc) = args.scenario {
@@ -278,10 +278,33 @@ async fn main() {
                 "mcp-fake" | "fake" => {
                     t.target == "mcp-fake" || t.target == "fake" || t.target == "mcp"
                 }
+                "mcp-real" => t.target == "mcp" || t.target == "mcp-fake" || t.target == "http",
                 other => t.target == other,
             }
         })
         .collect();
+
+    // mcp-real runs the same scenario suite through the real texure-server
+    // binary; `--target all` appends those runs alongside the fake ones.
+    match args.target.as_str() {
+        "mcp-real" => {
+            for test in &mut selected_tests {
+                test.target = "mcp-real".to_string();
+            }
+        }
+        "all" => {
+            let real_runs: Vec<TestDef> = selected_tests
+                .iter()
+                .filter(|t| t.target == "mcp" || t.target == "mcp-fake" || t.target == "http")
+                .map(|t| TestDef {
+                    target: "mcp-real".to_string(),
+                    ..t.clone()
+                })
+                .collect();
+            selected_tests.extend(real_runs);
+        }
+        _ => {}
+    }
 
     println!("================================================================================");
     println!("Texure Blackbox Test Suite");
