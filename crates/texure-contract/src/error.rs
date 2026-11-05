@@ -113,10 +113,11 @@ impl ErrorCode {
         }
     }
 
-    /// Format single-line error text for standard MCP tool response: `CODE: message (hint: ...)`.
+    /// Format single-line error text for the standard MCP tool response:
+    /// `CODE: message; hint` (guardrail: one-line `CODE: message` + hint always).
     pub fn formatted_single_line(&self, custom_msg: Option<&str>) -> String {
         let msg = custom_msg.unwrap_or_else(|| self.default_message());
-        format!("{}: {}", self.as_str(), msg)
+        format!("{}: {}; {}", self.as_str(), msg, self.agent_hint())
     }
 }
 

@@ -246,3 +246,27 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
    - *Outcome:* Adopted the documented fallback policy with zero rule rewrites. `texure-lint` runs `ast-grep scan --json`, then `sg scan --json` when `sg` is ast-grep, then `npx -y -p @ast-grep/cli ast-grep scan --json`. It does not run perfgym.
    - *Report contract:* `texure-lint` unifies Class D (docs/DSL/hygiene) and Class C (ast-grep guardrails) into a single unified `lint-report.json`.
 
+
+---
+
+## 2026-11-05 (Rust MCP server: texure-server + blackbox mcp-real, issues #18/#19)
+
+1. **Config surface: `--config` flag + `TEXURE_CONFIG` env.**
+   - *What:* `texure-server` resolves its TOML via `--config <path>` CLI flag → `TEXURE_CONFIG` env → OS default dir (`~/.config/texure/config.toml`). Malformed/unreadable files log a `tracing::warn` and fall back to defaults instead of crashing the daemon.
+   - *Why:* Blackbox mcp-real needs deterministic per-run config isolation (temp files / deliberately-absent paths for NO_CONFIG).
+
+2. **Protocol-level vs tool-level error split.**
+   - *What:* Unknown tool names and malformed `tools/call` arguments return JSON-RPC `-32602 Invalid params` errors (protocol level); bridge failures stay inside `CallToolResult` with `isError: true` and the frozen 16 error codes. Matches the fake MCP server's existing semantics.
+   - *Why:* Fabricating bridge codes (e.g. `NODE_OUTDATED`) for a client's own argument mistakes conflates agent error with device state; MCP spec puts malformed requests at protocol level.
+
+3. **Contract one-liner carries the hint.**
+   - *What:* `ErrorCode::formatted_single_line` now emits `CODE: message; hint` (was `CODE: message (hint: ...)`); fake MCP server aligned to the same format.
+   - *Why:* Guardrail #8 / LLD §4.2: the agent remediation hint must always be present, including the single-line non-verbose error path.
+
+4. **Verbose error payload: bridge envelope verbatim + connection context.**
+   - *What:* `verbose: true` error results return the bridge error envelope verbatim (when the bridge sent one) plus `bridge_url`, `ws_connected`, and `http_status` only when the server actually got an HTTP response (LLD §4.2 "—" rows omit the field).
+   - *Why:* Server-origin errors must not fabricate an `http_status` that never happened.
+
+5. **Transport-failure code mapping.**
+   - *What:* Connect/timeout failures → `OFFLINE` ("device unreachable"); connection dying mid-response → `BRIDGE_STOPPED` ("connection died mid-action"). Non-envelope HTTP fallback: 401→`AUTH_FAILED`, 409→`BUSY`, 5xx→`BRIDGE_STOPPED`, other→`INJECT_FAILED`. Screenshot responses with non-`image/png` Content-Type → `CAPTURE_FAILED`.
+   - *Why:* `NODE_OUTDATED` as the generic HTTP fallback was wrong (it means tree rev staleness); transport semantics needed their own mapping.

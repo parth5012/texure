@@ -53,11 +53,12 @@ texure/
 |------|---------|--------|
 | Docs-gate lint (L0) | `cargo run -p texure-lint` | live (#5 P0) |
 | Lint report only | `cargo run -p texure-lint -- --report lint-report.json` | live (#5 P0) |
-| Blackbox full run | `cargo run -p texure-blackbox -- --target all --report out.json` | live runner, targets pending |
-| Blackbox, CI only (L2) | `cargo run -p texure-blackbox -- --target mcp-fake` | planned (#3) |
+| Blackbox full run | `cargo run -p texure-blackbox -- --target all --report out.json` | live (#3, #17, #19) |
+| Blackbox, CI only (L2) | `cargo run -p texure-blackbox -- --target mcp-fake` | live (#3, #17) |
+| Blackbox real server (L2) | `cargo run -p texure-blackbox -- --target mcp-real` | live (#19) |
 | Blackbox vs device (L3) | `cargo run -p texure-blackbox -- --target http --url <phone-ip>:<port>` | planned (#1) |
-| Server unit tests | `cargo test -p texure-server` | planned (#1/#2) |
-| Contract fixture check | `cargo test -p texure-contract` | planned (#3) |
+| Server unit tests | `cargo test -p texure-server` | live (#19) |
+| Contract fixture check | `cargo test -p texure-contract` | live (#18) |
 | Bridge unit tests | `./gradlew :bridge:testDebug` | live (#1, #4) |
 | Sample app build | `./gradlew :sample:assembleDebug` | live (#1) |
 | Device mechanism regression | `./gradlew :sample:connectedDebugAndroidTest` | live (#1 harness ready) |

@@ -33,17 +33,30 @@ pub struct McpStdioClient {
 
 impl McpStdioClient {
     pub fn spawn(command: &str, args: &[&str]) -> Result<Self, McpClientError> {
-        let mut child = Command::new(command)
-            .args(args)
+        Self::spawn_filtered(command, args, &[])
+    }
+
+    /// Spawn with selected variables removed from the child environment
+    /// (e.g. host TEXURE_* overrides that would defeat an explicit --config).
+    pub fn spawn_filtered(
+        command: &str,
+        args: &[&str],
+        remove_env: &[&str],
+    ) -> Result<Self, McpClientError> {
+        let mut cmd = Command::new(command);
+        cmd.args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| McpClientError::SpawnError {
-                command: command.to_string(),
-                source: e,
-            })?;
+            .kill_on_drop(true);
+        for key in remove_env {
+            cmd.env_remove(key);
+        }
+
+        let mut child = cmd.spawn().map_err(|e| McpClientError::SpawnError {
+            command: command.to_string(),
+            source: e,
+        })?;
 
         let stdin = child.stdin.take().expect("failed to take child stdin");
         let stdout = child.stdout.take().expect("failed to take child stdout");
