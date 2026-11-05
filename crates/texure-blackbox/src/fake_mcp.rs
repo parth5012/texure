@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use texure_contract::tools::FROZEN_TOOL_NAMES;
 
 pub struct FakeMcpServer {
     scenario: String,
@@ -174,15 +175,7 @@ impl FakeMcpServer {
                     .unwrap_or(false);
 
                 // Frozen 6 tool list check
-                let allowed_tools = [
-                    "device_tree",
-                    "tap",
-                    "type",
-                    "keypress",
-                    "screenshot",
-                    "wait_for",
-                ];
-                if !allowed_tools.contains(&name) {
+                if !FROZEN_TOOL_NAMES.contains(&name) {
                     return Some(json!({
                         "jsonrpc": "2.0",
                         "id": &id,
