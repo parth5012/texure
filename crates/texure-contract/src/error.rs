@@ -70,9 +70,7 @@ impl ErrorCode {
     /// Official agent remediation hint per docs/bridge-contract.md §Error shape.
     pub const fn agent_hint(&self) -> &'static str {
         match self {
-            Self::NoConfig => {
-                "create ~/.config/texure/config.toml or set TEXURE_URL/TEXURE_TOKEN"
-            }
+            Self::NoConfig => "create ~/.config/texure/config.toml or set TEXURE_URL/TEXURE_TOKEN",
             Self::Offline => "same LAN? app open? fg service alive?",
             Self::AuthFailed => "re-paste fresh token from overlay",
             Self::Busy => "wait for owner release / ask owner",
@@ -235,8 +233,7 @@ mod tests {
             let expected_json = format!("\"{}\"", code.as_str());
             assert_eq!(json, expected_json);
 
-            let parsed: ErrorCode =
-                serde_json::from_str(&json).expect("deserialize error code");
+            let parsed: ErrorCode = serde_json::from_str(&json).expect("deserialize error code");
             assert_eq!(parsed, *code);
 
             let from_str_res = ErrorCode::from_str(code.as_str()).expect("from_str");

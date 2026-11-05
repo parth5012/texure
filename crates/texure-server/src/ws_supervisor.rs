@@ -46,7 +46,13 @@ impl WsSupervisor {
 
         tokio::spawn(async move {
             let mut backoff = Duration::from_secs(1);
-            let ws_url = format!("{}/ws", config.normalized_url().replace("http://", "ws://").replace("https://", "wss://"));
+            let ws_url = format!(
+                "{}/ws",
+                config
+                    .normalized_url()
+                    .replace("http://", "ws://")
+                    .replace("https://", "wss://")
+            );
 
             loop {
                 debug!("Attempting WebSocket dial to {ws_url}...");
@@ -74,7 +80,9 @@ impl WsSupervisor {
                         while let Some(msg_result) = read.next().await {
                             match msg_result {
                                 Ok(Message::Text(text)) => {
-                                    if let Ok(event) = serde_json::from_str::<TreeChangedEvent>(&text) {
+                                    if let Ok(event) =
+                                        serde_json::from_str::<TreeChangedEvent>(&text)
+                                    {
                                         let _ = sender.send(event);
                                     }
                                 }

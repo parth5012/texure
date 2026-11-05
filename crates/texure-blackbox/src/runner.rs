@@ -216,8 +216,8 @@ fn mcp_content_to_response(call_res: &Value) -> Value {
         .and_then(|e| e.as_bool())
         .unwrap_or(false);
 
-    let parsed_content: Value = serde_json::from_str(content_text)
-        .unwrap_or_else(|_| json!({ "raw": content_text }));
+    let parsed_content: Value =
+        serde_json::from_str(content_text).unwrap_or_else(|_| json!({ "raw": content_text }));
 
     if is_error {
         if let Some(err_obj) = parsed_content.get("error") {
@@ -234,7 +234,12 @@ fn mcp_content_to_response(call_res: &Value) -> Value {
 
 /// Environment variables stripped from spawned real-server children so host
 /// machine settings cannot override the per-test TOML config.
-const TEXURE_ENV_KEYS: [&str; 4] = ["TEXURE_URL", "TEXURE_TOKEN", "TEXURE_TIMEOUT", "TEXURE_CONFIG"];
+const TEXURE_ENV_KEYS: [&str; 4] = [
+    "TEXURE_URL",
+    "TEXURE_TOKEN",
+    "TEXURE_TIMEOUT",
+    "TEXURE_CONFIG",
+];
 
 /// Scenarios that resolve NO_CONFIG before any bridge dial; no FakeBridge needed.
 const NO_CONFIG_SCENARIOS: [&str; 2] = ["no_config", "verbose_errors"];
@@ -314,7 +319,10 @@ async fn run_mcp_real_test(
         if let Err(e) = std::fs::write(&config_path, config_body) {
             return Err(format!("Failed to write temp server config: {e}"));
         }
-        vec!["--config".to_string(), config_path.to_string_lossy().to_string()]
+        vec![
+            "--config".to_string(),
+            config_path.to_string_lossy().to_string(),
+        ]
     } else {
         vec![
             "--config".to_string(),

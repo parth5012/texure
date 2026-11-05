@@ -11,8 +11,8 @@ use texure_contract::bridge::{KeyPressRequest, TapRequest, TypeRequest};
 use texure_contract::error::ErrorCode;
 use texure_contract::rpc::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use texure_contract::tools::{
-    CallToolResult, DeviceTreeParams, KeyPressParams, ScreenshotParams, TapParams,
-    TypeParams, WaitForParams, FROZEN_TOOL_NAMES,
+    CallToolResult, DeviceTreeParams, KeyPressParams, ScreenshotParams, TapParams, TypeParams,
+    WaitForParams, FROZEN_TOOL_NAMES,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
@@ -111,15 +111,13 @@ impl McpServer {
                 let result = serde_json::json!({ "tools": tools });
                 Some(JsonRpcResponse::success(id, result))
             }
-            "tools/call" => {
-                match self.call_tool(params_val).await {
-                    Ok(tool_result) => {
-                        let val = serde_json::to_value(&tool_result).unwrap_or(Value::Null);
-                        Some(JsonRpcResponse::success(id, val))
-                    }
-                    Err(rpc_err) => Some(JsonRpcResponse::error(id, rpc_err)),
+            "tools/call" => match self.call_tool(params_val).await {
+                Ok(tool_result) => {
+                    let val = serde_json::to_value(&tool_result).unwrap_or(Value::Null);
+                    Some(JsonRpcResponse::success(id, val))
                 }
-            }
+                Err(rpc_err) => Some(JsonRpcResponse::error(id, rpc_err)),
+            },
             _ => Some(JsonRpcResponse::error(
                 id,
                 JsonRpcError::method_not_found(method),
@@ -218,14 +216,19 @@ impl McpServer {
             .get("name")
             .and_then(|n| n.as_str())
             .ok_or_else(|| JsonRpcError::invalid_params("missing tool name"))?;
-        let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+        let args = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
         let verbose = args
             .get("verbose")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         if !FROZEN_TOOL_NAMES.contains(&name) {
-            return Err(JsonRpcError::invalid_params(&format!("Unknown tool: {name}")));
+            return Err(JsonRpcError::invalid_params(&format!(
+                "Unknown tool: {name}"
+            )));
         }
 
         // Lazy configuration and bridge connection setup
@@ -239,8 +242,9 @@ impl McpServer {
 
         match name {
             "device_tree" => {
-                let dt_params: DeviceTreeParams = serde_json::from_value(args)
-                    .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid device_tree arguments: {e}")))?;
+                let dt_params: DeviceTreeParams = serde_json::from_value(args).map_err(|e| {
+                    JsonRpcError::invalid_params(&format!("Invalid device_tree arguments: {e}"))
+                })?;
                 match bridge
                     .get_ui_tree(dt_params.max_depth, dt_params.subtree.as_deref())
                     .await
@@ -249,12 +253,15 @@ impl McpServer {
                         let text = serde_json::to_string(&tree).unwrap_or_default();
                         Ok(CallToolResult::success_text(text))
                     }
-                    Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+                    Err(err) => {
+                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
+                    }
                 }
             }
             "tap" => {
-                let tap_params: TapParams = serde_json::from_value(args)
-                    .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid tap arguments: {e}")))?;
+                let tap_params: TapParams = serde_json::from_value(args).map_err(|e| {
+                    JsonRpcError::invalid_params(&format!("Invalid tap arguments: {e}"))
+                })?;
 
                 let mut req = TapRequest::new(tap_params.rev);
                 if let Some(n) = tap_params.node {
@@ -269,12 +276,15 @@ impl McpServer {
                         let text = serde_json::to_string(&resp).unwrap_or_default();
                         Ok(CallToolResult::success_text(text))
                     }
-                    Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+                    Err(err) => {
+                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
+                    }
                 }
             }
             "type" => {
-                let type_params: TypeParams = serde_json::from_value(args)
-                    .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid type arguments: {e}")))?;
+                let type_params: TypeParams = serde_json::from_value(args).map_err(|e| {
+                    JsonRpcError::invalid_params(&format!("Invalid type arguments: {e}"))
+                })?;
 
                 let mut req = TypeRequest::new(type_params.text, type_params.rev);
                 if let Some(n) = type_params.node {
@@ -289,12 +299,15 @@ impl McpServer {
                         let text = serde_json::to_string(&resp).unwrap_or_default();
                         Ok(CallToolResult::success_text(text))
                     }
-                    Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+                    Err(err) => {
+                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
+                    }
                 }
             }
             "keypress" => {
-                let key_params: KeyPressParams = serde_json::from_value(args)
-                    .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid keypress arguments: {e}")))?;
+                let key_params: KeyPressParams = serde_json::from_value(args).map_err(|e| {
+                    JsonRpcError::invalid_params(&format!("Invalid keypress arguments: {e}"))
+                })?;
 
                 let req = KeyPressRequest::new(key_params.key);
                 match bridge.keypress(&req).await {
@@ -302,12 +315,15 @@ impl McpServer {
                         let text = serde_json::to_string(&resp).unwrap_or_default();
                         Ok(CallToolResult::success_text(text))
                     }
-                    Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+                    Err(err) => {
+                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
+                    }
                 }
             }
             "screenshot" => {
-                let ss_params: ScreenshotParams = serde_json::from_value(args)
-                    .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid screenshot arguments: {e}")))?;
+                let ss_params: ScreenshotParams = serde_json::from_value(args).map_err(|e| {
+                    JsonRpcError::invalid_params(&format!("Invalid screenshot arguments: {e}"))
+                })?;
                 match bridge.screenshot(ss_params.scale).await {
                     Ok(bytes) => {
                         let base64_png = BASE64.encode(&bytes);
@@ -323,19 +339,26 @@ impl McpServer {
                         }
                         Ok(res)
                     }
-                    Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+                    Err(err) => {
+                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
+                    }
                 }
             }
             "wait_for" => {
-                let wf_params: WaitForParams = serde_json::from_value(args)
-                    .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid wait_for arguments: {e}")))?;
+                let wf_params: WaitForParams = serde_json::from_value(args).map_err(|e| {
+                    JsonRpcError::invalid_params(&format!("Invalid wait_for arguments: {e}"))
+                })?;
 
                 match execute_wait_for(&wf_params, &bridge, &ws).await {
                     Ok(res) => Ok(res),
-                    Err(err) => Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected())),
+                    Err(err) => {
+                        Ok(err.to_mcp_result(verbose, &bridge.config.url, ws.is_connected()))
+                    }
                 }
             }
-            _ => Err(JsonRpcError::invalid_params(&format!("Unknown tool: {name}"))),
+            _ => Err(JsonRpcError::invalid_params(&format!(
+                "Unknown tool: {name}"
+            ))),
         }
     }
 
@@ -387,13 +410,17 @@ mod tests {
             .expect("tools array");
         assert_eq!(tools.len(), 6);
 
-        let tool_names: Vec<&str> = tools
-            .iter()
-            .filter_map(|t| t["name"].as_str())
-            .collect();
+        let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
         assert_eq!(
             tool_names,
-            vec!["device_tree", "tap", "type", "keypress", "screenshot", "wait_for"]
+            vec![
+                "device_tree",
+                "tap",
+                "type",
+                "keypress",
+                "screenshot",
+                "wait_for"
+            ]
         );
     }
 

@@ -16,9 +16,7 @@ pub fn default_config_path() -> Option<PathBuf> {
 
 /// Load configuration and resolve active target device parameters.
 pub fn load_resolved_config(custom_path: Option<&Path>) -> Result<ResolvedDeviceConfig, ErrorCode> {
-    let path = custom_path
-        .map(PathBuf::from)
-        .or_else(default_config_path);
+    let path = custom_path.map(PathBuf::from).or_else(default_config_path);
 
     let config = if let Some(ref p) = path {
         if p.exists() {
@@ -31,7 +29,10 @@ pub fn load_resolved_config(custom_path: Option<&Path>) -> Result<ResolvedDevice
                     }
                 },
                 Err(e) => {
-                    warn!("Unreadable config file {}: {e}; using defaults", p.display());
+                    warn!(
+                        "Unreadable config file {}: {e}; using defaults",
+                        p.display()
+                    );
                     TexureConfig::default()
                 }
             }

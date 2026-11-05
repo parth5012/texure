@@ -161,6 +161,10 @@ mod tests {
 
         // Hidden condition
         assert!(!evaluate_condition(&tree, WaitForWhere::Hidden, "Loading"));
-        assert!(evaluate_condition(&tree, WaitForWhere::Hidden, "MissingSpinner"));
+        assert!(evaluate_condition(
+            &tree,
+            WaitForWhere::Hidden,
+            "MissingSpinner"
+        ));
     }
 }

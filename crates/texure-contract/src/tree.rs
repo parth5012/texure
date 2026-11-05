@@ -169,7 +169,8 @@ mod tests {
     #[test]
     fn test_deep_gauntlet_fixture() {
         let json_str = include_str!("../../../contract/fixtures/deep_gauntlet_tree.json");
-        let tree: UiTree = serde_json::from_str(json_str).expect("deserialize deep_gauntlet fixture");
+        let tree: UiTree =
+            serde_json::from_str(json_str).expect("deserialize deep_gauntlet fixture");
         assert_eq!(tree.rev, 100);
         assert_eq!(tree.nodes.len(), 5);
         assert_eq!(tree.nodes[0].id.as_deref(), Some("root_container"));
