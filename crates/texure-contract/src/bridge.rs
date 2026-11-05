@@ -91,7 +91,10 @@ pub struct BridgeSuccessResponse {
 
 impl BridgeSuccessResponse {
     pub fn ok() -> Self {
-        Self { ok: true, rev: None }
+        Self {
+            ok: true,
+            rev: None,
+        }
     }
 
     pub fn ok_with_rev(rev: u64) -> Self {

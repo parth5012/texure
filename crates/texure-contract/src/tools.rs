@@ -211,7 +211,12 @@ impl McpContent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CallToolResult {
     pub content: Vec<McpContent>,
-    #[serde(default, rename = "isError", alias = "is_error", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "isError",
+        alias = "is_error",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub is_error: Option<bool>,
 }
 
@@ -230,7 +235,12 @@ impl CallToolResult {
         }
     }
 
-    pub fn error(code: ErrorCode, message: Option<&str>, verbose: bool, full_error: Option<&serde_json::Value>) -> Self {
+    pub fn error(
+        code: ErrorCode,
+        message: Option<&str>,
+        verbose: bool,
+        full_error: Option<&serde_json::Value>,
+    ) -> Self {
         let text = if verbose {
             if let Some(val) = full_error {
                 serde_json::to_string(val).unwrap_or_else(|_| code.formatted_single_line(message))
@@ -242,7 +252,8 @@ impl CallToolResult {
                         "hint": code.agent_hint(),
                     }
                 });
-                serde_json::to_string(&err_obj).unwrap_or_else(|_| code.formatted_single_line(message))
+                serde_json::to_string(&err_obj)
+                    .unwrap_or_else(|_| code.formatted_single_line(message))
             }
         } else {
             code.formatted_single_line(message)

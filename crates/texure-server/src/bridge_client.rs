@@ -1,9 +1,7 @@
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
 use std::time::Duration;
-use texure_contract::bridge::{
-    BridgeSuccessResponse, KeyPressRequest, TapRequest, TypeRequest,
-};
+use texure_contract::bridge::{BridgeSuccessResponse, KeyPressRequest, TapRequest, TypeRequest};
 use texure_contract::config::ResolvedDeviceConfig;
 use texure_contract::error::{BridgeErrorEnvelope, ErrorCode};
 use texure_contract::tools::{CallToolResult, ScreenshotScale};
@@ -135,9 +133,12 @@ impl BridgeClient {
             return Err(self.map_http_error(resp).await);
         }
 
-        resp.json::<UiTree>()
-            .await
-            .map_err(|e| BridgeCallError::new(ErrorCode::CaptureFailed, format!("Invalid UI tree payload: {e}")))
+        resp.json::<UiTree>().await.map_err(|e| {
+            BridgeCallError::new(
+                ErrorCode::CaptureFailed,
+                format!("Invalid UI tree payload: {e}"),
+            )
+        })
     }
 
     pub async fn tap(&self, req: &TapRequest) -> Result<BridgeSuccessResponse, BridgeCallError> {
@@ -154,12 +155,18 @@ impl BridgeClient {
             return Err(self.map_http_error(resp).await);
         }
 
-        resp.json::<BridgeSuccessResponse>()
-            .await
-            .map_err(|e| BridgeCallError::new(ErrorCode::InjectFailed, format!("Invalid tap response: {e}")))
+        resp.json::<BridgeSuccessResponse>().await.map_err(|e| {
+            BridgeCallError::new(
+                ErrorCode::InjectFailed,
+                format!("Invalid tap response: {e}"),
+            )
+        })
     }
 
-    pub async fn type_text(&self, req: &TypeRequest) -> Result<BridgeSuccessResponse, BridgeCallError> {
+    pub async fn type_text(
+        &self,
+        req: &TypeRequest,
+    ) -> Result<BridgeSuccessResponse, BridgeCallError> {
         let url = self.url("/type");
         let resp = self
             .client
@@ -173,9 +180,12 @@ impl BridgeClient {
             return Err(self.map_http_error(resp).await);
         }
 
-        resp.json::<BridgeSuccessResponse>()
-            .await
-            .map_err(|e| BridgeCallError::new(ErrorCode::InjectFailed, format!("Invalid type response: {e}")))
+        resp.json::<BridgeSuccessResponse>().await.map_err(|e| {
+            BridgeCallError::new(
+                ErrorCode::InjectFailed,
+                format!("Invalid type response: {e}"),
+            )
+        })
     }
 
     pub async fn keypress(
@@ -195,9 +205,12 @@ impl BridgeClient {
             return Err(self.map_http_error(resp).await);
         }
 
-        resp.json::<BridgeSuccessResponse>()
-            .await
-            .map_err(|e| BridgeCallError::new(ErrorCode::InjectFailed, format!("Invalid keypress response: {e}")))
+        resp.json::<BridgeSuccessResponse>().await.map_err(|e| {
+            BridgeCallError::new(
+                ErrorCode::InjectFailed,
+                format!("Invalid keypress response: {e}"),
+            )
+        })
     }
 
     pub async fn screenshot(&self, scale: Option<f64>) -> Result<Vec<u8>, BridgeCallError> {
@@ -207,7 +220,11 @@ impl BridgeClient {
             _ => ScreenshotScale::Half,
         };
 
-        let url = format!("{}/screenshot?{}", self.config.normalized_url(), scale_enum.query_param());
+        let url = format!(
+            "{}/screenshot?{}",
+            self.config.normalized_url(),
+            scale_enum.query_param()
+        );
         let resp = self
             .client
             .get(&url)
@@ -232,10 +249,12 @@ impl BridgeClient {
             ));
         }
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| BridgeCallError::new(ErrorCode::CaptureFailed, format!("Failed to read screenshot bytes: {e}")))?;
+        let bytes = resp.bytes().await.map_err(|e| {
+            BridgeCallError::new(
+                ErrorCode::CaptureFailed,
+                format!("Failed to read screenshot bytes: {e}"),
+            )
+        })?;
 
         Ok(bytes.to_vec())
     }
@@ -244,10 +263,7 @@ impl BridgeClient {
         if err.is_connect() || err.is_timeout() {
             BridgeCallError::offline("device unreachable")
         } else {
-            BridgeCallError::new(
-                ErrorCode::BridgeStopped,
-                "connection died mid-action",
-            )
+            BridgeCallError::new(ErrorCode::BridgeStopped, "connection died mid-action")
         }
     }
 
