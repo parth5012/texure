@@ -9,6 +9,19 @@ use server::McpServer;
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
+/// Serialize tests that mutate process environment variables; cargo runs
+/// tests in parallel threads within one binary and env mutations race.
+#[cfg(test)]
+pub(crate) mod test_env_lock {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    pub fn lock() -> MutexGuard<'static, ()> {
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "texure-server",
