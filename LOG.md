@@ -128,3 +128,7 @@
   - Ticket #10 landed: .github/workflows/ci.yml matrix workflow shell with lint, rust-test (Ubuntu + Windows), android-build clean skip probe, and release tag targets. Issue #10 closed.
   - Clippy, rustfmt, cargo test, and texure-lint gauntlet green across workspace.
   - PR opened to main, bot reviews requested, babysit active.
+- Wayfinder map 4 (#20) run via wayfinder-ship: ticket #18 (texure-contract, PR merged e837129) + ticket #19 (texure-server) on branch t3/fbaa7cb6.
+  - Ticket #19 landed: crates/texure-server MCP stdio server (6 frozen tools, TOML config --config/TEXURE_CONFIG/env, lazy 3s dial, WS supervisor 1s/5s/15s pushing tree_changed into wait_for with 500ms HTTP poll fallback, single-flight daemon); blackbox --target mcp-real spawns the real binary against FakeBridge with temp-config isolation (NO_CONFIG via absent path, auth_reject via wrong token); workspace member added.
+  - Gauntlet green: L0 texure-lint 0 findings + clippy clean; L1 26 unit tests; L2 mcp-real 15/15 (~2.1s), --target all 36 rows: 30 passed, 6 device-skipped, 0 failed. Evidence: tmp/evidence/19/.
+  - Self-review (code-review Standards+Spec + OCR): fixed contract one-liner hint (CODE: msg; hint), verbose payload = bridge envelope verbatim + bridge_url/ws_connected/http_status-only-when-real, unknown-tool/bad-args -> JSON-RPC -32602 (no fabricated bridge codes), OFFLINE/BRIDGE_STOPPED split + 401/409/5xx fallback mapping, screenshot Content-Type PNG validation, malformed-TOML tracing::warn, lld-server.md config surface + deps. Parked findings quoted on ticket #19.

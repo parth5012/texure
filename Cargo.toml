@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/texure-contract",
+    "crates/texure-server",
     "crates/texure-blackbox",
     "crates/texure-lint",
 ]

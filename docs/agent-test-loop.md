@@ -8,7 +8,7 @@ The playbook for ANY agent executing a texure ticket (wayfinder maps #11-#13, or
 |---|---|---|---|
 | L0 static | PC only, always | Always, self-serve | `cargo clippy/check`, `gradlew lint`, texure-lint |
 | L1 unit | PC only, always | Always, self-serve | `cargo test`, `gradlew test` (Robolectric) |
-| L2 fake | PC, no device | Always, self-serve | blackbox `--target mcp-fake` + FakeBridge scenarios + contract fixtures |
+| L2 fake | PC, no device | Always, self-serve | blackbox `--target mcp-fake` + `--target mcp-real` (real texure-server over stdio vs FakeBridge) + contract fixtures |
 | L3 device | Phone + PC + runbook | Only via device ladder; STOP on red | blackbox `--target http`; device harness on android/sample |
 
 ## Rules
@@ -38,6 +38,7 @@ This block goes in the ticket resolution comment; it is what the map runner revi
 | `cargo run -p texure-lint` | #5 P0 | docs-gate green check (L0) |
 | `cargo test` | first crate | L1 |
 | `cargo run -p texure-blackbox -- --target mcp-fake --scenario <name>` | #3 P0 | L2 |
+| `cargo run -p texure-blackbox -- --target mcp-real --scenario <name>` | #19 | L2, real server binary |
 | `cargo run -p texure-blackbox -- --target http --url <phone-ip>:<port>` | #1 | L3 |
 | `gradlew :app:connectedDebugAndroidTest` | #1 device harness | L3 mechanism regression |
 

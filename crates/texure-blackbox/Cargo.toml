@@ -16,3 +16,4 @@ tokio-tungstenite = { version = "0.24", features = ["rustls-pki-types"] }
 futures-util = "0.3"
 thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+texure-contract = { path = "../texure-contract" }

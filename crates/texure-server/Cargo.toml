@@ -1,0 +1,26 @@
+[package]
+name = "texure-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Rust MCP stdio server for the texure Android bridge"
+
+[[bin]]
+name = "texure-server"
+path = "src/main.rs"
+
+[dependencies]
+texure-contract = { path = "../texure-contract" }
+tokio = { version = "1.40", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-pki-types"] }
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+dirs = "5.0"
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

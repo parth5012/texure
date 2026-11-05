@@ -42,6 +42,8 @@ Standard OS config directory resolved via the `dirs` crate:
 - **macOS:** `~/Library/Application Support/texure/config.toml`
 - **Windows:** `%APPDATA%\texure\config.toml`
 
+Overrides: `--config <path>` CLI flag, then the `TEXURE_CONFIG` env var (flag wins), then the OS default above.
+
 ### 2.2 Schema Structure (Hybrid Top-Level + Profiles)
 Supports direct top-level fields for single-device simplicity, while establishing a `[profiles]` table for future multi-device support without migration:
 
@@ -70,6 +72,8 @@ timeout_secs = 15
 2. **Active Profile in TOML:** If `active_profile` is specified, uses `[profiles.<active_profile>]`.
 3. **Top-level TOML keys:** Fallback for single-device setups (`url`, `token`, `timeout_secs`).
 4. **Missing Configuration:** If neither env vars nor config file exists, tool calls respond with `NO_CONFIG` error (see §4).
+
+The config file itself is located via `--config` flag → `TEXURE_CONFIG` env → OS default (§2.1). A malformed or unreadable file logs a warning and falls back to defaults (then env overrides) rather than crashing the daemon.
 
 ---
 
@@ -210,6 +214,6 @@ texure/
 ```
 
 - **`texure-contract`**: Contains `UiTree`, `Node`, `MutationRequest`, `ErrorCode`, `ErrorResponse`, and config structs. Zero heavy dependencies (only `serde` and `serde_json`).
-- **`texure-server`**: Depends on `texure-contract`, `tokio`, `reqwest`, `tokio-tungstenite`, `toml`, `dirs`, `base64`.
+- **`texure-server`**: Depends on `texure-contract`, `tokio`, `reqwest`, `tokio-tungstenite`, `futures-util`, `toml`, `serde`, `serde_json`, `dirs`, `base64`, `clap`, `tracing`, `tracing-subscriber`.
 - **`texure-blackbox`**: Replaces internal ad-hoc types with `texure-contract`.
 - **`texure-lint`**: Verifies doc contracts against `texure-contract` types.
