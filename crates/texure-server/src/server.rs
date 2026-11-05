@@ -426,7 +426,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_no_config_error_response() {
-        // Clear any env vars that might resolve
+        // Clear any env vars that might resolve (serialized with other
+        // env-mutating tests in this binary)
+        let _env = crate::test_env_lock::lock();
         std::env::remove_var("TEXURE_URL");
         std::env::remove_var("TEXURE_TOKEN");
 

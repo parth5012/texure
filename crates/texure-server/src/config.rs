@@ -52,6 +52,7 @@ mod tests {
 
     #[test]
     fn test_load_with_env_override() {
+        let _env = crate::test_env_lock::lock();
         std::env::set_var("TEXURE_URL", "http://127.0.0.1:8765");
         std::env::set_var("TEXURE_TOKEN", "test-token-123");
 
