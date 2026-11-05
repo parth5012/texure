@@ -2,6 +2,8 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use texure_contract::error::ErrorCode;
+use texure_contract::tools::FROZEN_TOOL_NAMES;
 
 #[derive(Debug, Clone)]
 pub struct Finding {
@@ -162,15 +164,7 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
     let contract_path = root_dir.join("docs/bridge-contract.md");
     if contract_path.exists() {
         if let Ok(c_content) = fs::read_to_string(&contract_path) {
-            let frozen_tools = [
-                "device_tree",
-                "tap",
-                "type",
-                "keypress",
-                "screenshot",
-                "wait_for",
-            ];
-            for tool in frozen_tools {
+            for tool in FROZEN_TOOL_NAMES {
                 if !c_content.contains(tool) {
                     findings.push(Finding {
                         severity: "FAIL".to_string(),
@@ -178,8 +172,22 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
                         file: "docs/bridge-contract.md".to_string(),
                         line: 1,
                         message: format!(
-                            "Frozen tool '{}' missing from docs/bridge-contract.md",
-                            tool
+                            "Frozen tool '{tool}' missing from docs/bridge-contract.md"
+                        ),
+                    });
+                }
+            }
+
+            for code in &ErrorCode::ALL {
+                if !c_content.contains(code.as_str()) {
+                    findings.push(Finding {
+                        severity: "FAIL".to_string(),
+                        rule: "docs-gate/error-code-missing".to_string(),
+                        file: "docs/bridge-contract.md".to_string(),
+                        line: 1,
+                        message: format!(
+                            "Frozen error code '{}' missing from docs/bridge-contract.md",
+                            code.as_str()
                         ),
                     });
                 }

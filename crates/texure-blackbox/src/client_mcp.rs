@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::process::Stdio;
+use texure_contract::rpc::{JsonRpcRequest, JsonRpcResponse};
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -22,34 +22,6 @@ pub enum McpClientError {
     NoResponse,
     #[error("Child process terminated")]
     Terminated,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonRpcRequest {
-    pub jsonrpc: String,
-    pub id: u64,
-    pub method: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub params: Option<Value>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonRpcResponse {
-    pub jsonrpc: String,
-    #[serde(default)]
-    pub id: Option<u64>,
-    #[serde(default)]
-    pub result: Option<Value>,
-    #[serde(default)]
-    pub error: Option<JsonRpcError>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonRpcError {
-    pub code: i64,
-    pub message: String,
-    #[serde(default)]
-    pub data: Option<Value>,
 }
 
 pub struct McpStdioClient {
@@ -93,12 +65,7 @@ impl McpStdioClient {
         let id = self.next_id;
         self.next_id += 1;
 
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id,
-            method: method.to_string(),
-            params,
-        };
+        let req = JsonRpcRequest::with_numeric_id(id, method, params);
 
         let mut raw = serde_json::to_string(&req)?;
         raw.push('\n');
@@ -114,7 +81,7 @@ impl McpStdioClient {
                 Ok(resp) => resp,
                 Err(_) => continue,
             };
-            if resp.id == Some(id) {
+            if resp.matches_numeric_id(id) {
                 if let Some(err) = resp.error {
                     return Err(McpClientError::ServerError {
                         code: err.code,
