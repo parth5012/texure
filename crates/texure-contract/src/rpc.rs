@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Standard JSON-RPC 2.0 Request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -10,6 +10,52 @@ pub struct JsonRpcRequest {
     pub method: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<Value>,
+}
+
+// Distinguish an absent `id` (notification) from an explicit `"id": null`
+// (a request that must receive a response per JSON-RPC 2.0).
+impl<'de> Deserialize<'de> for JsonRpcRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawWithId {
+            jsonrpc: String,
+            id: Value,
+            method: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            params: Option<Value>,
+        }
+        #[derive(Deserialize)]
+        struct RawWithoutId {
+            jsonrpc: String,
+            method: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            params: Option<Value>,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Envelope {
+            WithId(RawWithId),
+            WithoutId(RawWithoutId),
+        }
+
+        match Envelope::deserialize(deserializer)? {
+            Envelope::WithId(r) => Ok(Self {
+                jsonrpc: r.jsonrpc,
+                id: Some(r.id),
+                method: r.method,
+                params: r.params,
+            }),
+            Envelope::WithoutId(r) => Ok(Self {
+                jsonrpc: r.jsonrpc,
+                id: None,
+                method: r.method,
+                params: r.params,
+            }),
+        }
+    }
 }
 
 impl JsonRpcRequest {
@@ -112,6 +158,18 @@ impl JsonRpcError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_null_id_is_a_request_not_a_notification() {
+        let req: JsonRpcRequest =
+            serde_json::from_str(r#"{"jsonrpc":"2.0","id":null,"method":"ping"}"#)
+                .expect("parse null-id request");
+        assert_eq!(req.id, Some(Value::Null));
+
+        let notif: JsonRpcRequest = serde_json::from_str(r#"{"jsonrpc":"2.0","method":"ping"}"#)
+            .expect("parse notification");
+        assert_eq!(notif.id, None);
+    }
 
     #[test]
     fn test_jsonrpc_request_response_roundtrip() {

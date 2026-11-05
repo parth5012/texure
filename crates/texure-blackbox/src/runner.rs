@@ -189,6 +189,9 @@ fn mcp_content_to_response(call_res: &Value) -> Value {
         .and_then(|t| t.as_str())
         == Some("image")
     {
+        if call_res.get("isError") == Some(&serde_json::Value::Bool(true)) {
+            return json!({ "error": { "message": "image result carried isError: true" } });
+        }
         let mime = first
             .and_then(|item| item.get("mimeType"))
             .and_then(|m| m.as_str())

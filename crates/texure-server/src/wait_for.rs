@@ -28,6 +28,10 @@ pub async fn execute_wait_for(
     let timeout_secs = params.effective_timeout_secs();
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
 
+    // Subscribe before the initial fetch: a tree change landing between the
+    // snapshot and a later subscribe would be broadcast to nobody.
+    let mut ws_rx = ws.subscribe();
+
     // 1. Initial snapshot check
     let initial_tree = bridge.get_ui_tree(None, None).await?;
     if evaluate_condition(&initial_tree, params.where_, &params.value) {
@@ -39,7 +43,6 @@ pub async fn execute_wait_for(
     }
 
     let mut last_rev = initial_tree.rev;
-    let mut ws_rx = ws.subscribe();
 
     // 2. Loop until deadline
     while Instant::now() < deadline {
@@ -49,9 +52,12 @@ pub async fn execute_wait_for(
         }
 
         if ws.is_connected() {
-            // WS active: wait for tree_changed broadcast
+            // WS active: wait for tree_changed broadcast, but tick at most
+            // 500ms so a disconnect mid-wait re-enters the loop and reaches
+            // the HTTP poll fallback instead of sleeping to the deadline.
+            let tick = Duration::from_millis(500).min(remaining);
             tokio::select! {
-                _ = tokio::time::sleep(remaining) => break,
+                _ = tokio::time::sleep(tick) => continue,
                 msg = ws_rx.recv() => {
                     match msg {
                         Ok(_event) => {
