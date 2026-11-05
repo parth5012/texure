@@ -424,10 +424,11 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_server_no_config_error_response() {
+    #[test]
+    fn test_server_no_config_error_response() {
         // Clear any env vars that might resolve (serialized with other
-        // env-mutating tests in this binary)
+        // env-mutating tests in this binary). Sync test + block_on so the
+        // env lock is never held across an await (clippy await_holding_lock).
         let _env = crate::test_env_lock::lock();
         std::env::remove_var("TEXURE_URL");
         std::env::remove_var("TEXURE_TOKEN");
@@ -438,9 +439,16 @@ mod tests {
             "arguments": {}
         });
 
-        let resp = server
-            .handle_request(Some(Value::from(3)), "tools/call", Some(call_params))
-            .await
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let resp = rt
+            .block_on(async {
+                server
+                    .handle_request(Some(Value::from(3)), "tools/call", Some(call_params))
+                    .await
+            })
             .expect("tool call response");
 
         let result = resp.result.expect("tool call result");
