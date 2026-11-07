@@ -79,6 +79,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Publish texure modules to mavenLocal (distribution recipe, lld-ci.md §3)
+        if: steps.check-android.outputs.has_android == 'true'
+        run: |
+          cd android && ./gradlew :gradle-plugin:publishToMavenLocal :bridge:publishToMavenLocal --no-daemon
+
       - name: Assemble Debug & Probe
         if: steps.check-android.outputs.has_android == 'true'
         run: |
