@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.texure.bridge")
 }
 
 android {
@@ -51,8 +52,8 @@ android {
 }
 
 dependencies {
-    // Bridge code included strictly in debug builds (Guardrail G1)
-    debugImplementation(project(":bridge"))
+    // The com.texure.bridge plugin injects debugImplementation("com.texure:bridge")
+    // automatically (Guardrail G2: exactly one adoption line).
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
