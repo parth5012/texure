@@ -64,12 +64,28 @@ class TexureLeakDetectorTest {
     fun failureMessageMatchesLldFormat() {
         val message = TexureLeakDetector.failureMessage(
             variant = "release",
-            dependencyHits = listOf("com.texure:bridge:0.1.0"),
+            dependencyHits = listOf("com.texure:bridge:0.1.0 (releaseCompileClasspath)"),
             manifestHits = listOf("com.texure.bridge"),
         )
         assertTrue(message.contains("Guardrail G1 Violation!"))
         assertTrue(message.contains("Bridge code detected in release variant 'release'!"))
-        assertTrue(message.contains("com.texure:bridge"))
-        assertTrue(message.contains("debugImplementation"))
+        assertTrue(message.contains("Found dependency: com.texure:bridge"))
+        assertTrue(message.contains("Bridge dependencies must only be added to debug configurations ('debugImplementation')."))
+    }
+
+    @Test
+    fun missingScanInputsAreFailures() {
+        val message = TexureLeakDetector.failureMessage(
+            variant = "release",
+            dependencyHits = emptyList(),
+            manifestHits = emptyList(),
+            missingInputs = listOf(
+                "configuration 'releaseRuntimeClasspath' not found for variant 'release'",
+                "merged release manifest not found",
+            ),
+        )
+        assertTrue(message.contains("Guardrail G1 Violation!"))
+        assertTrue(message.contains("Missing scan input (cannot prove G1 clean):"))
+        assertTrue(message.contains("releaseRuntimeClasspath"))
     }
 }

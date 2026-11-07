@@ -21,7 +21,7 @@ import org.gradle.api.tasks.TaskProvider
  *    docs/lld-plugin.md §1).
  * 2. Registers `checkTexureReleaseLeak<Variant>` verification tasks that fail the
  *    build (never warn) when bridge code resolves for a release variant
- *    (Guardrail G1, docs/lld-plugin.md §4).
+ *    (Guardrail G1, docs/lld-plugin.md §4.1).
  *
  * Nothing else: no bytecode transforms, no source edits, no release wiring.
  */
@@ -119,8 +119,14 @@ class TexureBridgePlugin : Plugin<Project> {
         checkTask.configure(
             Action { it.dependsOn(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)) },
         )
-        // Runs before packaging/assembly of the release variant (docs/lld-plugin.md §4.1).
-        project.tasks.matching { it.name == "assemble$capitalized" }.configureEach {
+        // Runs before packaging/assembly of the release variant, i.e. any of
+        // assemble<Variant>, package<Variant>, bundle<Variant>
+        // (docs/lld-plugin.md §4.1 hook point).
+        project.tasks.matching {
+            it.name == "assemble$capitalized" ||
+                it.name == "package$capitalized" ||
+                it.name == "bundle$capitalized"
+        }.configureEach {
             it.dependsOn(checkTask)
         }
         aggregate.configure(Action { it.dependsOn(checkTask) })

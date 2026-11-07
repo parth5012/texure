@@ -17,11 +17,14 @@ import java.io.File
  * Scans:
  * 1. The variant's resolved `RuntimeClasspath` and `CompileClasspath`
  *    configurations for components with group `com.texure` or artifact
- *    `bridge` (§4.2).
+ *    `bridge` (§4.1 inspection logic).
  * 2. The merged release manifest for bridge-only tokens
- *    (`com.texure.bridge`, `TexureInitProvider`, `BridgeService`) (§4.3).
+ *    (`com.texure.bridge`, `TexureInitProvider`, `BridgeService`)
+ *    (§4.1 inspection logic).
  *
- * Any hit = hard build failure with the loud G1 diagnostic; warnings are lawless.
+ * Any hit = hard build failure with the loud G1 diagnostic; warnings are
+ * lawless. Unresolvable scan inputs (missing configuration or manifest) also
+ * fail — the check must never degrade to a silent pass.
  */
 abstract class TexureReleaseLeakCheck : DefaultTask() {
 
@@ -36,9 +39,8 @@ abstract class TexureReleaseLeakCheck : DefaultTask() {
 
     /**
      * Merged manifest file for the release variant (AGP Variant API). The
-     * manifest-producing task is wired explicitly via `dependsOn
-     * (artifact.buildDependencies)` in the plugin, and the check is never
-     * up-to-date-skipped.
+     * manifest-producing task is wired via `dependsOn(artifactProvider)` in
+     * the plugin, and the check is never up-to-date-skipped.
      */
     @get:Internal
     abstract val mergedManifestFile: Property<File>
@@ -48,8 +50,16 @@ abstract class TexureReleaseLeakCheck : DefaultTask() {
         val variant = variantName.get()
 
         val dependencyHits = mutableListOf<String>()
-        for (configName in listOf(runtimeClasspathConfigName.orNull, compileClasspathConfigName.orNull).filterNotNull()) {
-            val configuration = project.configurations.findByName(configName) ?: continue
+        val missingInputs = mutableListOf<String>()
+        for (configName in listOfNotNull(
+            runtimeClasspathConfigName.orNull,
+            compileClasspathConfigName.orNull,
+        )) {
+            val configuration = project.configurations.findByName(configName)
+            if (configuration == null) {
+                missingInputs += "configuration '$configName' not found for variant '$variant'"
+                continue
+            }
             for (artifact in configuration.resolvedConfiguration.resolvedArtifacts) {
                 val id = artifact.id.componentIdentifier
                 if (id is ModuleComponentIdentifier && TexureLeakDetector.isBridgeComponent(id.group, id.module)) {
@@ -58,17 +68,27 @@ abstract class TexureReleaseLeakCheck : DefaultTask() {
             }
         }
 
-        val manifestHits = mergedManifestFile.orNull
+        val manifestFile = mergedManifestFile.orNull
+        if (manifestFile == null || !manifestFile.exists()) {
+            missingInputs += "merged release manifest not found" +
+                (manifestFile?.absolutePath?.let { " ($it)" } ?: "")
+        }
+        val manifestHits = manifestFile
             ?.takeIf { it.exists() }
             ?.let { TexureLeakDetector.scanManifest(it.readText()) }
             ?: emptyList()
 
-        if (dependencyHits.isEmpty() && manifestHits.isEmpty()) {
+        if (dependencyHits.isEmpty() && manifestHits.isEmpty() && missingInputs.isEmpty()) {
             logger.info("checkTexureReleaseLeak: no bridge leakage in release variant '{}'", variant)
             return
         }
         throw GradleException(
-            TexureLeakDetector.failureMessage(variant, dependencyHits.distinct(), manifestHits.distinct()),
+            TexureLeakDetector.failureMessage(
+                variant,
+                dependencyHits.distinct(),
+                manifestHits.distinct(),
+                missingInputs.distinct(),
+            ),
         )
     }
 }
