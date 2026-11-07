@@ -56,6 +56,7 @@ texure/
 | Blackbox full run | `cargo run -p texure-blackbox -- --target all --report out.json` | live (#3, #17, #19) |
 | Blackbox, CI only (L2) | `cargo run -p texure-blackbox -- --target mcp-fake` | live (#3, #17) |
 | Blackbox real server (L2) | `cargo build -p texure-server` then `cargo run -p texure-blackbox -- --target mcp-real` | live (#19) |
+| Standalone MCP probe (L2) | `python3 tools/test_mcp_client.py --no-build` | live (#94) |
 | Blackbox vs device (L3) | `cargo run -p texure-blackbox -- --target http --url <phone-ip>:<port>` | planned (#1) |
 | Server unit tests | `cargo test -p texure-server` | live (#19) |
 | Contract fixture check | `cargo test -p texure-contract` | live (#18) |
