@@ -1,5 +1,14 @@
 # Log
 
+## 2026-11-07 (Wayfinder map 5 (#22) — Gradle plugin ticket #21, single-PR mode)
+- branch `wf/22-gradle-plugin` off origin/main (b35619a); OCR note: local OCR LLM gateway (localhost:20128) unreachable, so the OCR lane ran in delegate mode (`ocr delegate preview/rule` — no LLM), findings applied by host agent; CodeRabbit/parthpr still requested on the PR.
+- Ticket #21 (gradle-plugin) TDD: red detector tests → minimal impl → green. Module `android/gradle-plugin` standalone build (compose includeBuild): plugin ID com.texure.bridge, debugImplementation injection (G2), `checkTexureReleaseLeak<Variant>` per release variant + aggregate, scanning release runtime/compile classpaths + merged manifest, GradleException on hit/missing input, never upToDate-skip. Published marker+artifact to mavenLocal.
+- Sample app adopted via one plugins-block line; direct project(":bridge") dep removed (G2 one-liner path).
+- Self-review iterations: 2 (code-review Standards+Spec agents; concrete fixes applied: package/bundle hook point, missing-input loud failure, LLD-verbatim "Found dependency:" line, doc §refs). Parked (quoted on ticket): aggregate task + extra manifest token beyond LLD (both justified by acceptance command + stricter-than-LLD scan), stringly-typed config names, app/lib onVariants duplication.
+- Gauntlet: L0 texure-lint 0 findings; L1 plugin tests green, :bridge:testDebugUnitTest green; L2 (command-surface equivalent for this surface): :gradle-plugin:publishToMavenLocal ok, :sample:assembleDebug includes bridge (82 dex markers), clean :sample:assembleRelease 0 bridge classes, leak-demo forced releaseImplementation → hard G1 failure with exact LLD diagnostics. L3 n/a (no device surface; blackbox has no Gradle scenario kind — BB-G1 mapping parked to blackbox suite scope, issue #3).
+- Evidence: tmp/evidence/21/red-run.txt, leak-demo-fail.txt.
+- Status: Done (ticket #21 close-out per full loop) — VERIFY: L0 pass · L1 pass · L2 pass(command surface) · L3 n/a. EVIDENCE: tmp/evidence/21/. FLIPS: none. NEXT: PR + babysit.
+
 ## 2026-11-07 (Standalone MCP probe + map 4 merge)
 - Added `tools/test_mcp_client.py` (issue #94): stdlib-only test MCP client — in-process FakeBridge (auth, rev-guard, PNG, polling fallback) → real `texure-server` over stdio JSON-RPC; 19 checks covering handshake/tools-list, all 6 tools, NO_CONFIG/OFFLINE/AUTH_FAILED, verbose:true, -32602/-32700, daemon-survives-errors. Recorded run 19/19 PASS (2.1s); report at https://cron-system.vercel.app/mcp-probe/ (tmp/mcp-probe/ gitignored).
 - Verified pre-commit: probe 19/19, `cargo run -p texure-lint` 0 findings, `cargo test --workspace` green (28 passed).
