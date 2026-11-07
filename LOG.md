@@ -8,6 +8,7 @@
 - Gauntlet: L0 texure-lint 0 findings; L1 plugin tests green, :bridge:testDebugUnitTest green; L2 (command-surface equivalent for this surface): :gradle-plugin:publishToMavenLocal ok, :sample:assembleDebug includes bridge (82 dex markers), clean :sample:assembleRelease 0 bridge classes, leak-demo forced releaseImplementation → hard G1 failure with exact LLD diagnostics. L3 n/a (no device surface; blackbox has no Gradle scenario kind — BB-G1 mapping parked to blackbox suite scope, issue #3).
 - Evidence: tmp/evidence/21/red-run.txt, leak-demo-fail.txt.
 - Babysit round 1: Android CI job red — sample resolves the bridge AAR from mavenLocal but CI never published; added mavenLocal publish step (both modules, per lld-ci.md §3 recipe) before assembleDebug. Parked: adding assembleRelease + G1 leak-check to the CI job's surface (CI matrix contract, issue #10 scope).
+- Babysit round 2: CodeRabbit 5 findings — applied project-component scan (Major: `project(":bridge")` in release now fails G1) + exclusiveContent mavenLocal filter (Minor); parked verbatim on ticket #21: config-cache input rewiring (Major, own follow-up ticket), shipping-buildtype DSL (Minor, LLD extension), CI release-leak test lane (Minor, issue #10 scope). Gauntlet re-run green (tests/publish/assembleDebug/assembleRelease 0 markers/bridge tests/lint).
 - Status: Done (ticket #21 close-out per full loop) — VERIFY: L0 pass · L1 pass · L2 pass(command surface) · L3 n/a. EVIDENCE: tmp/evidence/21/. FLIPS: none. NEXT: PR + babysit.
 
 ## 2026-11-07 (Standalone MCP probe + map 4 merge)
