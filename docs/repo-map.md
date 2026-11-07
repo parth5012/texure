@@ -62,6 +62,9 @@ texure/
 | Contract fixture check | `cargo test -p texure-contract` | live (#18) |
 | Bridge unit tests | `./gradlew :bridge:testDebug` | live (#1, #4) |
 | Sample app build | `./gradlew :sample:assembleDebug` | live (#1) |
+| Plugin publish (mavenLocal) | `./gradlew :gradle-plugin:publishToMavenLocal` | live (#21) |
+| Sample (with plugin) debug build | `./gradlew :sample:assembleDebug` | live (#21) — bridge via plugin injection |
+| Sample (with plugin) release + G1 | `./gradlew :sample:assembleRelease` | live (#21) — 0 bridge classes, hard-fail leak check |
 | Device mechanism regression | `./gradlew :sample:connectedDebugAndroidTest` | live (#1 harness ready) |
 
 Keep this table honest: flip status to "live" only when the command actually runs in this repo.
