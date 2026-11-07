@@ -3,6 +3,7 @@ package com.texure.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
@@ -62,8 +63,23 @@ abstract class TexureReleaseLeakCheck : DefaultTask() {
             }
             for (artifact in configuration.resolvedConfiguration.resolvedArtifacts) {
                 val id = artifact.id.componentIdentifier
-                if (id is ModuleComponentIdentifier && TexureLeakDetector.isBridgeComponent(id.group, id.module)) {
-                    dependencyHits += "${id.group}:${id.module}:${id.version} ($configName)"
+                // Same rule as module components (docs/lld-plugin.md §4.1):
+                // scan types by group/artifact AND the in-repo project module
+                // `:bridge` (a project dependency is invisible to manifest
+                // scanning of library manifests, so classpaths are the catch).
+                when (id) {
+                    is ModuleComponentIdentifier -> {
+                        if (TexureLeakDetector.isBridgeComponent(id.group, id.module)) {
+                            dependencyHits += "${id.group}:${id.module}:${id.version} ($configName)"
+                        }
+                    }
+                    is ProjectComponentIdentifier -> {
+                        val projectModule = id.projectName.substringAfterLast(':')
+                        if (TexureLeakDetector.isBridgeComponent("", projectModule)) {
+                            dependencyHits += "$projectModule (project dependency, $configName)"
+                        }
+                    }
+                    else -> Unit
                 }
             }
         }
