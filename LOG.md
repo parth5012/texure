@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-07 (Standalone MCP probe + map 4 merge)
+- Added `tools/test_mcp_client.py` (issue #94): stdlib-only test MCP client — in-process FakeBridge (auth, rev-guard, PNG, polling fallback) → real `texure-server` over stdio JSON-RPC; 19 checks covering handshake/tools-list, all 6 tools, NO_CONFIG/OFFLINE/AUTH_FAILED, verbose:true, -32602/-32700, daemon-survives-errors. Recorded run 19/19 PASS (2.1s); report at https://cron-system.vercel.app/mcp-probe/ (tmp/mcp-probe/ gitignored).
+- Verified pre-commit: probe 19/19, `cargo run -p texure-lint` 0 findings, `cargo test --workspace` green (28 passed).
+- Committed probe + LOG onto PR #93 branch for merge into main (map 4 #18+#19+#94).
+
 ## 2026-11-02 (Wayfinder map 3 tickets #3 & #5 AFK resolution)
 - Executed and resolved remaining map 3 P1 tickets on branch `t3/wayfinder-map3-leftovers`:
   - Ticket #3 (BB-P0/P1: blackbox runner + FakeBridge scenario suite):
