@@ -270,3 +270,7 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 5. **Transport-failure code mapping.**
    - *What:* Connect/timeout failures → `OFFLINE` ("device unreachable"); connection dying mid-response → `BRIDGE_STOPPED` ("connection died mid-action"). Non-envelope HTTP fallback: 401→`AUTH_FAILED`, 409→`BUSY`, 5xx→`BRIDGE_STOPPED`, other→`INJECT_FAILED`. Screenshot responses with non-`image/png` Content-Type → `CAPTURE_FAILED`.
    - *Why:* `NODE_OUTDATED` as the generic HTTP fallback was wrong (it means tree rev staleness); transport semantics needed their own mapping.
+
+## 2026-11-07 (Workflow recording: bridge-side observer + HTTP control routes, map #6 ticket #23)
+
+**Recording lives in the bridge as a passive own-window observer controlled by HTTP routes, NOT as a 7th MCP tool.** The 6-tool freeze (G7) holds: `POST /recording/start|stop`, `GET /recording/export`, `DELETE /recording` are the control surface, matching the grilling decision of 2026-11-02 (overlay button + HTTP endpoints). The observer attaches a pass-through sibling under the overlay bar on the app's own decorView and never consumes touch; agent-injected synthetic events (marker deviceId) are excluded so traces record human-originated interaction only. Contract addition is additive; `schema_version` stays 1. New error code `RECORDING_IDLE` added to the single error table. Alternatives rejected: accessibility-event capture (forbidden, G5), MCP tool access (tool freeze), MediaProjection (own-window law).

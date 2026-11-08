@@ -97,6 +97,47 @@ Returns the newest debug crash/ANR bundle exported to app-private storage (ticke
 
 If no crash bundle exists, returns HTTP 404 with standard error envelope (`{ "error": { "code": "NOT_FOUND", "message": "no crash bundle available" } }`). Bearer auth required.
 
+### Workflow recording (LLD record/replay, map #6 ticket #23)
+
+Recording is a bridge-side capability: the bridge observes interactions on its own windows and buffers a timestamped trace. Control routes only — the 6 MCP tools stay frozen (recording is driven over bridge HTTP, guardrail G7).
+
+#### POST /recording/start
+
+Starts a recording session: attaches the passive touch observer (own windows only, no gesture consumption) and begins buffering actions. Response `{ "ok": true, "recording": true }`. Idempotent: starting while already recording returns `{ "ok": true, "recording": true }` unchanged (buffer is NOT cleared).
+
+#### POST /recording/stop
+
+Ends the current recording session and detaches the observer. Response `{ "ok": true, "recording": false, "count": N }`. Stopping while no session is active ⇒ HTTP 400 with error code `RECORDING_IDLE`.
+
+#### GET /recording/export
+
+Returns the buffered trace (works while recording or stopped):
+
+```json
+{
+  "recording": false,
+  "count": 2,
+  "actions": [
+    {
+      "seq": 0, "t": 0, "action": "tap",
+      "node": { "index": 3, "id": "btn_send", "text": "Send", "cd": null, "cls": "android.widget.Button", "rev": 42 }
+    },
+    { "seq": 1, "t": 1840, "action": "type", "node": { "index": 2, "id": null, "text": null, "cd": null, "cls": "android.widget.EditText", "rev": 43 }, "value": "hello" },
+    { "seq": 2, "t": 3900, "action": "keypress", "key": "BACK" },
+    { "seq": 3, "t": 6400, "action": "pause", "ms": 2500 }
+  ]
+}
+```
+
+- `t` = milliseconds since session start (timestamp offsets).
+- `node.index` = index into the `/ui-tree` node list observed at record time (same targeting scheme as `/tap`); `rev` = tree rev at record time.
+- `type` `value` is the committed text observed on the focused editable node.
+- Human-originated input only by nature of the observer; agent-injected synthetic events carry the marker deviceId and are NOT recorded (human wins law, behavior-spec 1.4).
+
+#### DELETE /recording
+
+Clears the buffered trace. Response `{ "ok": true, "count": 0 }`.
+
 ### (tool note, agent-facing)
 
 MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`.
@@ -126,6 +167,7 @@ MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `scree
 | `SCREEN_OFF` | bridge | 400 | display off | wake + reopen app (human step) |
 | `DEVICE_LOCKED` | bridge | 400 | keyguard locked | unlock device first |
 | `HUMAN_STEERING` | bridge | 409 | human touch mid-action | re-plan signal: `device_tree` then continue |
+| `RECORDING_IDLE` | bridge | 400 | `/recording/stop` with no active session | start with `POST /recording/start` first |
 | `BRIDGE_STOPPED` | bridge | conn-reset | user stopped bridge mid-action | restart service via overlay, reconnect |
 | `PORT_IN_USE` | bridge (device-side, no HTTP) | — | bind conflict on fixed port | free the occupier; service stays stopped |
 
