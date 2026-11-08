@@ -9,6 +9,7 @@
 - Evidence: tmp/evidence/21/red-run.txt, leak-demo-fail.txt.
 - Babysit round 1: Android CI job red — sample resolves the bridge AAR from mavenLocal but CI never published; added mavenLocal publish step (both modules, per lld-ci.md §3 recipe) before assembleDebug. Parked: adding assembleRelease + G1 leak-check to the CI job's surface (CI matrix contract, issue #10 scope).
 - Babysit round 2: CodeRabbit 5 findings — applied project-component scan (Major: `project(":bridge")` in release now fails G1) + exclusiveContent mavenLocal filter (Minor); parked verbatim on ticket #21: config-cache input rewiring (Major, own follow-up ticket), shipping-buildtype DSL (Minor, LLD extension), CI release-leak test lane (Minor, issue #10 scope). Gauntlet re-run green (tests/publish/assembleDebug/assembleRelease 0 markers/bridge tests/lint).
+- Merge: PR #95 merged into main (rebase, all 7 checks green on c6e5f23; mergeState CLEAN; user-ordered "merge"). Remote branch deleted by merge. Map 5 (#22) Destination reached — adopted-one-line plugin is distributed via mavenLocal; remaining parked items: config-cache rewiring + shipping-buildtype DSL + CI release-leak lane (candidates for follow-up tickets).
 - Status: Done (ticket #21 close-out per full loop) — VERIFY: L0 pass · L1 pass · L2 pass(command surface) · L3 n/a. EVIDENCE: tmp/evidence/21/. FLIPS: none. NEXT: PR + babysit.
 
 ## 2026-11-07 (Standalone MCP probe + map 4 merge)
