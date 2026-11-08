@@ -166,8 +166,8 @@ class DefaultInjectionAdapter(
                 for (char in text) {
                     val keyCode = charToKeyCode(char)
                     if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
-                        view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                        view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                        view.dispatchKeyEvent(syntheticKeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                        view.dispatchKeyEvent(syntheticKeyEvent(KeyEvent.ACTION_UP, keyCode))
                     }
                 }
             }
@@ -220,10 +220,8 @@ class DefaultInjectionAdapter(
         val activity = activityProvider() ?: return InjectionResult.Failed("No active Activity")
         val action = {
             val target = activity.currentFocus ?: activity.window.decorView
-            val down = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
-            val up = KeyEvent(KeyEvent.ACTION_UP, keyCode)
-            target.dispatchKeyEvent(down)
-            target.dispatchKeyEvent(up)
+            target.dispatchKeyEvent(syntheticKeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            target.dispatchKeyEvent(syntheticKeyEvent(KeyEvent.ACTION_UP, keyCode))
         }
 
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -327,18 +325,37 @@ class DefaultInjectionAdapter(
         x: Float,
         y: Float
     ): MotionEvent {
+        // Synthetic injections carry the marker deviceId (behavior-spec 1.4, human-wins
+        // law): the recording observer (BB-B13) keys on it to exclude agent events.
         return MotionEvent.obtain(
             downTime,
             eventTime,
             action,
             x,
             y,
-            0
+            1.0f, // pressure
+            1.0f, // size
+            0,    // metaState
+            0f,   // xPrecision
+            0f,   // yPrecision
+            SYNTHETIC_DEVICE_ID,
+            0     // edgeFlags
         ).apply {
             try {
                 source = android.view.InputDevice.SOURCE_TOUCHSCREEN
             } catch (_: Exception) {}
         }
+    }
+
+    private fun syntheticKeyEvent(action: Int, keyCode: Int): KeyEvent {
+        // Marker deviceId: synthetic injections identify themselves (behavior-spec 1.4)
+        val now = SystemClock.uptimeMillis()
+        return KeyEvent(
+            now, now, action, keyCode, 0,
+            0, SYNTHETIC_DEVICE_ID, 0,
+            KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE,
+            android.view.InputDevice.SOURCE_KEYBOARD
+        )
     }
 
     private fun charToKeyCode(char: Char): Int {

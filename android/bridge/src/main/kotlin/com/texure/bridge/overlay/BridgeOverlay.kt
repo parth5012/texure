@@ -72,6 +72,7 @@ class BridgeOverlay(
             setBackgroundColor(Color.parseColor("#E6202028"))
             setPadding(16, 16, 16, 16)
             elevation = 100f
+            tag = "texure-bridge-overlay"   // used by RecordingController noise exclusion
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -134,6 +135,25 @@ class BridgeOverlay(
         }
         buttonBar.addView(rotateBtn)
 
+        val recordBtn = Button(act).apply {
+            text = "Record"
+            textSize = 11f
+            setOnClickListener {
+                val controller = bridgeService?.getRecordingController()
+                if (controller != null) {
+                    if (controller.isRecording()) {
+                        controller.stop()
+                        text = "Record"
+                    } else {
+                        controller.start()
+                        text = "Stop Recording"
+                    }
+                }
+                updateDisplay()
+            }
+        }
+        buttonBar.addView(recordBtn)
+
         container.addView(buttonBar)
         decorView.addView(container)
         overlayContainer = container
@@ -170,11 +190,16 @@ class BridgeOverlay(
         val state = bridgeService?.getServerState()?.name ?: "IDLE"
         val running = bridgeService?.isRunning() == true
         val portConflict = bridgeService?.isPortConflict() == true
+        val recordingController = bridgeService?.getRecordingController()
+
+        val recordingStatus = if (recordingController?.isRecording() == true) {
+            " ● REC (${recordingController.count()} events)"
+        } else ""
 
         val statusText = if (portConflict) {
             "Status: PORT_IN_USE (8765 occupied)\nToken: $token"
         } else if (running) {
-            "URL: http://$ip:8765\nToken: $token\nState: @$state"
+            "URL: http://$ip:8765\nToken: $token\nState: @$state$recordingStatus"
         } else {
             "URL: http://$ip:8765 (Stopped)\nToken: $token\nState: @OFFLINE"
         }

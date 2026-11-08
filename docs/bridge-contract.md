@@ -124,7 +124,7 @@ Returns the buffered trace (works while recording or stopped):
     },
     { "seq": 1, "t": 1840, "action": "type", "node": { "index": 2, "id": null, "text": null, "cd": null, "cls": "android.widget.EditText", "rev": 43 }, "value": "hello" },
     { "seq": 2, "t": 3900, "action": "keypress", "key": "BACK" },
-    { "seq": 3, "t": 6400, "action": "pause", "ms": 2500 }
+    { "seq": 3, "t": 3900, "action": "pause", "ms": 2500 }
   ]
 }
 ```
