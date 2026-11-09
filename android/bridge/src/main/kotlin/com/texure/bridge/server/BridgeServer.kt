@@ -341,6 +341,23 @@ class BridgeServer(
             else -> 1.0f
         }
 
+        // Optional crop region (map #36, #30): region=x,y,w,h in full-res pixels.
+        // Clamped to decorView bounds below; malformed or w/h <= 0 is a 400.
+        val regionParam = session.parms["region"]
+        val region: IntArray? = if (regionParam != null) {
+            val parts = regionParam.split(",").map { it.toIntOrNull() }
+            if (parts.size != 4 || parts.any { it == null }) {
+                return badRequest("Malformed region: expected x,y,w,h")
+            }
+            val r = IntArray(4) { parts[it]!! }
+            if (r[2] <= 0 || r[3] <= 0) {
+                return badRequest("Invalid region: w and h must be > 0")
+            }
+            r
+        } else {
+            null
+        }
+
         val activity = activityProvider() ?: return jsonResponse(Response.Status.BAD_REQUEST, BridgeError.CAPTURE_FAILED.toJson())
         val latch = CountDownLatch(1)
         var bitmapBytes: ByteArray? = null
@@ -352,24 +369,44 @@ class BridgeServer(
                 val height = decor.height.coerceAtLeast(1)
 
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                decor.draw(canvas)
+                try {
+                    val canvas = Canvas(bitmap)
+                    decor.draw(canvas)
 
-                val scaled = if (scale != 1.0f) {
-                    val sw = (width * scale).toInt().coerceAtLeast(1)
-                    val sh = (height * scale).toInt().coerceAtLeast(1)
-                    Bitmap.createScaledBitmap(bitmap, sw, sh, true)
-                } else {
-                    bitmap
+                    val source = if (region != null) {
+                        val cx = region[0].coerceIn(0, width - 1)
+                        val cy = region[1].coerceIn(0, height - 1)
+                        val cw = region[2].coerceAtMost(width - cx).coerceAtLeast(1)
+                        val ch = region[3].coerceAtMost(height - cy).coerceAtLeast(1)
+                        Bitmap.createBitmap(bitmap, cx, cy, cw, ch)
+                    } else {
+                        bitmap
+                    }
+                    try {
+                        val scaled = if (scale != 1.0f) {
+                            val sw = (source.width * scale).toInt().coerceAtLeast(1)
+                            val sh = (source.height * scale).toInt().coerceAtLeast(1)
+                            Bitmap.createScaledBitmap(source, sw, sh, true)
+                        } else {
+                            source
+                        }
+                        try {
+                            val baos = ByteArrayOutputStream()
+                            scaled.compress(Bitmap.CompressFormat.PNG, 100, baos)
+                            bitmapBytes = baos.toByteArray()
+                        } finally {
+                            if (scaled != source) {
+                                scaled.recycle()
+                            }
+                        }
+                    } finally {
+                        if (source != bitmap) {
+                            source.recycle()
+                        }
+                    }
+                } finally {
+                    bitmap.recycle()
                 }
-
-                val baos = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.PNG, 100, baos)
-                bitmapBytes = baos.toByteArray()
-                if (scaled != bitmap) {
-                    scaled.recycle()
-                }
-                bitmap.recycle()
             } catch (_: Exception) {
                 bitmapBytes = null
             } finally {

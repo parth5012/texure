@@ -202,4 +202,85 @@ class BridgeServerTest {
         assertEquals(200, backCode)
         assertTrue(JSONObject(backBody).optBoolean("ok"))
     }
+
+    private fun sendRequestBytes(method: String, path: String): Pair<Int, ByteArray> {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val future = executor.submit<Pair<Int, ByteArray>> {
+            val url = URL("http://127.0.0.1:$testPort$path")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = method
+            conn.setRequestProperty("Authorization", "Bearer $testToken")
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val bytes = stream?.readBytes() ?: ByteArray(0)
+            Pair(code, bytes)
+        }
+        while (!future.isDone) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            Thread.sleep(10)
+        }
+        val result = future.get()
+        executor.shutdown()
+        return result
+    }
+
+    private fun assertPngHeader(bytes: ByteArray) {
+        assertTrue("PNG too short: ${bytes.size}", bytes.size > 24)
+        assertEquals(0x89.toByte(), bytes[0])
+        assertEquals(0x50.toByte(), bytes[1]) // P
+        assertEquals(0x4E.toByte(), bytes[2]) // N
+        assertEquals(0x47.toByte(), bytes[3]) // G
+    }
+
+    private fun pngWidth(bytes: ByteArray): Int =
+        ((bytes[16].toInt() and 0xFF) shl 24) or ((bytes[17].toInt() and 0xFF) shl 16) or
+            ((bytes[18].toInt() and 0xFF) shl 8) or (bytes[19].toInt() and 0xFF)
+
+    private fun pngHeight(bytes: ByteArray): Int =
+        ((bytes[20].toInt() and 0xFF) shl 24) or ((bytes[21].toInt() and 0xFF) shl 16) or
+            ((bytes[22].toInt() and 0xFF) shl 8) or (bytes[23].toInt() and 0xFF)
+
+    @Test
+    fun testScreenshotWithRegionAndScaleReturnsCroppedPng() {
+        val (code, bytes) = sendRequestBytes("GET", "/screenshot?region=0,0,100,100&scale=1.0")
+        assertEquals(200, code)
+        assertPngHeader(bytes)
+        assertEquals(100, pngWidth(bytes))
+        assertEquals(100, pngHeight(bytes))
+    }
+
+    @Test
+    fun testScreenshotScaledPngIsSmallerThanFullSize() {
+        val (fullCode, full) = sendRequestBytes("GET", "/screenshot?scale=1.0")
+        val (smallCode, small) = sendRequestBytes("GET", "/screenshot?region=0,0,200,200&scale=0.25")
+        assertEquals(200, fullCode)
+        assertEquals(200, smallCode)
+        assertPngHeader(small)
+        assertTrue("cropped+scaled must be smaller than full", small.size < full.size)
+        assertEquals(50, pngWidth(small))
+        assertEquals(50, pngHeight(small))
+    }
+
+    @Test
+    fun testScreenshotWithMalformedRegionReturns400() {
+        val (code, body) = sendRequest("GET", "/screenshot?region=foo")
+        assertEquals(400, code)
+        assertEquals("BAD_REQUEST", JSONObject(body).getJSONObject("error").getString("code"))
+    }
+
+    @Test
+    fun testScreenshotWithZeroWidthRegionReturns400() {
+        val (code, body) = sendRequest("GET", "/screenshot?region=0,0,0,100")
+        assertEquals(400, code)
+        assertEquals("BAD_REQUEST", JSONObject(body).getJSONObject("error").getString("code"))
+    }
+
+    @Test
+    fun testScreenshotWithOutOfBoundsRegionClamps() {
+        val (code, bytes) = sendRequestBytes("GET", "/screenshot?region=900,1800,500,500&scale=1.0")
+        assertEquals(200, code)
+        assertPngHeader(bytes)
+        assertTrue(pngWidth(bytes) in 1..500)
+        assertTrue(pngHeight(bytes) in 1..500)
+    }
 }

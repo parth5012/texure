@@ -53,6 +53,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 |---|---|---|
 | Source | BB-A4 | Own window capture. No media projection UX. |
 | Scale | BB-A4 | Query `scale`: `0.25|0.5|1.0`, default `0.5`. |
+| Region (map #36, #30) | BB-A4 | Optional query `region=x,y,w,h`: crops the captured bitmap (full-resolution pixels) before compression, then applies `scale`. Rectangle is clamped to decorView bounds; malformed value or `w`/`h` ≤ 0 ⇒ HTTP 400 informative `BAD_REQUEST`. Additive query only; the `screenshot` MCP tool shape is unchanged (G7). |
 | Failure | BB-A4, BB-B6 | `SCREEN_OFF`/`DEVICE_LOCKED`/`APP_NOT_FOREGROUND` refusals like mutations; own-window capture failure ⇒ `CAPTURE_FAILED` (reads keep working) [E round 8]. |
 
 ### 1.6 Transport
