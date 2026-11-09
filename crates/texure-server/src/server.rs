@@ -162,6 +162,7 @@ impl McpServer {
                     "properties": {
                         "node": { "type": "integer" },
                         "index": { "type": "integer" },
+                        "hash": { "type": "string", "description": "Optional semantic node hash from device_tree" },
                         "rev": { "type": "integer" },
                         "verbose": { "type": "boolean" }
                     }
@@ -176,6 +177,7 @@ impl McpServer {
                     "properties": {
                         "node": { "type": "integer" },
                         "index": { "type": "integer" },
+                        "hash": { "type": "string", "description": "Optional semantic node hash from device_tree" },
                         "text": { "type": "string" },
                         "rev": { "type": "integer" },
                         "verbose": { "type": "boolean" }
@@ -281,6 +283,9 @@ impl McpServer {
                 if let Some(i) = tap_params.index {
                     req = req.with_index(i);
                 }
+                if let Some(h) = tap_params.hash {
+                    req = req.with_hash(h);
+                }
 
                 match bridge.tap(&req).await {
                     Ok(resp) => {
@@ -299,6 +304,9 @@ impl McpServer {
                 }
                 if let Some(i) = type_params.index {
                     req = req.with_index(i);
+                }
+                if let Some(h) = type_params.hash {
+                    req = req.with_hash(h);
                 }
 
                 match bridge.type_text(&req).await {

@@ -49,13 +49,21 @@ class BridgeTreeExtractor {
             decorView
         }
 
+        // Preserve full ancestry so subtree hashes resolve against full-tree verify (#29 B2).
+        val ancestorPath = if (rootTarget === decorView) {
+            emptyList()
+        } else {
+            ancestorPathTo(decorView, rootTarget)
+        }
+
         traverseView(
             view = rootTarget,
             currentDepth = 0,
             maxDepth = maxDepth,
             density = density,
             collectedNodes = collectedNodes,
-            collectedViews = collectedViews
+            collectedViews = collectedViews,
+            ancestorPath = ancestorPath
         )
 
         return ExtractedTree(
@@ -72,7 +80,8 @@ class BridgeTreeExtractor {
         maxDepth: Int,
         density: Float,
         collectedNodes: MutableList<TreeNode>,
-        collectedViews: MutableList<View>
+        collectedViews: MutableList<View>,
+        ancestorPath: List<String>
     ) {
         if (view.visibility != View.VISIBLE || currentDepth > maxDepth) {
             return
@@ -104,13 +113,15 @@ class BridgeTreeExtractor {
                 cls = view.javaClass.name,
                 bounds = listOf(xDp, yDp, wDp, hDp),
                 clickable = isClickable,
-                editable = isEditable
+                editable = isEditable,
+                hash = computeSemanticHash(ancestorPath, id, text, view.javaClass.name)
             )
             collectedNodes.add(treeNode)
             collectedViews.add(view)
         }
 
         if (view is ViewGroup) {
+            val childPath = ancestorPath + (resolveNodeId(view) ?: view.javaClass.name)
             for (i in 0 until view.childCount) {
                 traverseView(
                     view = view.getChildAt(i),
@@ -118,7 +129,8 @@ class BridgeTreeExtractor {
                     maxDepth = maxDepth,
                     density = density,
                     collectedNodes = collectedNodes,
-                    collectedViews = collectedViews
+                    collectedViews = collectedViews,
+                    ancestorPath = childPath
                 )
             }
         }
@@ -161,8 +173,61 @@ class BridgeTreeExtractor {
         return null
     }
 
+    /**
+     * Ancestor-path prefix (root-first, exclusive of [target]) so subtree
+     * hashes match their full-tree counterparts (#29). Walks View parents
+     * from [target] up to [decorView]; each segment is tag/resource id or
+     * class name, matching `traverseView` childPath construction.
+     */
+    private fun ancestorPathTo(decorView: View, target: View): List<String> {
+        val segments = mutableListOf<String>()
+        var current: View? = target.parent as? View
+        while (current != null && current !== decorView) {
+            segments.add(resolveNodeId(current) ?: current.javaClass.name)
+            current = current.parent as? View
+        }
+        // decorView is the full-tree root; subtree mode needs every ancestor
+        // strictly above target, root-first. The chain stops at decorView
+        // (exclusive), so the decor segment is always included (direct
+        // children of decorView have prefix [seg(decor)]).
+        segments.reverse()
+        return listOf(resolveNodeId(decorView) ?: decorView.javaClass.name) + segments
+    }
+
     companion object {
         const val DEFAULT_MAX_DEPTH = 12
+
+        /**
+         * FNV-1a 64-bit semantic hash, hex-encoded (map #36, #29). Inputs are
+         * the ancestor path (root-first), the stable tag/resource id, a text
+         * snippet, and the class name. Bounds, traversal index, and rev are
+         * deliberately excluded: they shift under non-structural updates and
+         * would rotate the hash spuriously across runs. Pure Kotlin/JVM
+         * arithmetic only; deterministic across runs and processes.
+         */
+        fun computeSemanticHash(
+            ancestorPath: List<String>,
+            id: String?,
+            text: String?,
+            cls: String
+        ): String {
+            val input = buildString {
+                append(ancestorPath.joinToString("/"))
+                append('\n')
+                append(id ?: "")
+                append('\n')
+                append((text ?: "").trim().take(1024))
+                append('\n')
+                append(cls)
+            }
+            var h: Long = -3750763034362895579L // FNV offset basis 14695981039346656037 as signed Long
+            val prime: Long = 1099511628211L
+            for (b in input.encodeToByteArray()) {
+                h = h xor (b.toLong() and 0xFFL)
+                h *= prime
+            }
+            return java.lang.Long.toUnsignedString(h, 16).padStart(16, '0')
+        }
     }
 }
 

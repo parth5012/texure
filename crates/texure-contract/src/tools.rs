@@ -34,6 +34,10 @@ pub struct TapParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<u64>,
 
+    /// Optional semantic node hash from `device_tree` (map #36, #29).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+
     pub rev: u64,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -48,6 +52,10 @@ pub struct TypeParams {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<u64>,
+
+    /// Optional semantic node hash from `device_tree` (map #36, #29).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
 
     pub text: String,
 
@@ -299,5 +307,29 @@ mod tests {
         let enter = KeyPressKey::Enter;
         let s = serde_json::to_string(&enter).unwrap();
         assert_eq!(s, "\"ENTER\"");
+    }
+
+    #[test]
+    fn test_tap_params_hash_optional() {
+        let params: TapParams =
+            serde_json::from_value(serde_json::json!({"node": 1, "rev": 42, "hash": "abc123"}))
+                .unwrap();
+        assert_eq!(params.hash.as_deref(), Some("abc123"));
+        let legacy: TapParams =
+            serde_json::from_value(serde_json::json!({"node": 1, "rev": 42})).unwrap();
+        assert_eq!(legacy.hash, None);
+    }
+
+    #[test]
+    fn test_type_params_hash_optional() {
+        let params: TypeParams = serde_json::from_value(
+            serde_json::json!({"node": 1, "rev": 42, "text": "hi", "hash": "def456"}),
+        )
+        .unwrap();
+        assert_eq!(params.hash.as_deref(), Some("def456"));
+        let legacy: TypeParams =
+            serde_json::from_value(serde_json::json!({"node": 1, "rev": 42, "text": "hi"}))
+                .unwrap();
+        assert_eq!(legacy.hash, None);
     }
 }

@@ -48,7 +48,10 @@ data class TreeNode(
     val cls: String,
     val bounds: List<Int>, // x, y, w, h
     val clickable: Boolean,
-    val editable: Boolean
+    val editable: Boolean,
+    // Semantic node hash (map #36, #29): FNV-1a 64 over ancestor path,
+    // stable tag/resource id, text snippet, class name. Null = legacy node.
+    val hash: String? = null
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -61,6 +64,7 @@ data class TreeNode(
             put("bounds", boundsArray)
             put("clickable", clickable)
             put("editable", editable)
+            put("hash", hash ?: JSONObject.NULL)
         }
     }
 }

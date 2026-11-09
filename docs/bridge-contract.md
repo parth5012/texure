@@ -26,6 +26,7 @@ Returns the accessibility/view tree of the active window, compact form:
   "nodes": [
     {
       "id": "btn_send",            // view id or test tag; may be null
+      "hash": "9f3ac21b04e5d678",  // semantic hash (map #36 #29, additive); see POST /tap
       "text": "Send",              // may be null
       "cd": "Send message",        // contentDescription; may be null (LLD E round 8, additive)
       "cls": "android.widget.Button",
@@ -47,6 +48,8 @@ Optional query params: `?subtree=<node id>`, `?max_depth=<n>`.
 
 Response: `{ "ok": true }`. Index (not raw coords) is the v1 targeting scheme so trees stay the single source of truth; raw coordinate mode parked.
 
+**Semantic-hash targeting (map #36, #29):** `POST /tap` also accepts an optional `hash` — the `hash` value of a node from the LAST `/ui-tree` response. When `hash` is present, `node`/`index` becomes optional (either index or hash targets a node; at least one is required). Verify-at-execute order when `hash` is present: (1) if an index was given and the node at that index still carries the same `hash`, dispatch there; (2) else resolve `hash` across the fresh tree (first node whose `hash` matches); (3) if no node matches, refuse with `NODE_OUTDATED` and the re-fetch hint. The `rev` guard is unchanged: a mismatched `rev` still refuses with `NODE_OUTDATED` before verify-at-execute runs. `hash` is FNV-1a 64-bit over (ancestor path, stable tag/resource id, text snippet, class name), hex-encoded; it is stable across rev bumps and non-structural updates (text tweaks on other nodes, identical re-extractions) and changes with the node's own identity (id/text/class/ancestry). `hash` is an additive nullable field; `schema_version` stays 1.
+
 **Verify-at-execute (LLD E round 8):** mutations do not blind-act at remembered coords. Before dispatch the worker re-traverses the tree and checks the identity chain (`test tag > view id > text > class+index`) at the referenced index still matches the agent's rev-referenced node; mismatch ⇒ `NODE_OUTDATED` + re-fetch hint (no rev bump — nothing happened). A refresh between re-resolve and dispatch is accepted as bounded variance; the job runs inside one worker transaction. No auto-correct, no late resolve onto a "similar" node.
 
 ### POST /type
@@ -56,6 +59,8 @@ Response: `{ "ok": true }`. Index (not raw coords) is the v1 targeting scheme so
 ```
 
 Types into an editable node. Response `{ "ok": true }`.
+
+Optional `hash` (map #36, #29): same verify-at-execute targeting and semantics as `POST /tap` — index optional when `hash` is present, index preferred on hash match, else resolve by `hash` across the fresh tree, no match ⇒ `NODE_OUTDATED`. `rev` guard unchanged.
 
 ### POST /keypress
 
@@ -178,6 +183,6 @@ MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `scree
 All resolved (LLD A round 7 + LLD E round 8, 2026-10-30):
 
 - Port — RESOLVED: fixed `8765`, `SO_REUSEADDR`, loud `PORT_IN_USE` (docs/lld-bridge.md §6).
-- Index vs node-id beyond rev guard — RESOLVED: verify-at-execute identity-chain check on every mutation (`POST /tap` section); semantic-hash ids stay ROADMAP.
+- Index vs node-id beyond rev guard — RESOLVED: verify-at-execute identity-chain check on every mutation (`POST /tap` section); semantic-hash ids RESOLVED (map #36, #29): additive nullable `hash` on each `/ui-tree` node + optional `hash` on `/tap`/`/type` with index-preferred, hash-fallback resolution; `schema_version` stays 1.
 - `/ui-tree` content-descriptions — RESOLVED: additive `cd` field (nullable), schema_version stays 1. Security annotations — RESOLVED: NOT exposed (bridge reads its own app's tree; no v1 value).
 - Screenshot scale default — RESOLVED: `0.5` (matches behavior-spec 1.5).
