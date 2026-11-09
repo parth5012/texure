@@ -159,3 +159,11 @@
 - Lint found BB-R group naming invalid (docs-gate regex only accepts BB-[A-C]) — renumbered to BB-B12..15 rather than extending the lint surface.
 - OCR unused-found: SYNTHETIC_DEVICE_ID constant existed but was never stamped onto injections; stamped at craft time this session (completes behavior-spec 1.4 marker row).
 - Next in session: ticket #24 (CLI record/replay + codemode export, FakeBridge mocks, blackbox scenarios).
+
+## 2026-11-09 (session) — Wayfinder map 6 (#25), ticket #24 via wayfinder-ship
+- Status: Done (ticket #24). Same branch `wf/25-map6` (completes single PR).
+- Commits: b203c1c (recording.rs exporter+replay core, record/replay CLI, FakeBridge /recording mocks, DSL actions, BB-B12..B15 scenarios+TestDefs, lint allowed-actions) + one cosmetic amend.
+- TDD: red evidence tmp/evidence/red-run-24.txt (25 compile errors + fake 404 test). Replay verify-at-execute caught node-2-out-of-range in draft record_replay.json (fixture has 2 nodes) — fixed scenario, then 7/7 pass-rate 100%.
+- L2 notes: FakeBridge records mutations while recording as synthetic actions (deterministic replay source); real bridge excludes agent events (verified L1/L3 in #23). mcp-real skips recording tests with reason (HTTP-only routes).
+- VERIFY: L0 pass (texure-lint 0) · L1 pass (9/9 blackbox + 4/4 lint unit) · L2 pass (--target all 34/0/4-skip/6-device-skip; --target http 5/5) · L3 parked (no device) · CLI record/replay smoke pass.
+- Review: self-review (OCR backend down, documented degraded mode). Remaining: checkpoint PR.
