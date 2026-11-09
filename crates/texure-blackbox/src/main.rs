@@ -2,14 +2,74 @@ pub mod client_http;
 pub mod client_mcp;
 pub mod fake_bridge;
 pub mod fake_mcp;
+pub mod recording;
 pub mod runner;
 pub mod scenario;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::BufRead;
 use std::path::PathBuf;
 use std::time::Instant;
+
+#[derive(Parser, Debug)]
+#[command(name = "texure-blackbox", about = "Texure blackbox test runner + workflow record/replay")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Record a human workflow on a live bridge: triggers
+    /// POST /recording/start, waits for Enter or --duration-secs, then
+    /// exports the trace to a scenario JSON + codemode script.
+    Record {
+        /// Bridge HTTP URL
+        #[arg(long, default_value = "http://127.0.0.1:8765")]
+        url: String,
+
+        /// Auth token for bridge
+        #[arg(long)]
+        token: Option<String>,
+
+        /// Output scenario JSON path
+        #[arg(long)]
+        out: PathBuf,
+
+        /// Record for this many seconds instead of waiting for Enter
+        #[arg(long)]
+        duration_secs: Option<u64>,
+
+        /// Codemode script output (default: <out>.codemode.ts)
+        #[arg(long)]
+        codemode_out: Option<PathBuf>,
+    },
+
+    /// Deterministically replay a recorded scenario and report pass-rate.
+    Replay {
+        /// Scenario JSON path (native blackbox DSL)
+        #[arg(long)]
+        scenario: PathBuf,
+
+        /// Replay target: http (live bridge) | mcp-fake (built-in FakeBridge)
+        #[arg(long, default_value = "mcp-fake")]
+        target: String,
+
+        /// Bridge HTTP URL (http target only)
+        #[arg(long, default_value = "http://127.0.0.1:8765")]
+        url: String,
+
+        /// Auth token (http target)
+        #[arg(long)]
+        token: Option<String>,
+
+        /// Optional JSON ReplayReport output
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "texure-blackbox", about = "Texure blackbox test runner")]
@@ -215,6 +275,34 @@ pub fn get_all_tests() -> Vec<TestDef> {
             target: "device".to_string(),
             is_device: true,
         },
+        TestDef {
+            id: "BB-B12".to_string(),
+            name: "Recording session lifecycle: start/stop, RECORDING_IDLE, idempotent".to_string(),
+            scenario_file: "recording_lifecycle.json".to_string(),
+            target: "http".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-B13".to_string(),
+            name: "Mutations execute cleanly while recording (no hijack)".to_string(),
+            scenario_file: "record_replay.json".to_string(),
+            target: "http".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-B14".to_string(),
+            name: "Recorded event mapping: tap/type/keypress buffered to export".to_string(),
+            scenario_file: "record_replay.json".to_string(),
+            target: "http".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-B15".to_string(),
+            name: "DELETE clears recording buffer; export count 0".to_string(),
+            scenario_file: "recording_export.json".to_string(),
+            target: "http".to_string(),
+            is_device: false,
+        },
         // Group C: Goal flows
         TestDef {
             id: "BB-C1".to_string(),
@@ -242,6 +330,33 @@ pub fn get_all_tests() -> Vec<TestDef> {
 
 #[tokio::main]
 async fn main() {
+    // Subcommand mode (record/replay) — ticket #24. No subcommand ⇒ the
+    // original flag-driven suite run below.
+    let argv: Vec<String> = std::env::args().collect();
+    if matches!(
+        argv.get(1).map(String::as_str),
+        Some("record") | Some("replay")
+    ) {
+        let cli = Cli::parse();
+        let exit = match cli.command {
+            Commands::Record {
+                url,
+                token,
+                out,
+                duration_secs,
+                codemode_out,
+            } => run_record(&url, token, out, duration_secs, codemode_out).await,
+            Commands::Replay {
+                scenario,
+                target,
+                url,
+                token,
+                report,
+            } => run_replay(&scenario, &target, &url, token, report).await,
+        };
+        std::process::exit(exit);
+    }
+
     let args = Args::parse();
 
     // Check if running as fake MCP stdio server
@@ -390,4 +505,194 @@ async fn main() {
     } else {
         std::process::exit(0);
     }
+}
+
+async fn run_record(
+    url: &str,
+    token: Option<String>,
+    out: PathBuf,
+    duration_secs: Option<u64>,
+    codemode_out: Option<PathBuf>,
+) -> i32 {
+    let token = match token {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            eprintln!("record: --token is required (auth on all bridge routes)");
+            return 2;
+        }
+    };
+
+    let client = client_http::HttpBridgeClient::new(url.to_string(), Some(token));
+
+    if let Err(e) = client.recording_start().await {
+        eprintln!("record: start failed: {e}");
+        return 1;
+    }
+    println!("recording started on {url} …");
+
+    match duration_secs {
+        Some(secs) if secs > 0 => {
+            tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
+        }
+        _ => {
+            println!("press Enter to stop recording");
+            let stdin = std::io::stdin();
+            let mut line = String::new();
+            let _ = stdin.lock().read_line(&mut line);
+        }
+    }
+
+    if let Err(e) = client.recording_stop().await {
+        eprintln!("record: stop failed: {e}");
+        return 1;
+    }
+    let trace = match client.recording_export().await {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("record: export failed: {e}");
+            return 1;
+        }
+    };
+
+    let name = out
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("recorded_workflow");
+    let scenario = match recording::export_to_scenario(&trace, name) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("record: scenario export failed: {e}");
+            return 1;
+        }
+    };
+
+    if let Some(parent) = out.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Err(e) = fs::write(
+        &out,
+        serde_json::to_string_pretty(&scenario).unwrap_or_default(),
+    ) {
+        eprintln!("record: failed to write {}: {e}", out.display());
+        return 1;
+    }
+    println!("scenario written to {}", out.display());
+
+    let codemode_path = codemode_out.unwrap_or_else(|| {
+        let mut p = out.clone();
+        p.set_extension("codemode.ts");
+        p
+    });
+    let script = recording::export_to_codemode(&trace, name);
+    if let Err(e) = fs::write(&codemode_path, script) {
+        eprintln!(
+            "record: failed to write codemode script {}: {e}",
+            codemode_path.display()
+        );
+        return 1;
+    }
+    println!("codemode script written to {}", codemode_path.display());
+
+    0
+}
+
+/// Replays a scenario against `target`. `--target mcp-fake` runs the
+/// built-in FakeBridge in-process (L2); `http` drives the bridge at --url.
+/// Deterministic pass-rate is printed; failures emit an evidence bundle
+/// under tmp/evidence/replay-<scenario>/ and exit 1.
+async fn run_replay(
+    scenario_path: &PathBuf,
+    target: &str,
+    url: &str,
+    token: Option<String>,
+    report: Option<PathBuf>,
+) -> i32 {
+    let scenario = match scenario::Scenario::load_from_file(scenario_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("replay: failed to load scenario {}: {e}", scenario_path.display());
+            return 1;
+        }
+    };
+
+    let mut fake_server: Option<fake_bridge::FakeBridgeServer> = None;
+    let client = match target {
+        "mcp-fake" => {
+            let mut server = match fake_bridge::FakeBridgeServer::start(
+                fake_bridge::FakeBridgeConfig {
+                    scenario_name: "static_screen".to_string(),
+                    root_dir: ".".to_string(),
+                    port: 0,
+                    token: "test-token".to_string(),
+                },
+            )
+            .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("replay: failed to start FakeBridge: {e}");
+                    return 1;
+                }
+            };
+            let base = format!("http://127.0.0.1:{}", server.addr.port());
+            let _ = &mut server;
+            fake_server = Some(server);
+            client_http::HttpBridgeClient::new(base, Some("test-token".to_string()))
+        }
+        "http" => {
+            let token = match token {
+                Some(t) if !t.is_empty() => t,
+                _ => {
+                    eprintln!("replay: --token is required for --target http");
+                    return 2;
+                }
+            };
+            client_http::HttpBridgeClient::new(url.to_string(), Some(token))
+        }
+        other => {
+            eprintln!("replay: unsupported --target '{other}' (http | mcp-fake)");
+            return 2;
+        }
+    };
+
+    let result = recording::replay_scenario(&scenario, &client).await;
+    if let Some(mut s) = fake_server.take() {
+        s.stop();
+    }
+
+    println!(
+        "Replay '{}': {}/{} steps passed (pass-rate {:.0}%)",
+        result.scenario,
+        result.passed,
+        result.total,
+        (result.pass_rate * 100.0).round()
+    );
+    for outcome in &result.outcomes {
+        if !outcome.ok {
+            println!("  FAIL step {} ({}) : {}", outcome.index, outcome.action, outcome.reason.as_deref().unwrap_or(""));
+        }
+    }
+
+    if let Some(report_path) = report {
+        if let Some(parent) = report_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(json_str) = serde_json::to_string_pretty(&result) {
+            let _ = fs::write(&report_path, json_str);
+            println!("Replay report written to {}", report_path.display());
+        }
+    }
+
+    if result.pass_rate < 1.0 {
+        let bundle = std::path::Path::new("tmp/evidence").join(format!("replay-{}", result.scenario));
+        let _ = fs::create_dir_all(&bundle);
+        let _ = fs::write(
+            bundle.join("replay-report.json"),
+            serde_json::to_string_pretty(&result).unwrap_or_default(),
+        );
+        println!("Evidence bundle written to {}", bundle.display());
+        return 1;
+    }
+
+    0
 }

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "recording_lifecycle",
+  "kind": "scenario",
+  "description": "Workflow recording: start/stop lifecycle incl. RECORDING_IDLE and idempotent start",
+  "steps": [
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "error.code": "RECORDING_IDLE" }
+    },
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "error.code": "RECORDING_IDLE" }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

@@ -42,6 +42,10 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "wait_for",
         "mcp_handshake",
         "raw_mcp",
+        "recording_start",
+        "recording_stop",
+        "recording_export",
+        "recording_clear",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 

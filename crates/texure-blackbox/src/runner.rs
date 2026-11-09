@@ -65,12 +65,25 @@ pub async fn run_test(
             evidence_bundle: None,
         },
         Err(err) => {
+            // Target-compatibility skips are not failures.
+            if let Some(skip_reason) = err.strip_prefix("SKIP: ") {
+                return TestResult {
+                    id: test.id.clone(),
+                    name: test.name.clone(),
+                    target: test.target.clone(),
+                    status: "skip".to_string(),
+                    duration_ms,
+                    reason: Some(skip_reason.to_string()),
+                    evidence_bundle: None,
+                };
+            }
+
             let bundle_dir = Path::new("tmp/evidence").join(&test.id);
             let _ = std::fs::create_dir_all(&bundle_dir);
             let _ = std::fs::write(
                 bundle_dir.join("red-run.txt"),
                 format!(
-                    "TEST {}: {}\nSTATUS: FAIL\nREASON: {}\n",
+                    "TEST {}\nNAME: {}\nSTATUS: FAIL\nREASON: {}\n",
                     test.id, test.name, err
                 ),
             );
@@ -279,11 +292,26 @@ fn locate_server_bin() -> Result<String, String> {
 
 /// Run a scenario against the REAL texure-server binary over stdio JSON-RPC,
 /// with a FakeBridge instance behind it (the agent's actual path at L2).
+///
+/// Recording routes are bridge-HTTP control routes, not MCP tools: they
+/// cannot run over the stdio transport. On this target they are reported as
+/// skipped (never silently passed); coverage lives in http / mcp-fake runs.
 async fn run_mcp_real_test(
     _test: &TestDef,
     scenario: &Scenario,
     root_dir: &Path,
 ) -> Result<(), String> {
+    if scenario
+        .steps
+        .iter()
+        .any(|s| matches!(s.action.as_str(), "recording_start" | "recording_stop" | "recording_export" | "recording_clear"))
+    {
+        return Err(
+            "SKIP: recording_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
+                .to_string(),
+        );
+    }
+
     let server_bin = locate_server_bin()?;
 
     // The FakeBridge expects "test-token"; auth_reject deliberately configures
@@ -621,6 +649,38 @@ async fn run_http_fake_test(
                     last_response = json!({ "ok": true });
                 }
             }
+            "recording_start" => match client.recording_start().await {
+                Ok(resp) => last_response = resp,
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    last_response =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                }
+                Err(e) => return Err(format!("recording_start failed: {e}")),
+            },
+            "recording_stop" => match client.recording_stop().await {
+                Ok(resp) => last_response = resp,
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    last_response =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                }
+                Err(e) => return Err(format!("recording_stop failed: {e}")),
+            },
+            "recording_export" => match client.recording_export().await {
+                Ok(resp) => last_response = resp,
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    last_response =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                }
+                Err(e) => return Err(format!("recording_export failed: {e}")),
+            },
+            "recording_clear" => match client.recording_clear().await {
+                Ok(resp) => last_response = resp,
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    last_response =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                }
+                Err(e) => return Err(format!("recording_clear failed: {e}")),
+            },
             other => return Err(format!("Unsupported action in HTTP fake test: {other}")),
         }
 

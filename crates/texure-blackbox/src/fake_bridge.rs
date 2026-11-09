@@ -36,6 +36,21 @@ pub struct FakeBridgeState {
     pub scenario_name: String,
     pub root_dir: String,
     pub expected_token: String,
+    pub recording: tokio::sync::Mutex<RecordingState>,
+}
+
+/// In-memory workflow-recording session (ticket #24 L2 mock).
+///
+/// Mirrors the bridge contract: while `active`, mutating requests
+/// (`/tap`, `/type`, `/keypress`, `/back`) append one synthetic action each
+/// with a node reference and timestamp offset. The real bridge excludes
+/// agent-injected events instead (human-only trace); this mock records
+/// agent traffic so L2 can verify export/replay deterministically.
+pub struct RecordingState {
+    pub active: bool,
+    pub started_at: Option<std::time::Instant>,
+    pub next_seq: u64,
+    pub actions: Vec<Value>,
 }
 
 pub struct FakeBridgeServer {
@@ -66,6 +81,12 @@ impl FakeBridgeServer {
             scenario_name: config.scenario_name,
             root_dir: config.root_dir,
             expected_token: config.token,
+            recording: tokio::sync::Mutex::new(RecordingState {
+                active: false,
+                started_at: None,
+                next_seq: 0,
+                actions: Vec::new(),
+            }),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -301,6 +322,51 @@ fn find_header_end(data: &[u8]) -> Option<usize> {
     None
 }
 
+async fn capture_recording_action(
+    state: &Arc<FakeBridgeState>,
+    action: &str,
+    node_index: Option<u64>,
+    text: Option<&str>,
+    key: Option<&str>,
+) {
+    let mut rec = state.recording.lock().await;
+    if !rec.active {
+        return;
+    }
+    let t = rec
+        .started_at
+        .map(|s| s.elapsed().as_millis() as u64)
+        .unwrap_or(0);
+    let rev = state.rev.load(Ordering::SeqCst);
+    let node = node_index.map(|idx| {
+        json!({
+            "index": idx,
+            "id": null,
+            "text": null,
+            "cd": null,
+            "cls": "synthetic",
+            "rev": rev
+        })
+    });
+
+    let mut entry = json!({
+        "seq": rec.next_seq,
+        "t": t,
+        "action": action,
+        "node": node,
+    });
+    rec.next_seq += 1;
+    if let Some(e) = entry.as_object_mut() {
+        if let Some(v) = text {
+            e.insert("value".to_string(), json!(v));
+        }
+        if let Some(k) = key {
+            e.insert("key".to_string(), json!(k));
+        }
+    }
+    rec.actions.push(entry);
+}
+
 async fn route_request(
     method: &str,
     path: &str,
@@ -476,6 +542,8 @@ async fn route_request(
             });
             let _ = state.ws_sender.send(event.to_string());
 
+            capture_recording_action(state, "tap", Some(req_node), None, None).await;
+
             let resp = json!({ "ok": true });
             (
                 "200 OK",
@@ -484,6 +552,10 @@ async fn route_request(
             )
         }
         ("POST", "/type") => {
+            let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
+            let req_node = body_json.get("node").and_then(|v| v.as_u64());
+            let req_text = body_json.get("text").and_then(|v| v.as_str()).map(String::from);
+
             if state.scenario_name == "stale_screen" {
                 let err = json!({
                     "error": {
@@ -506,6 +578,8 @@ async fn route_request(
             });
             let _ = state.ws_sender.send(event.to_string());
 
+            capture_recording_action(state, "type", req_node, req_text.as_deref(), None).await;
+
             let resp = json!({ "ok": true });
             (
                 "200 OK",
@@ -514,6 +588,12 @@ async fn route_request(
             )
         }
         ("POST", "/keypress") => {
+            let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
+            let key = body_json
+                .get("key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("ENTER");
+            capture_recording_action(state, "keypress", body_json.get("node").and_then(|v| v.as_u64()), None, Some(key)).await;
             let resp = json!({ "ok": true });
             (
                 "200 OK",
@@ -522,7 +602,68 @@ async fn route_request(
             )
         }
         ("POST", "/back") => {
+            capture_recording_action(state, "keypress", None, None, Some("BACK")).await;
             let resp = json!({ "ok": true });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/recording/start") => {
+            let mut rec = state.recording.lock().await;
+            rec.active = true;
+            rec.started_at = Some(std::time::Instant::now());
+            let resp = json!({ "ok": true, "recording": true });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/recording/stop") => {
+            let mut rec = state.recording.lock().await;
+            if !rec.active {
+                let err = json!({
+                    "error": {
+                        "code": "RECORDING_IDLE",
+                        "message": "no active recording session",
+                        "hint": "start with POST /recording/start first"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+            rec.active = false;
+            let count = rec.actions.len();
+            let resp = json!({ "ok": true, "recording": false, "count": count });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("GET", "/recording/export") => {
+            let rec = state.recording.lock().await;
+            let resp = json!({
+                "recording": rec.active,
+                "count": rec.actions.len(),
+                "actions": rec.actions.clone(),
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("DELETE", "/recording") => {
+            let mut rec = state.recording.lock().await;
+            rec.actions.clear();
+            rec.next_seq = 0;
+            let resp = json!({ "ok": true, "count": 0 });
             (
                 "200 OK",
                 vec![("Content-Type", "application/json".to_string())],
@@ -692,6 +833,138 @@ mod tests {
             .await
             .expect("auth fail");
         assert_eq!(auth_fail.status(), 401);
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn test_fake_bridge_recording_lifecycle() {
+        let mut server = FakeBridgeServer::start(FakeBridgeConfig {
+            scenario_name: "static_screen".to_string(),
+            root_dir: ".".to_string(),
+            port: 0,
+            token: "test-token".to_string(),
+        })
+        .await
+        .expect("server start");
+
+        let client = reqwest::Client::new();
+        let url = format!("http://127.0.0.1:{}", server.addr.port());
+        
+
+        // Fresh server: export shape (BB-B15) + stop while idle (BB-B12)
+        let export = client
+            .get(format!("{url}/recording/export"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("export");
+        assert_eq!(export.status(), 200);
+        let export_json: Value = export.json().await.expect("json");
+        assert_eq!(export_json["recording"], false);
+        assert_eq!(export_json["count"], 0);
+        assert!(export_json["actions"].is_array());
+
+        let idle_stop = client
+            .post(format!("{url}/recording/stop"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({}))
+            .send()
+            .await
+            .expect("stop while idle");
+        assert_eq!(idle_stop.status(), 400);
+        let idle_json: Value = idle_stop.json().await.expect("json");
+        assert_eq!(idle_json["error"]["code"], "RECORDING_IDLE");
+
+        // Start is idempotent; stop reports count (BB-B12)
+        let start = client
+            .post(format!("{url}/recording/start"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({}))
+            .send()
+            .await
+            .expect("start");
+        assert_eq!(start.status(), 200);
+        let start_json: Value = start.json().await.expect("json");
+        assert_eq!(start_json["ok"], true);
+        assert_eq!(start_json["recording"], true);
+
+        let start_again = client
+            .post(format!("{url}/recording/start"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({}))
+            .send()
+            .await
+            .expect("start again");
+        assert_eq!(start_again.status(), 200);
+
+        // Actions while recording are captured in order (BB-B14)
+        for (path, body) in [
+            ("/tap", json!({"node": 1, "rev": 42})),
+            ("/type", json!({"node": 2, "text": "hi", "rev": 42})),
+            ("/keypress", json!({"key": "ENTER"})),
+            ("/back", json!({})),
+        ] {
+            let resp = client
+                .post(format!("{url}{path}"))
+                .header("Authorization", "Bearer test-token")
+                .json(&body)
+                .send()
+                .await
+                .expect("mutation while recording");
+            assert_eq!(resp.status(), 200, "{path}");
+        }
+
+        let export = client
+            .get(format!("{url}/recording/export"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("export after mutations");
+        assert_eq!(export.status(), 200);
+        let export_json: Value = export.json().await.expect("json");
+        assert_eq!(export_json["recording"], true);
+        assert_eq!(export_json["count"], 4);
+        let actions = export_json["actions"].as_array().expect("actions");
+        let kinds: Vec<&str> = actions
+            .iter()
+            .map(|a| a["action"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["tap", "type", "keypress", "keypress"]);
+        assert_eq!(actions[1]["value"], "hi");
+
+        let stop = client
+            .post(format!("{url}/recording/stop"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({}))
+            .send()
+            .await
+            .expect("stop");
+        assert_eq!(stop.status(), 200);
+        let stop_json: Value = stop.json().await.expect("json");
+        assert_eq!(stop_json["ok"], true);
+        assert_eq!(stop_json["recording"], false);
+        assert_eq!(stop_json["count"], 4);
+
+        // DELETE clears the buffer (BB-B15)
+        let clear = client
+            .delete(format!("{url}/recording"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("delete recording");
+        assert_eq!(clear.status(), 200);
+
+        let export = client
+            .get(format!("{url}/recording/export"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("export after delete");
+        assert_eq!(export.status(), 200);
+        let export_json: Value = export.json().await.expect("json");
+        assert_eq!(export_json["count"], 0);
+        assert_eq!(export_json["actions"].as_array().expect("actions").len(), 0);
 
         server.stop();
     }
