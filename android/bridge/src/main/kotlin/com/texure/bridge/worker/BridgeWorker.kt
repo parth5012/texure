@@ -31,20 +31,19 @@ class BridgeWorker(
     }
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    fun executeTap(targetNodeIndex: Int, expectedRev: Long): WorkerResult<Unit> {
+    fun executeTap(targetNodeIndex: Int, expectedRev: Long, expectedHash: String? = null): WorkerResult<Unit> {
         val future = executor.submit<WorkerResult<Unit>> {
             // 1. Check rev staleness
             if (expectedRev != treeExtractor.getRev()) {
                 return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
             }
 
-            // 2. Verify-at-execute on main thread
+            // 2. Verify-at-execute on main thread (index, or hash fallback)
             val tree = extractTreeOnMain()
-            if (targetNodeIndex < 0 || targetNodeIndex >= tree.resolvedViews.size) {
-                return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
-            }
+            val resolvedIndex = resolveTargetIndex(tree, targetNodeIndex, expectedHash)
+                ?: return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
 
-            val targetView = tree.resolvedViews[targetNodeIndex]
+            val targetView = tree.resolvedViews[resolvedIndex]
             if (!targetView.isClickable) {
                 return@submit WorkerResult.Error(BridgeError.NODE_NOT_CLICKABLE)
             }
@@ -71,18 +70,17 @@ class BridgeWorker(
         }
     }
 
-    fun executeType(targetNodeIndex: Int, text: String, expectedRev: Long): WorkerResult<Unit> {
+    fun executeType(targetNodeIndex: Int, text: String, expectedRev: Long, expectedHash: String? = null): WorkerResult<Unit> {
         val future = executor.submit<WorkerResult<Unit>> {
             if (expectedRev != treeExtractor.getRev()) {
                 return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
             }
 
             val tree = extractTreeOnMain()
-            if (targetNodeIndex < 0 || targetNodeIndex >= tree.resolvedViews.size) {
-                return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
-            }
+            val resolvedIndex = resolveTargetIndex(tree, targetNodeIndex, expectedHash)
+                ?: return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
 
-            val targetView = tree.resolvedViews[targetNodeIndex]
+            val targetView = tree.resolvedViews[resolvedIndex]
             val isEditable = targetView is EditText || (targetView.isFocusable && targetView.isFocusableInTouchMode)
             if (!isEditable) {
                 return@submit WorkerResult.Error(BridgeError.NODE_NOT_EDITABLE)
@@ -192,6 +190,24 @@ class BridgeWorker(
         } catch (_: Exception) {
             WorkerResult.Error(BridgeError.INJECT_FAILED)
         }
+    }
+
+    /**
+     * Verify-at-execute target resolution (map #36, #29). Without a hash the
+     * requested index is authoritative. With a hash: prefer the requested
+     * index when that node still carries the hash, else resolve by hash
+     * across the fresh tree; null means refuse with `NODE_OUTDATED`.
+     * `resolvedViews` and `nodes` are parallel lists from the same traversal.
+     */
+    private fun resolveTargetIndex(tree: ExtractedTree, requestedIndex: Int, expectedHash: String?): Int? {
+        if (expectedHash == null) {
+            return if (requestedIndex in tree.resolvedViews.indices) requestedIndex else null
+        }
+        if (requestedIndex in tree.resolvedViews.indices && tree.nodes[requestedIndex].hash == expectedHash) {
+            return requestedIndex
+        }
+        val byHash = tree.nodes.indexOfFirst { it.hash == expectedHash }
+        return if (byHash >= 0) byHash else null
     }
 
     fun extractTreeOnMain(subtreeId: String? = null, maxDepth: Int = BridgeTreeExtractor.DEFAULT_MAX_DEPTH): ExtractedTree {

@@ -140,6 +140,7 @@ mod tests {
                     editable: false,
                     scrollable: false,
                     index: Some(0),
+                    hash: None,
                     children: Vec::new(),
                 },
                 UiNode {
@@ -152,6 +153,7 @@ mod tests {
                     editable: false,
                     scrollable: false,
                     index: Some(1),
+                    hash: None,
                     children: Vec::new(),
                 },
             ],

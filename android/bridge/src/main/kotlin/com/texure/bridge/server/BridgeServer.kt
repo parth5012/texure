@@ -203,10 +203,14 @@ class BridgeServer(
         val rev = body.optLong("rev", -1L)
         if (rev < 0) return badRequest("Missing rev parameter")
 
+        // Semantic hash (map #36, #29): index optional when hash present.
+        val hash = body.optString("hash").takeIf { it.isNotEmpty() }
         val targetIndex = if (body.has("index")) {
             body.getInt("index")
         } else if (body.has("node")) {
             body.getInt("node")
+        } else if (hash != null) {
+            -1
         } else {
             return badRequest("Missing node index parameter")
         }
@@ -214,7 +218,7 @@ class BridgeServer(
         currentState.set(BridgeState.ACTIVE)
         recordingController.beginAgentMutation()
         return try {
-            when (val result = worker.executeTap(targetIndex, rev)) {
+            when (val result = worker.executeTap(targetIndex, rev, hash)) {
                 is WorkerResult.Success -> {
                     currentState.set(BridgeState.IDLE)
                     broadcastTreeChanged(treeExtractor.getRev())
@@ -239,13 +243,20 @@ class BridgeServer(
         if (rev < 0) return badRequest("Missing rev parameter")
 
         val text = body.optString("text")
-        val targetIndex = body.optInt("node", -1)
-        if (targetIndex < 0) return badRequest("Missing or invalid node parameter")
+        // Semantic hash (map #36, #29): index/node optional when hash present.
+        val hash = body.optString("hash").takeIf { it.isNotEmpty() }
+        val targetIndex = when {
+            body.has("node") -> body.optInt("node", -1)
+            body.has("index") -> body.optInt("index", -1)
+            hash != null -> -1
+            else -> return badRequest("Missing or invalid node parameter")
+        }
+        if (targetIndex < 0 && hash == null) return badRequest("Missing or invalid node parameter")
 
         currentState.set(BridgeState.ACTIVE)
         recordingController.beginAgentMutation()
         return try {
-            when (val result = worker.executeType(targetIndex, text, rev)) {
+            when (val result = worker.executeType(targetIndex, text, rev, hash)) {
                 is WorkerResult.Success -> {
                     currentState.set(BridgeState.IDLE)
                     broadcastTreeChanged(treeExtractor.getRev())
