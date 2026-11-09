@@ -143,11 +143,11 @@ pub fn export_to_codemode(trace: &Value, name: &str) -> String {
         // Human-readable node trail in a comment (identity snapshot).
         let node_comment = action
             .get("node")
-            .and_then(|n| {
+            .map(|n| {
                 let id = n.get("id").and_then(|v| v.as_str()).unwrap_or("null");
                 let text = n.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let cls = n.get("cls").and_then(|v| v.as_str()).unwrap_or("");
-                Some(format!("{id} {cls} \"{text}\""))
+                format!("{id} {cls} \"{text}\"")
             })
             .unwrap_or_default();
 
