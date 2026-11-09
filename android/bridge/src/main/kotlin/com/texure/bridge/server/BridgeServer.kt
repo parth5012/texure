@@ -12,6 +12,7 @@ import com.texure.bridge.crash.BridgeCrashHandler
 import com.texure.bridge.model.BridgeError
 import com.texure.bridge.model.BridgeState
 import com.texure.bridge.model.Key
+import com.texure.bridge.recording.RecordingController
 import com.texure.bridge.storage.BridgeTokenManager
 import com.texure.bridge.tree.BridgeTreeExtractor
 import com.texure.bridge.worker.BridgeWorker
@@ -35,7 +36,8 @@ class BridgeServer(
     private val activityProvider: () -> Activity?,
     private val crashHandler: BridgeCrashHandler? = null,
     private val treeExtractor: BridgeTreeExtractor = BridgeTreeExtractor(),
-    private val worker: BridgeWorker = BridgeWorker(activityProvider, treeExtractor)
+    private val worker: BridgeWorker = BridgeWorker(activityProvider, treeExtractor),
+    val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor)
 ) : NanoWSD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -69,8 +71,24 @@ class BridgeServer(
             return jsonResponse(Response.Status.UNAUTHORIZED, BridgeError.AUTH_FAILED.toJson())
         }
 
-        // 2. Concurrency: single-flight lock
+        // 2. Concurrency: single-flight lock. Workflow recording control routes are
+        //    control-plane and exempt (BB-B12): the CLI `record` session drives the
+        //    bridge while tool traffic stays locked by its own owner.
         val clientHandle = session.headers["remote-addr"] ?: session.remoteIpAddress ?: "client"
+        if (isRecordingRoute(method, uri)) {
+            return try {
+                when {
+                    method == Method.POST && uri == "/recording/start" -> handleRecordingStart(session)
+                    method == Method.POST && uri == "/recording/stop" -> handleRecordingStop(session)
+                    method == Method.GET && uri == "/recording/export" -> handleRecordingExport()
+                    else -> handleRecordingDelete()
+                }
+            } catch (e: Exception) {
+                jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
+                    put("error", JSONObject().put("code", "INTERNAL_ERROR").put("message", e.message ?: "recording error"))
+                })
+            }
+        }
         val lockResponse = checkSingleFlightLock(clientHandle)
         if (lockResponse != null) {
             return lockResponse
@@ -102,6 +120,54 @@ class BridgeServer(
                 })
             })
         }
+    }
+
+    // --- Workflow recording control routes (contract: /recording/*, map #6 #23) ---
+
+    private fun isRecordingRoute(method: Method, uri: String): Boolean {
+        return (method == Method.POST && (uri == "/recording/start" || uri == "/recording/stop")) ||
+            (method == Method.GET && uri == "/recording/export") ||
+            (method == Method.DELETE && uri == "/recording")
+    }
+
+    /** NanoHTTPD keep-alive hygiene: POST bodies must be drained, content ignored. */
+    private fun drainBody(session: IHTTPSession) {
+        try {
+            val map = HashMap<String, String>()
+            session.parseBody(map)
+        } catch (_: Exception) {}
+    }
+
+    private fun handleRecordingStart(session: IHTTPSession): Response {
+        drainBody(session)
+        recordingController.start()
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("recording", true)
+        })
+    }
+
+    private fun handleRecordingStop(session: IHTTPSession): Response {
+        drainBody(session)
+        val count = recordingController.stop()
+            ?: return jsonResponse(Response.Status.BAD_REQUEST, BridgeError.RECORDING_IDLE.toJson())
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("recording", false)
+            put("count", count)
+        })
+    }
+
+    private fun handleRecordingExport(): Response {
+        return jsonResponse(Response.Status.OK, recordingController.export())
+    }
+
+    private fun handleRecordingDelete(): Response {
+        recordingController.clear()
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("count", 0)
+        })
     }
 
     private fun handleGetUiTree(session: IHTTPSession): Response {
@@ -146,16 +212,21 @@ class BridgeServer(
         }
 
         currentState.set(BridgeState.ACTIVE)
-        return when (val result = worker.executeTap(targetIndex, rev)) {
-            is WorkerResult.Success -> {
-                currentState.set(BridgeState.IDLE)
-                broadcastTreeChanged(treeExtractor.getRev())
-                jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+        recordingController.beginAgentMutation()
+        return try {
+            when (val result = worker.executeTap(targetIndex, rev)) {
+                is WorkerResult.Success -> {
+                    currentState.set(BridgeState.IDLE)
+                    broadcastTreeChanged(treeExtractor.getRev())
+                    jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+                }
+                is WorkerResult.Error -> {
+                    currentState.set(BridgeState.IDLE)
+                    jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
+                }
             }
-            is WorkerResult.Error -> {
-                currentState.set(BridgeState.IDLE)
-                jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
-            }
+        } finally {
+            recordingController.endAgentMutation()
         }
     }
 
@@ -172,20 +243,25 @@ class BridgeServer(
         if (targetIndex < 0) return badRequest("Missing or invalid node parameter")
 
         currentState.set(BridgeState.ACTIVE)
-        return when (val result = worker.executeType(targetIndex, text, rev)) {
-            is WorkerResult.Success -> {
-                currentState.set(BridgeState.IDLE)
-                broadcastTreeChanged(treeExtractor.getRev())
-                jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
-            }
-            is WorkerResult.Error -> {
-                currentState.set(BridgeState.IDLE)
-                val errJson = result.bridgeError.toJson()
-                if (result.detail != null) {
-                    errJson.getJSONObject("error").put("detail", result.detail)
+        recordingController.beginAgentMutation()
+        return try {
+            when (val result = worker.executeType(targetIndex, text, rev)) {
+                is WorkerResult.Success -> {
+                    currentState.set(BridgeState.IDLE)
+                    broadcastTreeChanged(treeExtractor.getRev())
+                    jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
                 }
-                jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, errJson)
+                is WorkerResult.Error -> {
+                    currentState.set(BridgeState.IDLE)
+                    val errJson = result.bridgeError.toJson()
+                    if (result.detail != null) {
+                        errJson.getJSONObject("error").put("detail", result.detail)
+                    }
+                    jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, errJson)
+                }
             }
+        } finally {
+            recordingController.endAgentMutation()
         }
     }
 
@@ -202,16 +278,21 @@ class BridgeServer(
         }
 
         currentState.set(BridgeState.ACTIVE)
-        return when (val result = worker.executeKey(key)) {
-            is WorkerResult.Success -> {
-                currentState.set(BridgeState.IDLE)
-                broadcastTreeChanged(treeExtractor.getRev())
-                jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+        recordingController.beginAgentMutation()
+        return try {
+            when (val result = worker.executeKey(key)) {
+                is WorkerResult.Success -> {
+                    currentState.set(BridgeState.IDLE)
+                    broadcastTreeChanged(treeExtractor.getRev())
+                    jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+                }
+                is WorkerResult.Error -> {
+                    currentState.set(BridgeState.IDLE)
+                    jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
+                }
             }
-            is WorkerResult.Error -> {
-                currentState.set(BridgeState.IDLE)
-                jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
-            }
+        } finally {
+            recordingController.endAgentMutation()
         }
     }
 
@@ -220,16 +301,21 @@ class BridgeServer(
         if (refusal != null) return refusal
 
         currentState.set(BridgeState.ACTIVE)
-        return when (val result = worker.executeBack()) {
-            is WorkerResult.Success -> {
-                currentState.set(BridgeState.IDLE)
-                broadcastTreeChanged(treeExtractor.getRev())
-                jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+        recordingController.beginAgentMutation()
+        return try {
+            when (val result = worker.executeBack()) {
+                is WorkerResult.Success -> {
+                    currentState.set(BridgeState.IDLE)
+                    broadcastTreeChanged(treeExtractor.getRev())
+                    jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+                }
+                is WorkerResult.Error -> {
+                    currentState.set(BridgeState.IDLE)
+                    jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
+                }
             }
-            is WorkerResult.Error -> {
-                currentState.set(BridgeState.IDLE)
-                jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
-            }
+        } finally {
+            recordingController.endAgentMutation()
         }
     }
 
@@ -400,6 +486,7 @@ class BridgeServer(
     }
 
     override fun stop() {
+        try { recordingController.stop() } catch (_: Exception) {}
         worker.shutdown()
         for (ws in activeWebSockets) {
             try {

@@ -1,5 +1,5 @@
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -210,5 +210,64 @@ impl HttpBridgeClient {
 
         let bytes = resp.bytes().await?;
         Ok(bytes.to_vec())
+    }
+
+    /// Generic JSON request for the /recording/* control routes.
+    pub async fn recording_request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+        let mut req = match method {
+            "GET" => self.client.get(&url),
+            "POST" => self.client.post(&url),
+            "DELETE" => self.client.delete(&url),
+            other => {
+                return Err(HttpBridgeError::StatusError {
+                    status: 0,
+                    body: format!("unsupported method: {other}"),
+                })
+            }
+        };
+        if let Some(b) = body {
+            req = req.json(&b);
+        }
+
+        let resp = req.headers(self.headers()?).send().await?;
+
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn recording_start(&self) -> Result<Value, HttpBridgeError> {
+        self.recording_request("POST", "/recording/start", Some(json!({})))
+            .await
+    }
+
+    pub async fn recording_stop(&self) -> Result<Value, HttpBridgeError> {
+        self.recording_request("POST", "/recording/stop", Some(json!({})))
+            .await
+    }
+
+    pub async fn recording_export(&self) -> Result<Value, HttpBridgeError> {
+        self.recording_request("GET", "/recording/export", None)
+            .await
+    }
+
+    pub async fn recording_clear(&self) -> Result<Value, HttpBridgeError> {
+        self.recording_request("DELETE", "/recording", None).await
     }
 }

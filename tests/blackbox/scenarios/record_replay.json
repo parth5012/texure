@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "name": "record_replay",
+  "kind": "scenario",
+  "description": "Mutations execute cleanly while recording (mock simulation of a human-level trace loop)",
+  "steps": [
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 0, "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "type",
+      "args": { "node": 1, "text": "hello", "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "keypress",
+      "args": { "key": "ENTER" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_export",
+      "args": {}
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

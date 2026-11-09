@@ -63,6 +63,16 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | WS | BB-A5 | `/ws` push: `tree_changed {rev}`. WS flap tolerated; HTTP routes are the snapshot authority. The server reconnects (bridge is passive listener plus pusher). |
 | LAN only | BB-B2 | If phone and PC are on different LANs, connections simply fail; server-side hint tells the dev. Tailscale etc. = ROADMAP. |
 
+### 1.7 Workflow recording (map #6, ticket #23)
+
+| Behavior | Test ID | Spec |
+|---|---|---|
+| Session lifecycle | BB-B12 | `POST /recording/start` begins buffering and attaches the observer; `POST /recording/stop` ends it. Start is idempotent; stop while idle ⇒ `RECORDING_IDLE`. Auth required like every route (BB-B3). |
+| Passive capture | BB-B13 | Observer attaches to the app's own decorView and never consumes or alters gestures: with recording OFF there is zero interception; with recording ON the touch stream behaves exactly as without the observer (human wins law, behavior-spec 1.4; agent-injected synthetic events are excluded by marker deviceId). |
+| Event mapping | BB-B14 | Recorded actions: `tap` (down+up within threshold; node = smallest clickable/editable own-view containing the point, correlated via the tree extractor with index, id, text, cd, cls, rev), `type` (committed text on focused editable), `keypress` (BACK via dispatcher, ENTER via text commit), `pause` (gap ≥ 2s). All with `t` offsets from session start. |
+| Export & clear | BB-B15 | `GET /recording/export` returns `{recording, count, actions}` per the contract; `DELETE /recording` clears the buffer, export then shows count 0. |
+| Overlay control | BB-B12, BB-B13 | Debug overlay gains a Record/Stop toggle and a status indicator (recording state + recorded event count). Overlay button drives the same controller as the HTTP routes. |
+
 ## 2. MCP server (texure-server, Rust)
 
 ### 2.1 Config & startup [S]

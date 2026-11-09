@@ -75,6 +75,10 @@ impl Scenario {
             "wait_for",
             "mcp_handshake",
             "raw_mcp",
+            "recording_start",
+            "recording_stop",
+            "recording_export",
+            "recording_clear",
         ];
 
         for step in &self.steps {

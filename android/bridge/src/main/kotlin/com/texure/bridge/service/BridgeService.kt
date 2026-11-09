@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import com.texure.bridge.crash.BridgeCrashHandler
 import com.texure.bridge.model.BridgeError
 import com.texure.bridge.model.BridgeState
+import com.texure.bridge.recording.RecordingController
 import com.texure.bridge.server.BridgeServer
 import com.texure.bridge.storage.BridgeTokenManager
 import fi.iki.elonen.NanoHTTPD
@@ -128,6 +129,8 @@ class BridgeService : Service() {
     }
 
     fun isRunning(): Boolean = server != null
+
+    fun getRecordingController(): RecordingController? = server?.recordingController
 
     fun isPortConflict(): Boolean = isPortInUse
 

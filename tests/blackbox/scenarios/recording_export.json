@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "recording_export",
+  "kind": "scenario",
+  "description": "Recording buffer cleared by DELETE; export shape stays stable",
+  "steps": [
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_clear",
+      "args": {},
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_export",
+      "args": {}
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

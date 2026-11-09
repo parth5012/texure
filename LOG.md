@@ -149,3 +149,21 @@
   - Ticket #19 landed: crates/texure-server MCP stdio server (6 frozen tools, TOML config --config/TEXURE_CONFIG/env, lazy 3s dial, WS supervisor 1s/5s/15s pushing tree_changed into wait_for with 500ms HTTP poll fallback, single-flight daemon); blackbox --target mcp-real spawns the real binary against FakeBridge with temp-config isolation (NO_CONFIG via absent path, auth_reject via wrong token); workspace member added.
   - Gauntlet green: L0 texure-lint 0 findings + clippy clean; L1 26 unit tests; L2 mcp-real 15/15 (~2.1s), --target all 36 rows: 30 passed, 6 device-skipped, 0 failed. Evidence: tmp/evidence/19/.
   - Self-review (code-review Standards+Spec + OCR): fixed contract one-liner hint (CODE: msg; hint), verbose payload = bridge envelope verbatim + bridge_url/ws_connected/http_status-only-when-real, unknown-tool/bad-args -> JSON-RPC -32602 (no fabricated bridge codes), OFFLINE/BRIDGE_STOPPED split + 401/409/5xx fallback mapping, screenshot Content-Type PNG validation, malformed-TOML tracing::warn, lld-server.md config surface + deps. Parked findings quoted on ticket #19.
+
+## 2026-11-08 (session) — Wayfinder map 6 (#25), ticket #23 via wayfinder-ship
+- Status: Done (ticket #23). Branch wf/25-map6 (single-PR mode: 2 code-changing AFK tickets < 5).
+- Pre-flight: gh auth ok; OCR LLM backend DOWN (localhost:20128 refused, no API keys) => documented degraded mode: ocr delegate (rules/preview, no LLM) + CodeReviewer lane. Delegated subagent execution also unavailable (provider connection refused) => implemented in-session instead of dispatching `general` coder agents.
+- Commits: bc5e8a4 docs gate (contract /recording/* rows, behavior-spec 1.7 + BB-B12..BB-B15 mapping, DECISIONS entry — schema_version stays 1, additive); 9926c2b implementation.
+- Design notes: capture = Window.Callback wrapper (dispatchTouchEvent + dispatchKeyEvent + KeyEvent.Callback fallback) — the pass-through capture-view design was abandoned after discovery that nested re-entrant decorView dispatch corrupts ViewGroup touch-target state (NPE, had failing evidence). Recording routes exempt from single-flight lock (control-plane). NanoHTTPD keep-alive requires draining POST bodies or the next request line breaks ("HTTP verb {}POST unhandled").
+- VERIFY: L0 pass · L1 pass (27/27 bridge, 13 new) · L2 pass (mcp-fake 14/14) · L3 parked (no device) · G1 release leak check pass.
+- Lint found BB-R group naming invalid (docs-gate regex only accepts BB-[A-C]) — renumbered to BB-B12..15 rather than extending the lint surface.
+- OCR unused-found: SYNTHETIC_DEVICE_ID constant existed but was never stamped onto injections; stamped at craft time this session (completes behavior-spec 1.4 marker row).
+- Next in session: ticket #24 (CLI record/replay + codemode export, FakeBridge mocks, blackbox scenarios).
+
+## 2026-11-09 (session) — Wayfinder map 6 (#25), ticket #24 via wayfinder-ship
+- Status: Done (ticket #24). Same branch `wf/25-map6` (completes single PR).
+- Commits: b203c1c (recording.rs exporter+replay core, record/replay CLI, FakeBridge /recording mocks, DSL actions, BB-B12..B15 scenarios+TestDefs, lint allowed-actions) + one cosmetic amend.
+- TDD: red evidence tmp/evidence/red-run-24.txt (25 compile errors + fake 404 test). Replay verify-at-execute caught node-2-out-of-range in draft record_replay.json (fixture has 2 nodes) — fixed scenario, then 7/7 pass-rate 100%.
+- L2 notes: FakeBridge records mutations while recording as synthetic actions (deterministic replay source); real bridge excludes agent events (verified L1/L3 in #23). mcp-real skips recording tests with reason (HTTP-only routes).
+- VERIFY: L0 pass (texure-lint 0) · L1 pass (9/9 blackbox + 4/4 lint unit) · L2 pass (--target all 34/0/4-skip/6-device-skip; --target http 5/5) · L3 parked (no device) · CLI record/replay smoke pass.
+- Review: self-review (OCR backend down, documented degraded mode). Remaining: checkpoint PR.

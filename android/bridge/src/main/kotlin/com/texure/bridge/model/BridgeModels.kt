@@ -17,6 +17,7 @@ enum class BridgeError(val message: String, val hint: String, val httpStatus: In
     APP_NOT_FOREGROUND("mutation while backgrounded", "bring app forward explicitly (no auto-launch)", 400),
     SCREEN_OFF("display off", "wake + reopen app (human step)", 400),
     DEVICE_LOCKED("keyguard locked", "unlock device first", 400),
+    RECORDING_IDLE("/recording/stop with no active session", "start with POST /recording/start first", 400),
     HUMAN_STEERING("human touch mid-action", "re-plan signal: device_tree then continue", 409),
     BRIDGE_STOPPED("user stopped bridge mid-action", "restart service via overlay, reconnect", 503),
     PORT_IN_USE("bind conflict on fixed port", "free the occupier; service stays stopped", 500);
