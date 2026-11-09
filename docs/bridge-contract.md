@@ -76,6 +76,8 @@ No body. `{ "ok": true }`.
 
 Returns `image/png`. Query `scale`: `0.25|0.5|1.0`, **default `0.5`** (LLD E round 8; matches behavior-spec 1.5).
 
+Optional query `region=x,y,w,h` (map #36, ticket #30): crops the captured bitmap to that rectangle **before** compression. Coordinates are full-resolution pixels. The rectangle is clamped to the decorView bounds; a malformed value or `w`/`h` ≤ 0 returns HTTP 400 (`BAD_REQUEST`, informative message). `scale` is applied after the crop. Additive query params only; `schema_version` stays 1.
+
 ### GET /ws
 
 WebSocket. Bridge pushes `{ "type": "tree_changed", "rev": N }`. Extra event types later are additive; the route name does not change.
