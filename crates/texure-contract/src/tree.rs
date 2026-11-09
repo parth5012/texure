@@ -220,8 +220,7 @@ mod tests {
             "clickable": true,
             "editable": false
         });
-        let node: UiNode =
-            serde_json::from_value(json).expect("deserialize node with hash");
+        let node: UiNode = serde_json::from_value(json).expect("deserialize node with hash");
         assert_eq!(node.hash.as_deref(), Some("9f3ac21b04e5d678"));
         let out = serde_json::to_value(&node).unwrap();
         assert_eq!(out["hash"], "9f3ac21b04e5d678");
