@@ -72,6 +72,14 @@ Optional `hash` (map #36, #29): same verify-at-execute targeting and semantics a
 
 No body. `{ "ok": true }`.
 
+### POST /tag (dynamic view tagging, map #36, #31)
+
+```json
+{ "target": { "index": 2, "rev": 42 }, "tag": "my_custom_tag" }
+```
+
+Attaches `tag` to the view at `target.index` via `View.setTag(tag)`. Response `{ "ok": true }`. The tag surfaces as that node's `/ui-tree` `id` on the next extraction (existing `resolveNodeId` tag path) and survives in-session tree refreshes (the view object persists). `rev` guard matches `/tap`/`/type`: stale `rev` or out-of-range `index` ⇒ `NODE_OUTDATED` + re-fetch hint (no rev bump on refusal — nothing happened). Blank/oversized tag (max 256 chars) or a missing field ⇒ HTTP 400 `BAD_REQUEST`. A successful mutation bumps `rev` and broadcasts `tree_changed`. Since the tag becomes the node `id` (a `#29` hash input), the tagged node's `hash` rotates on tagging; descendants' hashes rotate too (their ancestor path carries the tag). Agents must re-fetch `/ui-tree` and re-target after tagging. Additive HTTP route only; the `tag` MCP tool is NOT added (6-tool freeze, G7); `schema_version` stays 1.
+
 ### GET /screenshot
 
 Returns `image/png`. Query `scale`: `0.25|0.5|1.0`, **default `0.5`** (LLD E round 8; matches behavior-spec 1.5).

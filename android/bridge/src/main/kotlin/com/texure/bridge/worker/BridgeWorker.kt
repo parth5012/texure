@@ -120,6 +120,56 @@ class BridgeWorker(
         }
     }
 
+    /**
+     * Dynamic view tagging (map #36, #31). Attaches [tag] to the view at
+     * [targetNodeIndex] via `View.setTag`. The rev guard matches /tap|/type;
+     * index must resolve against a fresh traversal or refuse NODE_OUTDATED.
+     * setTag runs on the main thread; the View object persists across tree
+     * refreshes, so the tag survives re-extraction and surfaces as the node
+     * `id` via resolveNodeId. That rotates the node's `hash` (id input) —
+     * a lawful identity change; rev bumps so agents re-fetch and re-target.
+     */
+    fun executeTag(targetNodeIndex: Int, tag: String, expectedRev: Long): WorkerResult<Unit> {
+        val future = executor.submit<WorkerResult<Unit>> {
+            if (expectedRev != treeExtractor.getRev()) {
+                return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
+            }
+
+            val tree = extractTreeOnMain()
+            if (targetNodeIndex !in tree.resolvedViews.indices) {
+                return@submit WorkerResult.Error(BridgeError.NODE_OUTDATED)
+            }
+
+            val targetView = tree.resolvedViews[targetNodeIndex]
+
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                targetView.setTag(tag)
+                treeExtractor.bumpRev()
+                return@submit WorkerResult.Success(Unit)
+            }
+
+            val latch = CountDownLatch(1)
+            mainHandler.post {
+                try {
+                    targetView.setTag(tag)
+                } finally {
+                    latch.countDown()
+                }
+            }
+            if (!latch.await(500, TimeUnit.MILLISECONDS)) {
+                return@submit WorkerResult.Error(BridgeError.INJECT_FAILED)
+            }
+            treeExtractor.bumpRev()
+            WorkerResult.Success(Unit)
+        }
+
+        return try {
+            future.get(2000, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {
+            WorkerResult.Error(BridgeError.INJECT_FAILED)
+        }
+    }
+
     fun executeBack(): WorkerResult<Unit> {
         val future = executor.submit<WorkerResult<Unit>> {
             val activity = activityProvider() ?: return@submit WorkerResult.Error(BridgeError.APP_NOT_FOREGROUND)
