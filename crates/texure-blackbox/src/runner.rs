@@ -301,11 +301,12 @@ async fn run_mcp_real_test(
     scenario: &Scenario,
     root_dir: &Path,
 ) -> Result<(), String> {
-    if scenario
-        .steps
-        .iter()
-        .any(|s| matches!(s.action.as_str(), "recording_start" | "recording_stop" | "recording_export" | "recording_clear"))
-    {
+    if scenario.steps.iter().any(|s| {
+        matches!(
+            s.action.as_str(),
+            "recording_start" | "recording_stop" | "recording_export" | "recording_clear"
+        )
+    }) {
         return Err(
             "SKIP: recording_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
                 .to_string(),
@@ -652,32 +653,28 @@ async fn run_http_fake_test(
             "recording_start" => match client.recording_start().await {
                 Ok(resp) => last_response = resp,
                 Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response =
-                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                 }
                 Err(e) => return Err(format!("recording_start failed: {e}")),
             },
             "recording_stop" => match client.recording_stop().await {
                 Ok(resp) => last_response = resp,
                 Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response =
-                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                 }
                 Err(e) => return Err(format!("recording_stop failed: {e}")),
             },
             "recording_export" => match client.recording_export().await {
                 Ok(resp) => last_response = resp,
                 Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response =
-                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                 }
                 Err(e) => return Err(format!("recording_export failed: {e}")),
             },
             "recording_clear" => match client.recording_clear().await {
                 Ok(resp) => last_response = resp,
                 Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response =
-                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                 }
                 Err(e) => return Err(format!("recording_clear failed: {e}")),
             },

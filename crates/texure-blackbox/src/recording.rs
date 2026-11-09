@@ -64,7 +64,10 @@ pub fn export_to_scenario(trace: &Value, name: &str) -> Result<Scenario, String>
                 }
             }
             "keypress" => {
-                let key = action.get("key").and_then(|v| v.as_str()).unwrap_or("ENTER");
+                let key = action
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("ENTER");
                 if key == "BACK" {
                     Step {
                         action: "back".to_string(),
@@ -173,7 +176,10 @@ pub fn export_to_codemode(trace: &Value, name: &str) -> String {
                 ));
             }
             "keypress" => {
-                let key = action.get("key").and_then(|v| v.as_str()).unwrap_or("ENTER");
+                let key = action
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("ENTER");
                 out.push_str(&format!(
                     "  // seq {seq} t={t}ms keypress {key}\n\
                      await mcp.callTool(\"keypress\", {{ \"key\": \"{key}\" }});\n"
@@ -334,9 +340,7 @@ async fn execute_step(step: &Step, client: &HttpBridgeClient) -> Result<(), Stri
                 .screenshot(scale)
                 .await
                 .map_err(|e| format!("screenshot failed: {e}"))?;
-            if bytes.len() < 8
-                || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
-            {
+            if bytes.len() < 8 || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] {
                 return Err("screenshot did not return PNG magic bytes".to_string());
             }
             Ok(())
@@ -412,7 +416,10 @@ mod tests {
         assert!(script.contains("callTool(\"tap\""), "{script}");
         assert!(script.contains("callTool(\"type\""), "{script}");
         // BACK keypress maps to the frozen keypress tool
-        assert!(script.contains("callTool(\"keypress\", { \"key\": \"BACK\" }"), "{script}");
+        assert!(
+            script.contains("callTool(\"keypress\", { \"key\": \"BACK\" }"),
+            "{script}"
+        );
     }
 
     #[tokio::test]
@@ -446,8 +453,7 @@ mod tests {
 
         assert_eq!(export["count"], 2);
 
-        let scenario =
-            export_to_scenario(&export, "recorded_demo").expect("scenario export");
+        let scenario = export_to_scenario(&export, "recorded_demo").expect("scenario export");
         scenario.validate().expect("valid scenario");
 
         // REPLAY: deterministic re-execution against a fresh FakeBridge.

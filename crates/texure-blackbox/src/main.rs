@@ -14,7 +14,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[derive(Parser, Debug)]
-#[command(name = "texure-blackbox", about = "Texure blackbox test runner + workflow record/replay")]
+#[command(
+    name = "texure-blackbox",
+    about = "Texure blackbox test runner + workflow record/replay"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -610,7 +613,10 @@ async fn run_replay(
     let scenario = match scenario::Scenario::load_from_file(scenario_path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("replay: failed to load scenario {}: {e}", scenario_path.display());
+            eprintln!(
+                "replay: failed to load scenario {}: {e}",
+                scenario_path.display()
+            );
             return 1;
         }
     };
@@ -618,22 +624,21 @@ async fn run_replay(
     let mut fake_server: Option<fake_bridge::FakeBridgeServer> = None;
     let client = match target {
         "mcp-fake" => {
-            let mut server = match fake_bridge::FakeBridgeServer::start(
-                fake_bridge::FakeBridgeConfig {
+            let mut server =
+                match fake_bridge::FakeBridgeServer::start(fake_bridge::FakeBridgeConfig {
                     scenario_name: "static_screen".to_string(),
                     root_dir: ".".to_string(),
                     port: 0,
                     token: "test-token".to_string(),
-                },
-            )
-            .await
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("replay: failed to start FakeBridge: {e}");
-                    return 1;
-                }
-            };
+                })
+                .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("replay: failed to start FakeBridge: {e}");
+                        return 1;
+                    }
+                };
             let base = format!("http://127.0.0.1:{}", server.addr.port());
             let _ = &mut server;
             fake_server = Some(server);
@@ -669,7 +674,12 @@ async fn run_replay(
     );
     for outcome in &result.outcomes {
         if !outcome.ok {
-            println!("  FAIL step {} ({}) : {}", outcome.index, outcome.action, outcome.reason.as_deref().unwrap_or(""));
+            println!(
+                "  FAIL step {} ({}) : {}",
+                outcome.index,
+                outcome.action,
+                outcome.reason.as_deref().unwrap_or("")
+            );
         }
     }
 
@@ -684,7 +694,8 @@ async fn run_replay(
     }
 
     if result.pass_rate < 1.0 {
-        let bundle = std::path::Path::new("tmp/evidence").join(format!("replay-{}", result.scenario));
+        let bundle =
+            std::path::Path::new("tmp/evidence").join(format!("replay-{}", result.scenario));
         let _ = fs::create_dir_all(&bundle);
         let _ = fs::write(
             bundle.join("replay-report.json"),

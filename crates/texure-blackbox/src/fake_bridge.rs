@@ -554,7 +554,10 @@ async fn route_request(
         ("POST", "/type") => {
             let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
             let req_node = body_json.get("node").and_then(|v| v.as_u64());
-            let req_text = body_json.get("text").and_then(|v| v.as_str()).map(String::from);
+            let req_text = body_json
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             if state.scenario_name == "stale_screen" {
                 let err = json!({
@@ -593,7 +596,14 @@ async fn route_request(
                 .get("key")
                 .and_then(|v| v.as_str())
                 .unwrap_or("ENTER");
-            capture_recording_action(state, "keypress", body_json.get("node").and_then(|v| v.as_u64()), None, Some(key)).await;
+            capture_recording_action(
+                state,
+                "keypress",
+                body_json.get("node").and_then(|v| v.as_u64()),
+                None,
+                Some(key),
+            )
+            .await;
             let resp = json!({ "ok": true });
             (
                 "200 OK",
@@ -850,7 +860,6 @@ mod tests {
 
         let client = reqwest::Client::new();
         let url = format!("http://127.0.0.1:{}", server.addr.port());
-        
 
         // Fresh server: export shape (BB-B15) + stop while idle (BB-B12)
         let export = client
