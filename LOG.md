@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-10 (session) — Wayfinder map 8 (#36) ticket #33 QR overlay
+- Branch wf/36-33-qr-overlay off wf/36-32-mdns 4ef4616 (stack leg 5/7). Implemented pure-Kotlin QR generator (versions 1-4, byte mode, ECC L) with Reed-Solomon over GF(256), plus "Show QR" toggle in BridgeOverlay rendering QR bitmap. Updated behavior-spec overlay row + ROADMAP.
+- TDD red: QrCodeTest (square matrix, finder patterns, deterministic, too-large null, version growth) captured red-run at tmp/evidence/33/red-run.txt (4 failures before impl).
+- VERIFY: L0 cargo run -p texure-lint 0 findings; cargo clippy 0; gradle lintDebug pass · L1 cargo test --workspace 12 passed; :bridge:testDebugUnitTest (QrCodeTest + existing) pass · L2 cargo run -p texure-blackbox --target mcp-fake 14/14 · G1 :sample:assembleRelease pass (0 bridge strings). L3 parked (no device).
+- EVIDENCE: tmp/evidence/33/red-run.txt. FLIPS: 5 Robolectric (QrCodeTest) red→green. NEXT: orchestrator self-review; #34/#35 remain.
+
 ## 2026-11-09 (session) — Close Map 5 (#22) + Wayfinder map 8 (#36) ship start
 - Issue #22 (Map 5 Gradle plugin) closed as completed: ticket #21 CLOSED, PR #95 MERGED 2026-11-08 (wf/22-gradle-plugin → main). Resolution comment posted.
 - Map 8 (#36) pre-flight: gh auth ok, git inside work tree ok (HEAD db3ced1 == origin/main). OCR gateway omniroute.service was inactive → started; OCR config url fixed localhost:20128 → 100.87.250.35:20128 (gateway binds Tailscale IP only); model gemini-3.8-flash-tiered lacks antigravity creds → switched to auto/best-coding (command-a-reasoning). `ocr llm test` passes.

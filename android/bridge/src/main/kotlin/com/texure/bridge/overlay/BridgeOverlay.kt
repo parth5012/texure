@@ -15,9 +15,12 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.graphics.Bitmap
 import com.texure.bridge.crash.BridgeCrashHandler
+import com.texure.bridge.qr.QrCode
 import com.texure.bridge.service.BridgeService
 import com.texure.bridge.storage.BridgeTokenManager
 import java.lang.ref.WeakReference
@@ -31,6 +34,8 @@ class BridgeOverlay(
     private var overlayContainer: LinearLayout? = null
     private var infoText: TextView? = null
     private var crashText: TextView? = null
+    private var qrImageView: ImageView? = null
+    private var showQr = false
     private var bridgeService: BridgeService? = null
     private var isBound = false
 
@@ -154,7 +159,34 @@ class BridgeOverlay(
         }
         buttonBar.addView(recordBtn)
 
+        val qrBtn = Button(act).apply {
+            text = "Show QR"
+            textSize = 11f
+            setOnClickListener {
+                showQr = !showQr
+                if (showQr) {
+                    text = "Hide QR"
+                    qrImageView?.visibility = View.VISIBLE
+                    updateQr()
+                } else {
+                    text = "Show QR"
+                    qrImageView?.visibility = View.GONE
+                }
+            }
+        }
+        buttonBar.addView(qrBtn)
+
         container.addView(buttonBar)
+
+        qrImageView = ImageView(act).apply {
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                512
+            )
+        }
+        container.addView(qrImageView)
+
         decorView.addView(container)
         overlayContainer = container
 
@@ -205,6 +237,9 @@ class BridgeOverlay(
         }
         infoText?.text = statusText
 
+        // Refresh QR if currently shown (IP/token may have changed)
+        if (showQr) updateQr()
+
         // Check for latest crash (Ticket #4)
         val lastCrash = crashHandler.getLastCrash()
         if (lastCrash != null) {
@@ -214,6 +249,18 @@ class BridgeOverlay(
         } else {
             crashText?.visibility = View.GONE
         }
+    }
+
+    private fun updateQr() {
+        val ip = bridgeService?.getLocalIpAddress() ?: "127.0.0.1"
+        val token = tokenManager.getToken()
+        val payload = org.json.JSONObject().apply {
+            put("url", "http://$ip:8765")
+            put("token", token)
+        }.toString()
+        val matrix = QrCode.encode(payload) ?: return
+        val bmp = QrCode.createBitmap(matrix, 512)
+        qrImageView?.setImageBitmap(bmp)
     }
 
     /**

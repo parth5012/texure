@@ -14,7 +14,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | First boot | BB-B3, BB-B11 | Bridge generates auth token, stores it in app-private storage (app data of the debug applicationId). Token: stable across reboots and rebuilds. Rotation only via overlay "rotate" button [S]. |
 | Boot with existing token | BB-B3 | Reuses stored token. Dev pairs ONCE per install. |
 | Foreground service | BB-B2, BB-B5 | Starts with active client; keeps process alive while agent session may return. MIUI checklist (battery No restrictions + autostart) is shown in the overlay, and non-blocking: bridge warns, does not refuse if unset. |
-| Overlay | BB-B11 | Debug-only, small, shows URL + token + active state (@IDLE/@ACTIVE/@HUMAN). Includes a rotate-token button. QR deferred (ROADMAP). |
+| Overlay | BB-B11 | Debug-only, small, shows URL + token + active state (@IDLE/@ACTIVE/@HUMAN). Includes a rotate-token button. Includes a "Show QR" toggle rendering a QR encoding URL + token (map #36, #33). |
 | Shutdown | BB-B9 | Service stops when: overlay stop, or 10 min with zero clients. WS + HTTP ports close, screen overlay turns off. User stop mid-action = hard teardown: sockets close now, in-flight agent job aborted at the next step boundary with `BRIDGE_STOPPED` (conn-reset) [LLD A round 7]. Uninstall/force-stop = process death, zero code. |
 | Bind conflict | BB-B1, BB-B2 | Fixed port occupied at start: service stops immediately; overlay + notification surface `PORT_IN_USE` + occupier hint. Agents see a connection failure; no fallback port (docs/lld-bridge.md §6) [LLD A round 7]. |
 
