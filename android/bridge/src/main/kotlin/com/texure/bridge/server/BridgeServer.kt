@@ -103,6 +103,7 @@ class BridgeServer(
                 method == Method.POST && uri == "/type" -> handlePostType(session)
                 method == Method.POST && uri == "/keypress" -> handlePostKeypress(session)
                 method == Method.POST && uri == "/back" -> handlePostBack()
+                method == Method.POST && uri == "/tag" -> handlePostTag(session)
                 method == Method.GET && uri == "/screenshot" -> handleGetScreenshot(session)
                 method == Method.GET && uri == "/last-crash" -> handleGetLastCrash()
                 else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
@@ -327,6 +328,48 @@ class BridgeServer(
             }
         } finally {
             recordingController.endAgentMutation()
+        }
+    }
+
+    /** Dynamic view tagging (map #36, #31): POST /tag {target:{index,rev}, tag}. */
+    private fun handlePostTag(session: IHTTPSession): Response {
+        val refusal = checkDeviceReadiness(mutating = true)
+        if (refusal != null) return refusal
+
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val target = if (body.has("target") && body.opt("target") is JSONObject) {
+            body.getJSONObject("target")
+        } else {
+            return badRequest("Missing target parameter")
+        }
+        if (!target.has("index")) return badRequest("Missing target index parameter")
+        if (!target.has("rev")) return badRequest("Missing rev parameter")
+        val rev = target.optLong("rev", -1L)
+        if (rev < 0) return badRequest("Missing rev parameter")
+        val targetIndex = target.optInt("index", -1)
+        // Note: negative indices fall through to the worker, which refuses
+        // them NODE_OUTDATED like /tap (out-of-range), not BAD_REQUEST.
+
+        val tag = body.optString("tag", "")
+        if (tag.isBlank()) return badRequest("Invalid tag: must not be blank")
+        if (tag.length > 256) return badRequest("Invalid tag: must be at most 256 characters")
+
+        currentState.set(BridgeState.ACTIVE)
+        return try {
+            when (val result = worker.executeTag(targetIndex, tag, rev)) {
+                is WorkerResult.Success -> {
+                    currentState.set(BridgeState.IDLE)
+                    broadcastTreeChanged(treeExtractor.getRev())
+                    jsonResponse(Response.Status.OK, JSONObject().put("ok", true))
+                }
+                is WorkerResult.Error -> {
+                    currentState.set(BridgeState.IDLE)
+                    jsonResponse(Response.Status.lookup(result.bridgeError.httpStatus) ?: Response.Status.BAD_REQUEST, result.bridgeError.toJson())
+                }
+            }
+        } catch (_: Exception) {
+            currentState.set(BridgeState.IDLE)
+            badRequest("Invalid tag request")
         }
     }
 

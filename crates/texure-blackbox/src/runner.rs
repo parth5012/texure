@@ -492,6 +492,17 @@ fn resolve_step_args(
             resolved["rev"] = value;
         }
     }
+    if let Some(hash_str) = args.get("hash").and_then(|h| h.as_str()) {
+        if hash_str.starts_with('$') {
+            let value = resolve_variable(hash_str, context)
+                .map_err(|e| format!("Variable resolution error: {e}"))?;
+            if let Some(s) = value.as_str() {
+                resolved["hash"] = serde_json::json!(s);
+            } else {
+                resolved["hash"] = value;
+            }
+        }
+    }
     Ok(resolved)
 }
 
@@ -556,7 +567,16 @@ async fn run_http_fake_test(
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
 
-                match client.tap(node, rev).await {
+                let hash = if let Some(h) = step.args.get("hash").and_then(|h| h.as_str()) {
+                    if h.starts_with('$') {
+                        resolve_variable(h, &context).ok().and_then(|v| v.as_str().map(String::from))
+                    } else {
+                        Some(h.to_string())
+                    }
+                } else {
+                    None
+                };
+                match client.tap(node, rev, hash.as_deref()).await {
                     Ok(resp) => {
                         last_response = resp;
                     }
@@ -584,7 +604,16 @@ async fn run_http_fake_test(
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
 
-                match client.type_text(node, text, rev).await {
+                let hash = if let Some(h) = step.args.get("hash").and_then(|h| h.as_str()) {
+                    if h.starts_with('$') {
+                        resolve_variable(h, &context).ok().and_then(|v| v.as_str().map(String::from))
+                    } else {
+                        Some(h.to_string())
+                    }
+                } else {
+                    None
+                };
+                match client.type_text(node, text, rev, hash.as_deref()).await {
                     Ok(resp) => {
                         last_response = resp;
                     }
@@ -625,13 +654,44 @@ async fn run_http_fake_test(
                 }
                 Err(e) => return Err(format!("back failed: {e}")),
             },
+            "tag" => {
+                let index = step.args.get("index").and_then(|n| n.as_u64()).unwrap_or(0);
+                let tag = step.args.get("tag").and_then(|t| t.as_str()).unwrap_or("");
+                let rev = if let Some(rev_str) = step.args.get("rev").and_then(|r| r.as_str()) {
+                    if rev_str.starts_with('$') {
+                        resolve_variable(rev_str, &context)
+                            .map_err(|e| format!("Variable resolution error: {e}"))?
+                            .as_u64()
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    }
+                } else {
+                    step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
+                };
+                match client.tag(index, rev, tag).await {
+                    Ok(resp) => {
+                        last_response = resp;
+                    }
+                    Err(HttpBridgeError::StatusError { body, .. }) => {
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        last_response = err_val;
+                    }
+                    Err(e) => return Err(format!("tag failed: {e}")),
+                }
+            }
             "screenshot" => {
                 let scale = step
                     .args
                     .get("scale")
                     .and_then(|s| s.as_f64())
                     .map(|s| s as f32);
-                match client.screenshot(scale).await {
+                let region = step
+                    .args
+                    .get("region")
+                    .and_then(|r| r.as_str());
+                match client.screenshot(scale, region).await {
                     Ok(bytes) => {
                         if bytes.len() < 8
                             || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]

@@ -34,6 +34,7 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
 
     let allowed_actions = [
         "device_tree",
+        "tag",
         "tap",
         "type",
         "keypress",

@@ -13,6 +13,15 @@ Single source of truth for the transport seam. The Bridge SDK implements this; t
 - **WS channel:** `ws://<phone-ip>:<port>/ws` pushes `{ "type": "tree_changed", "rev": N }` events. It feeds `wait_for` reactive waits; HTTP routes stay authoritative for snapshots.
 - Node ids are stable within one screen interaction; a tree refresh may renumber (rev bump signals it).
 
+### mDNS LAN discovery (map #36, ticket #32)
+
+Additive discovery only; no route, tool, error code, or `schema_version` change.
+
+- **Advertisement (bridge):** on successful server start the bridge registers an mDNS/DNS-SD service via platform `NsdManager`: service type `_texure._tcp.local.`, port `8765` (the fixed bridge port), service name `Texure-<appId>`, TXT records `version=0.1.0` and `appId=<debugApplicationId>`. Registration is unregistered cleanly on `stopBridge()`/`onDestroy()`. If `NsdManager` is unavailable or registration throws, the bridge logs and continues without discovery (static-IP pairing unaffected).
+- **Resolution (Rust MCP server):** when the resolved config `url` is exactly `"auto"`, the server sends a DNS-SD PTR query for `_texure._tcp.local.` to `224.0.0.251:5353`, listens (~2 s), and parses SRV (host/port) + A + TXT (`version`/`appId`) using only existing dependencies (`tokio` UDP; no new Cargo dependency, per the map zero-external-dependency decision — the ticket's `mdns-sd` wording is intentionally not adopted). On a match the resolved URL becomes `http://<host>:8765` and proceeds normally. On no answer within the timeout (blocked multicast / AP isolation), the server falls back to existing error semantics: tool calls return `OFFLINE` — no new error code. An omitted `url` keeps its current semantics (`NO_CONFIG`); only the explicit `"auto"` value triggers discovery (flipping omitted→auto would break the `NO_CONFIG` blackbox expectations).
+- **Multi-device profiles (map #36, #34):** `config.toml` supports `[profiles.<name>]` tables with `url`/`token`/`timeout_secs` plus top-level `active_profile`. Active selection precedence: `--profile <name>` CLI flag → `TEXURE_PROFILE` env var → `active_profile` in file → top-level keys. A named profile that does not exist is a hard error (`NO_CONFIG` with a "profile '<name>' not found" message). No new error code; `schema_version` stays 1.
+- Blackbox mapping is documented as intended (BB-D intent) and owned by ticket #35; no scenario is added by this ticket.
+
 ## Routes
 
 ### GET /ui-tree
@@ -71,6 +80,14 @@ Optional `hash` (map #36, #29): same verify-at-execute targeting and semantics a
 ### POST /back
 
 No body. `{ "ok": true }`.
+
+### POST /tag (dynamic view tagging, map #36, #31)
+
+```json
+{ "target": { "index": 2, "rev": 42 }, "tag": "my_custom_tag" }
+```
+
+Attaches `tag` to the view at `target.index` via `View.setTag(tag)`. Response `{ "ok": true }`. The tag surfaces as that node's `/ui-tree` `id` on the next extraction (existing `resolveNodeId` tag path) and survives in-session tree refreshes (the view object persists). `rev` guard matches `/tap`/`/type`: stale `rev` or out-of-range `index` ⇒ `NODE_OUTDATED` + re-fetch hint (no rev bump on refusal — nothing happened). Blank/oversized tag (max 256 chars) or a missing field ⇒ HTTP 400 `BAD_REQUEST`. A successful mutation bumps `rev` and broadcasts `tree_changed`. Since the tag becomes the node `id` (a `#29` hash input), the tagged node's `hash` rotates on tagging; descendants' hashes rotate too (their ancestor path carries the tag). Agents must re-fetch `/ui-tree` and re-target after tagging. Additive HTTP route only; the `tag` MCP tool is NOT added (6-tool freeze, G7); `schema_version` stays 1.
 
 ### GET /screenshot
 

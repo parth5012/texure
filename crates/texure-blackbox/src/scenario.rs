@@ -67,6 +67,7 @@ impl Scenario {
 
         let allowed_actions = [
             "device_tree",
+            "tag",
             "tap",
             "type",
             "keypress",

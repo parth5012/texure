@@ -1,5 +1,5 @@
 use crate::bridge_client::BridgeClient;
-use crate::config::load_resolved_config;
+use crate::config::load_resolved_config_async;
 use crate::wait_for::execute_wait_for;
 use crate::ws_supervisor::WsSupervisor;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -21,13 +21,15 @@ use tracing::{debug, error, info};
 /// Stdio MCP server state.
 pub struct McpServer {
     pub custom_config_path: Option<PathBuf>,
+    pub profile_override: Option<String>,
     bridge: Arc<Mutex<Option<(BridgeClient, WsSupervisor)>>>,
 }
 
 impl McpServer {
-    pub fn new(custom_config_path: Option<PathBuf>) -> Self {
+    pub fn new(custom_config_path: Option<PathBuf>, profile_override: Option<String>) -> Self {
         Self {
             custom_config_path,
+            profile_override,
             bridge: Arc::new(Mutex::new(None)),
         }
     }
@@ -367,8 +369,9 @@ impl McpServer {
             return Ok((client.clone(), ws.clone()));
         }
 
-        let resolved =
-            load_resolved_config(self.custom_config_path.as_deref()).map_err(|c| (c, None))?;
+        let resolved = load_resolved_config_async(self.custom_config_path.as_deref(), self.profile_override.as_deref())
+            .await
+            .map_err(|(c, msg)| (c, msg))?;
         let client = BridgeClient::new(resolved.clone()).map_err(|e| {
             error!("Bridge client creation failed: {}", e.message);
             (e.code, Some(e.message))
@@ -437,7 +440,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_initialize_and_tools_list() {
-        let server = McpServer::new(None);
+        let server = McpServer::new(None, None);
 
         let init_resp = server
             .handle_request(Some(Value::from(1)), "initialize", None)
@@ -482,7 +485,7 @@ mod tests {
         std::env::remove_var("TEXURE_URL");
         std::env::remove_var("TEXURE_TOKEN");
 
-        let server = McpServer::new(Some(PathBuf::from("/nonexistent/texure_config.toml")));
+        let server = McpServer::new(Some(PathBuf::from("/nonexistent/texure_config.toml")), None);
         let call_params = serde_json::json!({
             "name": "device_tree",
             "arguments": {}

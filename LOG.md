@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-10 (session) — Wayfinder map 8 (#36) ticket #33 QR overlay
+- Branch wf/36-33-qr-overlay off wf/36-32-mdns 4ef4616 (stack leg 5/7). Implemented pure-Kotlin QR generator (versions 1-4, byte mode, ECC L) with Reed-Solomon over GF(256), plus "Show QR" toggle in BridgeOverlay rendering QR bitmap. Updated behavior-spec overlay row + ROADMAP.
+- TDD red: QrCodeTest (square matrix, finder patterns, deterministic, too-large null, version growth) captured red-run at tmp/evidence/33/red-run.txt (4 failures before impl).
+- VERIFY: L0 cargo run -p texure-lint 0 findings; cargo clippy 0; gradle lintDebug pass · L1 cargo test --workspace 12 passed; :bridge:testDebugUnitTest (QrCodeTest + existing) pass · L2 cargo run -p texure-blackbox --target mcp-fake 14/14 · G1 :sample:assembleRelease pass (0 bridge strings). L3 parked (no device).
+- EVIDENCE: tmp/evidence/33/red-run.txt. FLIPS: 5 Robolectric (QrCodeTest) red→green. NEXT: orchestrator self-review; #34/#35 remain.
+
 ## 2026-11-09 (session) — Close Map 5 (#22) + Wayfinder map 8 (#36) ship start
 - Issue #22 (Map 5 Gradle plugin) closed as completed: ticket #21 CLOSED, PR #95 MERGED 2026-11-08 (wf/22-gradle-plugin → main). Resolution comment posted.
 - Map 8 (#36) pre-flight: gh auth ok, git inside work tree ok (HEAD db3ced1 == origin/main). OCR gateway omniroute.service was inactive → started; OCR config url fixed localhost:20128 → 100.87.250.35:20128 (gateway binds Tailscale IP only); model gemini-3.8-flash-tiered lacks antigravity creds → switched to auto/best-coding (command-a-reasoning). `ocr llm test` passes.
@@ -7,6 +13,9 @@
 - Stack branches: wf/36-29-semantic-hashes → wf/36-30-screenshot-region → wf/36-31-post-tag → wf/36-32-mdns → wf/36-33-qr-overlay → wf/36-34-multidevice-profiles → wf/36-35-blackbox-map8. No Rust/Android best-practice skill installed for this layer — proceeded with layer docs; gap noted per AGENTS.md.
 - Ticket #29 (semantic hashes) implemented on wf/36-29-semantic-hashes (base origin/main db3ced1). FNV-1a 64 hex over ancestor path/id/text/cls; UiNode.hash additive nullable (schema 1); /tap|/type hash-or-index verify rev→index-on-hash→hash-resolve→NODE_OUTDATED; subtree ancestry preserved (ancestorPathTo). Self-review 2 iterations: B1 DECISIONS gate satisfied, B2 subtree resolve fixed + subtree-invariance test added (after fixing tag-ordering test bug + direct-child prefix edge). OCR 3 findings parked (perf/map suggestion, docs already satisfied, class-fallback collision tradeoff). VERIFY: L0 lint 0, clippy 0, gradle lint pass · L1 cargo 39 (22 contract) + bridge 39 (6 SemanticHash incl subtree, 6 HashTargeting) · L2 mcp-fake 14/14 · G1 release 0 bridge strings · L3 parked (no device). EVIDENCE: tmp/evidence/29/red-run.txt. FLIPS: 7 Rust + 11 Robolectric red→green.
 - Status: Map 5 Done. Map 8 Phase 1 (HITL) none — Phase 2 AFK: #29 Done (PR filed, babysit), #30–#34 frontier, #35 blocked by #29/#30/#31 (now unblocked for #29 leg only — still blocked by #30/#31). NEXT: file stacked PR for #29 → babysit → branch #30.
+- Ticket #30 (screenshot region) done on wf/36-30-screenshot-region (base wf/36-29). Crop-then-scale, clamp, 400 on malformed, recycle. Self-review code-clean iter1; OCR LLM failed (gateway timeout) → delegate preview (degraded mode, documented). VERIFY: L0 lint 0 · L1 cargo 39 + BridgeServerTest 13 · L2 mcp-fake 14/14 · G1 0 strings · L3 parked. EVIDENCE: tmp/evidence/30/. Issues #29/#30 closed, map #36 Decisions updated (2/7).
+- Merge (stack 1-2/7): PR #97 (Stable semantic node hashes) + PR #98 (Partial-region screenshot) rebased bottom-up, merged into main (2821142). Branches deleted. Map #36 briefly closed per user (partial 2/7 note), then reopened per user — tickets #31–#35 remain open.
+- Status: Map 8 Phase 2 in progress (2/7 merged). NEXT: ticket #31 Dynamic view tagging (POST /tag) on branch wf/36-31-post-tag off origin/main; then #32/#33/#34/#35 in topo order.
 
 ## 2026-11-07 (Wayfinder map 5 (#22) — Gradle plugin ticket #21, single-PR mode)
 - branch `wf/22-gradle-plugin` off origin/main (b35619a); OCR note: local OCR LLM gateway (localhost:20128) unreachable, so the OCR lane ran in delegate mode (`ocr delegate preview/rule` — no LLM), findings applied by host agent; CodeRabbit/parthpr still requested on the PR.

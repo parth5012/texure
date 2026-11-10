@@ -21,7 +21,7 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
 - **Trace viewer.** Evidence bundles evolve into a Playwright-style HTML timeline of steps + screenshots + trees.
 - **Regression tracking.** Deterministic C-group scenario runs per build, results stored (JSONL/sqlite keyed by versionName + build hash), HTML trend report; failures keep evidence bundles. A "no new concept" feature: scenario runner + a store.
 - **Gradle plugin hardening.** Release-leak guardrails (build fail, not warn), both Groovy and Kotlin-DSL module shapes, pairing token generation.
-- **QR pairing.** In-app debug overlay renders QR encoding URL + token; MCP server camera-side is out of scope, so QR is for phone-to-phone or local viewer use.
+- **QR pairing.** In-app debug overlay renders QR encoding URL + token (map #36, #33); MCP server camera-side is out of scope, so QR is for phone-to-phone or local viewer use.
 - **Stable node ids** (beyond rev + index): semantic hash identity so agent memory of a node survives refreshes.
 - **Screenshot scale presets + partial-region capture** to cut vision tokens.
 - **`set_tag` route.** Dev can tag views from agent feedback, without rebuilding.

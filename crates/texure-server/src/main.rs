@@ -1,5 +1,6 @@
 pub mod bridge_client;
 pub mod config;
+pub mod mdns;
 pub mod server;
 pub mod wait_for;
 pub mod ws_supervisor;
@@ -31,6 +32,10 @@ struct Args {
     /// Optional path to custom configuration file
     #[arg(long)]
     config: Option<PathBuf>,
+
+    /// Optional device profile name to activate (overrides active_profile / TEXURE_PROFILE)
+    #[arg(long)]
+    profile: Option<String>,
 }
 
 #[tokio::main]
@@ -44,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .init();
 
     let args = Args::parse();
-    let server = McpServer::new(args.config);
+    let server = McpServer::new(args.config, args.profile);
 
     server.run_stdio().await
 }

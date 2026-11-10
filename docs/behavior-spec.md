@@ -14,7 +14,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | First boot | BB-B3, BB-B11 | Bridge generates auth token, stores it in app-private storage (app data of the debug applicationId). Token: stable across reboots and rebuilds. Rotation only via overlay "rotate" button [S]. |
 | Boot with existing token | BB-B3 | Reuses stored token. Dev pairs ONCE per install. |
 | Foreground service | BB-B2, BB-B5 | Starts with active client; keeps process alive while agent session may return. MIUI checklist (battery No restrictions + autostart) is shown in the overlay, and non-blocking: bridge warns, does not refuse if unset. |
-| Overlay | BB-B11 | Debug-only, small, shows URL + token + active state (@IDLE/@ACTIVE/@HUMAN). Includes a rotate-token button. QR deferred (ROADMAP). |
+| Overlay | BB-B11 | Debug-only, small, shows URL + token + active state (@IDLE/@ACTIVE/@HUMAN). Includes a rotate-token button. Includes a "Show QR" toggle rendering a QR encoding URL + token (map #36, #33). |
 | Shutdown | BB-B9 | Service stops when: overlay stop, or 10 min with zero clients. WS + HTTP ports close, screen overlay turns off. User stop mid-action = hard teardown: sockets close now, in-flight agent job aborted at the next step boundary with `BRIDGE_STOPPED` (conn-reset) [LLD A round 7]. Uninstall/force-stop = process death, zero code. |
 | Bind conflict | BB-B1, BB-B2 | Fixed port occupied at start: service stops immediately; overlay + notification surface `PORT_IN_USE` + occupier hint. Agents see a connection failure; no fallback port (docs/lld-bridge.md §6) [LLD A round 7]. |
 
@@ -34,6 +34,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Node filter [S] | BB-A1, BB-A6 | "Interesting" only nodes: `clickable`, `editable`, `scrollable`, non-empty `text`/`contentDescription`, containers capable of holding interesting descendants. Depth cap default 12 (bump-to param). Boring intermediates are dropped. |
 | Node identity | BB-A1 | `test tag > view resource id > text > class+index` fallback chain. Weak RN ids expected; spike 1 verifies live whether they are usable (else RN adapter graduates early). Each `/ui-tree` node additionally carries `hash`: FNV-1a 64-bit hex over (ancestor path, stable tag/resource id, text snippet, class name), additive nullable under `schema_version` 1 (map #36, #29). Stable across rev bumps and non-structural updates (other-node text tweaks, identical re-extractions); changes on the node's own identity change (id/text/class/ancestry). |
 | Rev | BB-A1, BB-A5 | Monotonic per tree mutation, backgrounding, OR human touch. Bumped rev = broadcast on `/ws` (`tree_changed {rev}`). |
+| Dynamic tag (map #36, #31) | BB-A7 (intended; scenario owned by #35) | `POST /tag` attaches a custom tag to an own-window view (via `View.setTag`, so the tag survives in-session tree refreshes because the view object persists). The tag surfaces as the node's `/ui-tree` `id` (the existing `resolveNodeId` tag path), enabling targeting by tag text without an app rebuild — `wait_for` `tag` and `?subtree=<id>` find it. The tag IS the id, so the node's `hash` rotates on tagging (identity change per the #29 rule); a successful tag mutation bumps `rev` and broadcasts `tree_changed`. Targeting follows the `/tap` rev guard: stale `rev` or out-of-range `index` ⇒ `NODE_OUTDATED` + re-fetch hint; blank/oversized tag or missing field ⇒ HTTP 400 `BAD_REQUEST`. NOTE: tagging overwrites the view's existing `tag` slot (last writer wins); the bridge does not persist tags across process death. |
 
 ### 1.4 Mutating actions (`/tap`, `/type`, `/keypress`, `/back`)
 
@@ -63,6 +64,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Auth | BB-B3 | `Authorization: Bearer <token>` on every route. Mismatch: `AUTH_FAILED`. |
 | WS | BB-A5 | `/ws` push: `tree_changed {rev}`. WS flap tolerated; HTTP routes are the snapshot authority. The server reconnects (bridge is passive listener plus pusher). |
 | LAN only | BB-B2 | If phone and PC are on different LANs, connections simply fail; server-side hint tells the dev. Tailscale etc. = ROADMAP. |
+| mDNS discovery (map #36, #32) | BB-B2, BB-B1 | Additive LAN discovery (BB-D intent; scenario owned by #35). Bridge advertises `_texure._tcp.local.` port 8765 with TXT `version=0.1.0` + `appId=<debugApplicationId>` via platform `NsdManager`, unregistered on shutdown; registration failure is logged and non-fatal. Server with resolved `url="auto"` resolves it to `http://<discovered-host>:8765` (hand-rolled DNS-SD PTR query over existing `tokio` UDP, no new dependency); no answer in ~2 s (multicast blocked / AP isolation) ⇒ existing `OFFLINE` semantics, no new error code. Omitted `url` stays `NO_CONFIG`. `schema_version` stays 1. |
 
 ### 1.7 Workflow recording (map #6, ticket #23)
 
@@ -84,6 +86,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Startup | BB-B1, BB-B2 | Server process starts for the MCP host regardless of device health. It does NOT fail fast on missing device. First connection attempt is lazy on first tool call. |
 | Missing config | BB-B1 | Any tool call responds with a `NO_CONFIG` error with exact fix hint (create file / set env). |
 | Device unreachable | BB-B2 | Tool call responds with `OFFLINE` + hint (same LAN? app running? fg service alive?). Reconnect with 1s-5s-15s backoff on WS. |
+| Config `url="auto"` discovery (map #36, #32) | BB-B1, BB-B2 | Resolved `url` exactly `"auto"` triggers mDNS discovery (see §1.6 row); success rewrites the URL to the discovered bridge, timeout ⇒ `OFFLINE`. Omitted `url` is unchanged (`NO_CONFIG`). |
 
 ### 2.2 Tools (6, frozen)
 
