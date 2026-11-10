@@ -64,6 +64,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Auth | BB-B3 | `Authorization: Bearer <token>` on every route. Mismatch: `AUTH_FAILED`. |
 | WS | BB-A5 | `/ws` push: `tree_changed {rev}`. WS flap tolerated; HTTP routes are the snapshot authority. The server reconnects (bridge is passive listener plus pusher). |
 | LAN only | BB-B2 | If phone and PC are on different LANs, connections simply fail; server-side hint tells the dev. Tailscale etc. = ROADMAP. |
+| mDNS discovery (map #36, #32) | BB-B2, BB-B1 | Additive LAN discovery (BB-D intent; scenario owned by #35). Bridge advertises `_texure._tcp.local.` port 8765 with TXT `version=0.1.0` + `appId=<debugApplicationId>` via platform `NsdManager`, unregistered on shutdown; registration failure is logged and non-fatal. Server with resolved `url="auto"` resolves it to `http://<discovered-host>:8765` (hand-rolled DNS-SD PTR query over existing `tokio` UDP, no new dependency); no answer in ~2 s (multicast blocked / AP isolation) ⇒ existing `OFFLINE` semantics, no new error code. Omitted `url` stays `NO_CONFIG`. `schema_version` stays 1. |
 
 ### 1.7 Workflow recording (map #6, ticket #23)
 
@@ -85,6 +86,7 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Startup | BB-B1, BB-B2 | Server process starts for the MCP host regardless of device health. It does NOT fail fast on missing device. First connection attempt is lazy on first tool call. |
 | Missing config | BB-B1 | Any tool call responds with a `NO_CONFIG` error with exact fix hint (create file / set env). |
 | Device unreachable | BB-B2 | Tool call responds with `OFFLINE` + hint (same LAN? app running? fg service alive?). Reconnect with 1s-5s-15s backoff on WS. |
+| Config `url="auto"` discovery (map #36, #32) | BB-B1, BB-B2 | Resolved `url` exactly `"auto"` triggers mDNS discovery (see §1.6 row); success rewrites the URL to the discovered bridge, timeout ⇒ `OFFLINE`. Omitted `url` is unchanged (`NO_CONFIG`). |
 
 ### 2.2 Tools (6, frozen)
 

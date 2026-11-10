@@ -1,5 +1,5 @@
 use crate::bridge_client::BridgeClient;
-use crate::config::load_resolved_config;
+use crate::config::load_resolved_config_async;
 use crate::wait_for::execute_wait_for;
 use crate::ws_supervisor::WsSupervisor;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -367,8 +367,9 @@ impl McpServer {
             return Ok((client.clone(), ws.clone()));
         }
 
-        let resolved =
-            load_resolved_config(self.custom_config_path.as_deref()).map_err(|c| (c, None))?;
+        let resolved = load_resolved_config_async(self.custom_config_path.as_deref())
+            .await
+            .map_err(|c| (c, None))?;
         let client = BridgeClient::new(resolved.clone()).map_err(|e| {
             error!("Bridge client creation failed: {}", e.message);
             (e.code, Some(e.message))

@@ -31,6 +31,7 @@ class BridgeService : Service() {
 
     private var currentPort = DEFAULT_PORT
     private var isPortInUse = false
+    private var mdnsRegistration: MdnsAdvertiser.Registration? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): BridgeService = this@BridgeService
@@ -78,6 +79,7 @@ class BridgeService : Service() {
             newServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
             server = newServer
             isPortInUse = false
+            registerMdns()
             updateNotification("Bridge running on port $currentPort (@IDLE)")
             android.util.Log.i("TexureBridge", "Pairing token: ${tm.getToken()} (port $currentPort)")
         } catch (e: IOException) {
@@ -91,8 +93,28 @@ class BridgeService : Service() {
     }
 
     fun stopBridge() {
+        unregisterMdns()
         server?.stop()
         server = null
+    }
+
+    // mDNS LAN discovery (map #36, #32): advertise _texure._tcp.local. after
+    // the HTTP server is up; cleanly unregister on shutdown. Guarded so a
+    // missing NsdManager (Robolectric, some OEMs) never stops the bridge.
+    private fun registerMdns() {
+        if (mdnsRegistration != null) return
+        mdnsRegistration = runCatching {
+            MdnsAdvertiser.register(this, packageName, currentPort)
+        }.onFailure {
+            android.util.Log.w("TexureBridge", "mDNS registration error: ${it.message}")
+        }.getOrNull()
+    }
+
+    private fun unregisterMdns() {
+        runCatching {
+            MdnsAdvertiser.unregister(this, mdnsRegistration)
+        }
+        mdnsRegistration = null
     }
 
     fun rotateToken(): String {

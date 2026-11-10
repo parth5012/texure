@@ -1,5 +1,6 @@
 pub mod bridge_client;
 pub mod config;
+pub mod mdns;
 pub mod server;
 pub mod wait_for;
 pub mod ws_supervisor;
