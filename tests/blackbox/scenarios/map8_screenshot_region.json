@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "map8_screenshot_region",
+  "kind": "scenario",
+  "description": "Partial-region screenshot with region and scale",
+  "steps": [
+    {
+      "action": "screenshot",
+      "args": { "scale": 0.5, "region": "10,20,100,200" },
+      "expect": { "format": "image/png" }
+    }
+  ],
+  "assertions": []
+}

@@ -284,7 +284,7 @@ async fn execute_step(step: &Step, client: &HttpBridgeClient) -> Result<(), Stri
                 ));
             }
             client
-                .tap(node, rev)
+                .tap(node, rev, None)
                 .await
                 .map_err(|e| format!("tap failed: {e}"))?;
             Ok(())
@@ -308,7 +308,7 @@ async fn execute_step(step: &Step, client: &HttpBridgeClient) -> Result<(), Stri
                 ));
             }
             client
-                .type_text(node, text, rev)
+                .type_text(node, text, rev, None)
                 .await
                 .map_err(|e| format!("type failed: {e}"))?;
             Ok(())
@@ -337,7 +337,7 @@ async fn execute_step(step: &Step, client: &HttpBridgeClient) -> Result<(), Stri
                 .and_then(|s| s.as_f64())
                 .map(|s| s as f32);
             let bytes = client
-                .screenshot(scale)
+                .screenshot(scale, None)
                 .await
                 .map_err(|e| format!("screenshot failed: {e}"))?;
             if bytes.len() < 8 || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] {
@@ -445,8 +445,8 @@ mod tests {
         );
 
         client.recording_start().await.expect("recording start");
-        client.tap(0, 42).await.expect("recorded tap");
-        client.tap(1, 42).await.expect("recorded tap 2");
+        client.tap(0, 42, None).await.expect("recorded tap");
+        client.tap(1, 42, None).await.expect("recorded tap 2");
         let export = client.recording_export().await.expect("export");
         client.recording_stop().await.expect("recording stop");
         source.stop();

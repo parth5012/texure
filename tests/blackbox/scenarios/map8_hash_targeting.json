@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "map8_hash_targeting",
+  "kind": "scenario",
+  "description": "Semantic hash targeting: stale-index fallback and unknown-hash refusal",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 1, "rev": "$tree.rev", "hash": "$tree.nodes[0].hash" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 0, "rev": "$tree.rev", "hash": "0000000000000000" },
+      "expect": { "error.code": "NODE_OUTDATED" }
+    }
+  ],
+  "assertions": []
+}
