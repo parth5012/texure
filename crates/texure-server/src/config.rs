@@ -15,10 +15,12 @@ pub fn default_config_path() -> Option<PathBuf> {
 }
 
 /// Load configuration and resolve active target device parameters.
-pub fn load_resolved_config(custom_path: Option<&Path>) -> Result<ResolvedDeviceConfig, ErrorCode> {
+/// Read + parse the TOML config file (or default when absent/malformed),
+/// applying the default config path when `custom_path` is `None`.
+pub fn read_config(custom_path: Option<&Path>) -> TexureConfig {
     let path = custom_path.map(PathBuf::from).or_else(default_config_path);
 
-    let config = if let Some(ref p) = path {
+    if let Some(ref p) = path {
         if p.exists() {
             match fs::read_to_string(p) {
                 Ok(content) => match toml::from_str::<TexureConfig>(&content) {
@@ -41,9 +43,11 @@ pub fn load_resolved_config(custom_path: Option<&Path>) -> Result<ResolvedDevice
         }
     } else {
         TexureConfig::default()
-    };
+    }
+}
 
-    config.resolve_from_env()
+pub fn load_resolved_config(custom_path: Option<&Path>) -> Result<ResolvedDeviceConfig, ErrorCode> {
+    read_config(custom_path).resolve_from_env()
 }
 
 /// Load and resolve config, resolving `url="auto"` via mDNS LAN discovery
@@ -52,16 +56,25 @@ pub fn load_resolved_config(custom_path: Option<&Path>) -> Result<ResolvedDevice
 /// discovery finds nothing within the timeout (multicast blocked / AP
 /// isolation), the caller-visible error is `OFFLINE` — the device is
 /// unreachable, same as a static-IP dial failure. No new error code.
+/// Load + resolve config, applying an optional `--profile` override and the
+/// `TEXURE_PROFILE` env var (env takes precedence over the CLI flag, which
+/// takes precedence over `active_profile` in the file). Resolves `url="auto"`
+/// via mDNS. Returns `(ErrorCode, Option<message>)` so a missing named
+/// profile yields a clear error without a new error code (frozen 16).
 pub async fn load_resolved_config_async(
     custom_path: Option<&Path>,
-) -> Result<ResolvedDeviceConfig, ErrorCode> {
-    let mut resolved = load_resolved_config(custom_path)?;
+    profile_override: Option<&str>,
+) -> Result<ResolvedDeviceConfig, (ErrorCode, Option<String>)> {
+    let config = read_config(custom_path);
+    let mut resolved = config
+        .resolve_with_profile(profile_override, |key| std::env::var(key).ok())
+        .map_err(|(code, msg)| (code, msg))?;
     if crate::mdns::is_auto_url(&resolved.url) {
         match crate::mdns::discover().await {
             Some(service) => {
                 resolved.url = service.resolved_url();
             }
-            None => return Err(ErrorCode::Offline),
+            None => return Err((ErrorCode::Offline, None)),
         }
     }
     Ok(resolved)
@@ -101,12 +114,38 @@ mod tests {
             .build()
             .expect("runtime");
         let res = rt.block_on(async {
-            load_resolved_config_async(Some(Path::new("/nonexistent/texure_config.toml"))).await
+            load_resolved_config_async(Some(Path::new("/nonexistent/texure_config.toml")), None).await
         });
 
         std::env::remove_var("TEXURE_URL");
         std::env::remove_var("TEXURE_TOKEN");
-        assert_eq!(res, Err(ErrorCode::Offline));
+        assert_eq!(res.map_err(|(c, _)| c), Err(ErrorCode::Offline));
+    }
+
+    #[test]
+    fn test_profile_override_missing_is_error() {
+        let _env = crate::test_env_lock::lock();
+        std::env::set_var("TEXURE_URL", "http://default:8765");
+        std::env::set_var("TEXURE_TOKEN", "default-token");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let res = rt.block_on(async {
+            load_resolved_config_async(
+                Some(Path::new("/nonexistent/texure_config.toml")),
+                Some("nope"),
+            )
+            .await
+        });
+
+        std::env::remove_var("TEXURE_URL");
+        std::env::remove_var("TEXURE_TOKEN");
+        assert!(res.is_err());
+        let (code, msg) = res.unwrap_err();
+        assert_eq!(code, ErrorCode::NoConfig);
+        assert!(msg.unwrap_or_default().contains("not found"));
     }
 
     #[test]
