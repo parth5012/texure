@@ -74,12 +74,15 @@ impl HttpBridgeClient {
         Ok(json)
     }
 
-    pub async fn tap(&self, node: u64, rev: u64) -> Result<Value, HttpBridgeError> {
+    pub async fn tap(&self, node: u64, rev: u64, hash: Option<&str>) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/tap", self.base_url);
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "node": node,
             "rev": rev
         });
+        if let Some(h) = hash {
+            payload["hash"] = serde_json::json!(h);
+        }
 
         let resp = self
             .client
@@ -108,13 +111,17 @@ impl HttpBridgeClient {
         node: u64,
         text: &str,
         rev: u64,
+        hash: Option<&str>,
     ) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/type", self.base_url);
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "node": node,
             "text": text,
             "rev": rev
         });
+        if let Some(h) = hash {
+            payload["hash"] = serde_json::json!(h);
+        }
 
         let resp = self
             .client
@@ -166,6 +173,35 @@ impl HttpBridgeClient {
         Ok(json)
     }
 
+    pub async fn tag(&self, index: u64, rev: u64, tag: &str) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/tag", self.base_url);
+        let payload = serde_json::json!({
+            "target": { "index": index, "rev": rev },
+            "tag": tag
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(&payload)
+            .send()
+            .await?;
+
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError { status, body });
+        }
+
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
+                status,
+                body: format!("Invalid JSON response: {e}"),
+            })?;
+        Ok(json)
+    }
+
     pub async fn back(&self) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/back", self.base_url);
         let resp = self
@@ -189,10 +225,18 @@ impl HttpBridgeClient {
         Ok(json)
     }
 
-    pub async fn screenshot(&self, scale: Option<f32>) -> Result<Vec<u8>, HttpBridgeError> {
+    pub async fn screenshot(&self, scale: Option<f32>, region: Option<&str>) -> Result<Vec<u8>, HttpBridgeError> {
         let mut url = format!("{}/screenshot", self.base_url);
+        let mut q = Vec::new();
         if let Some(s) = scale {
-            url.push_str(&format!("?scale={s}"));
+            q.push(format!("scale={s}"));
+        }
+        if let Some(r) = region {
+            q.push(format!("region={}", r));
+        }
+        if !q.is_empty() {
+            url.push('?');
+            url.push_str(&q.join("&"));
         }
 
         let resp = self

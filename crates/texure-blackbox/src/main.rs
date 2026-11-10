@@ -328,6 +328,28 @@ pub fn get_all_tests() -> Vec<TestDef> {
             target: "device".to_string(),
             is_device: true,
         },
+        // Group A (Map 8, #35): Map 8 capabilities against FakeBridge
+        TestDef {
+            id: "BB-A7".to_string(),
+            name: "Dynamic tagging: POST /tag surfaces tag as id".to_string(),
+            scenario_file: "map8_tagging.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-A8".to_string(),
+            name: "Semantic hash targeting: stale index fallback + unknown hash".to_string(),
+            scenario_file: "map8_hash_targeting.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-A9".to_string(),
+            name: "Partial-region screenshot: region + scale".to_string(),
+            scenario_file: "map8_screenshot_region.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+        },
     ]
 }
 

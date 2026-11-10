@@ -37,6 +37,7 @@ pub struct FakeBridgeState {
     pub root_dir: String,
     pub expected_token: String,
     pub recording: tokio::sync::Mutex<RecordingState>,
+    pub tags: tokio::sync::Mutex<std::collections::HashMap<String, u64>>,
 }
 
 /// In-memory workflow-recording session (ticket #24 L2 mock).
@@ -87,6 +88,7 @@ impl FakeBridgeServer {
                 next_seq: 0,
                 actions: Vec::new(),
             }),
+            tags: tokio::sync::Mutex::new(std::collections::HashMap::new()),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -367,6 +369,69 @@ async fn capture_recording_action(
     rec.actions.push(entry);
 }
 
+/// Inject deterministic semantic hashes into FakeBridge `/ui-tree` nodes
+/// (map #36, #29). FNV-1a 64 over ancestor path/id/text/cls (hex, 16 chars).
+fn inject_hashes(nodes: &mut Value, ancestor: &[String]) {
+    if let Some(arr) = nodes.as_array_mut() {
+        for node in arr.iter_mut() {
+            if let Some(obj) = node.as_object_mut() {
+                let id = obj.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let text = obj.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let cls = obj.get("cls").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let mut path = ancestor.to_vec();
+                // children: path includes this node's segment
+                let seg = if id.is_empty() { cls.clone() } else { id.clone() };
+                let hash = fnv1a_64_hex(&path, &id, &text, &cls);
+                obj.insert("hash".to_string(), json!(hash));
+                if let Some(children) = obj.get_mut("children") {
+                    let mut child_path = path.clone();
+                    child_path.push(seg);
+                    inject_hashes(children, &child_path);
+                }
+            }
+        }
+    }
+}
+
+fn load_fixture_nodes(path: &Path) -> Vec<Value> {
+    if path.exists() {
+        if let Ok(content) = fs::read_to_string(path) {
+            if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                if let Some(nodes) = v.get("nodes").and_then(|n| n.as_array()) {
+                    return nodes.clone();
+                }
+            }
+        }
+    }
+    vec![]
+}
+
+fn node_hash(node: &Value) -> String {
+    let id = node.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let text = node.get("text").and_then(|v| v.as_str()).unwrap_or("");
+    let cls = node.get("cls").and_then(|v| v.as_str()).unwrap_or("");
+    // ancestor path empty at root for FakeBridge
+    fnv1a_64_hex(&[], id, text, cls)
+}
+
+fn fnv1a_64_hex(ancestor: &[String], id: &str, text: &str, cls: &str) -> String {
+    let mut input = String::new();
+    input.push_str(&ancestor.join("/"));
+    input.push('\n');
+    input.push_str(id);
+    input.push('\n');
+    input.push_str(text.trim().chars().take(1024).collect::<String>().as_str());
+    input.push('\n');
+    input.push_str(cls);
+    let mut h: u64 = 0xcbf29ce484222325;
+    let prime: u64 = 0x100000001b3;
+    for b in input.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(prime);
+    }
+    format!("{:016x}", h)
+}
+
 async fn route_request(
     method: &str,
     path: &str,
@@ -500,6 +565,21 @@ async fn route_request(
             let current_rev = state.rev.load(Ordering::SeqCst);
             if let Some(obj) = tree_json.as_object_mut() {
                 obj.insert("rev".to_string(), json!(current_rev));
+                // Apply runtime tags (map #36, #31): tagged nodes surface the tag as id.
+                let tags: std::collections::HashMap<String, u64> = state.tags.lock().await.clone();
+                if let Some(nodes) = obj.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+                    for (tag, idx) in &tags {
+                        if let Some(node) = nodes.get_mut(*idx as usize) {
+                            if let Some(o) = node.as_object_mut() {
+                                o.insert("id".to_string(), json!(tag));
+                            }
+                        }
+                    }
+                }
+                // Inject semantic hashes after tagging so tagged nodes' hashes rotate.
+                if let Some(nodes) = obj.get_mut("nodes") {
+                    inject_hashes(nodes, &[]);
+                }
             }
 
             // In stale_screen scenario, after returning the tree once, simulate a background mutation
@@ -518,9 +598,43 @@ async fn route_request(
         ("POST", "/tap") => {
             let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
             let req_node = body_json.get("node").and_then(|v| v.as_u64()).unwrap_or(0);
+            let req_hash = body_json.get("hash").and_then(|v| v.as_str()).map(String::from);
 
-            // Stale rev check or error_envelope invalid node
-            if req_node == 99999 || state.scenario_name == "stale_screen" {
+            // Hash targeting (map #36, #29): validate/resolve by hash when present.
+            if let Some(hash) = &req_hash {
+                let fixture_file = if state.scenario_name == "token_budget" {
+                    "contract/fixtures/deep_gauntlet_tree.json"
+                } else {
+                    "contract/fixtures/ui_tree.json"
+                };
+                let fixture_path = Path::new(&state.root_dir).join(fixture_file);
+                let nodes = load_fixture_nodes(&fixture_path);
+                let mut resolved: Option<usize> = None;
+                if (req_node as usize) < nodes.len() && node_hash(&nodes[req_node as usize]) == *hash {
+                    resolved = Some(req_node as usize);
+                } else {
+                    for (i, n) in nodes.iter().enumerate() {
+                        if node_hash(n) == *hash {
+                            resolved = Some(i);
+                            break;
+                        }
+                    }
+                }
+                if resolved.is_none() {
+                    let err = json!({
+                        "error": {
+                            "code": "NODE_OUTDATED",
+                            "message": "tree refreshed since reference; re-run /ui-tree",
+                            "hint": "re-run device_tree, re-target"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            } else if req_node == 99999 || state.scenario_name == "stale_screen" {
                 let err = json!({
                     "error": {
                         "code": "NODE_OUTDATED",
@@ -553,13 +667,47 @@ async fn route_request(
         }
         ("POST", "/type") => {
             let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
-            let req_node = body_json.get("node").and_then(|v| v.as_u64());
+            let req_node = body_json.get("node").and_then(|v| v.as_u64()).unwrap_or(0);
             let req_text = body_json
                 .get("text")
                 .and_then(|v| v.as_str())
                 .map(String::from);
+            let req_hash = body_json.get("hash").and_then(|v| v.as_str()).map(String::from);
 
-            if state.scenario_name == "stale_screen" {
+            if let Some(hash) = &req_hash {
+                let fixture_file = if state.scenario_name == "token_budget" {
+                    "contract/fixtures/deep_gauntlet_tree.json"
+                } else {
+                    "contract/fixtures/ui_tree.json"
+                };
+                let fixture_path = Path::new(&state.root_dir).join(fixture_file);
+                let nodes = load_fixture_nodes(&fixture_path);
+                let mut resolved: Option<usize> = None;
+                if (req_node as usize) < nodes.len() && node_hash(&nodes[req_node as usize]) == *hash {
+                    resolved = Some(req_node as usize);
+                } else {
+                    for (i, n) in nodes.iter().enumerate() {
+                        if node_hash(n) == *hash {
+                            resolved = Some(i);
+                            break;
+                        }
+                    }
+                }
+                if resolved.is_none() {
+                    let err = json!({
+                        "error": {
+                            "code": "NODE_OUTDATED",
+                            "message": "tree refreshed since reference; re-run /ui-tree",
+                            "hint": "re-run device_tree, re-target"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            } else if state.scenario_name == "stale_screen" {
                 let err = json!({
                     "error": {
                         "code": "NODE_OUTDATED",
@@ -581,7 +729,7 @@ async fn route_request(
             });
             let _ = state.ws_sender.send(event.to_string());
 
-            capture_recording_action(state, "type", req_node, req_text.as_deref(), None).await;
+            capture_recording_action(state, "type", Some(req_node), req_text.as_deref(), None).await;
 
             let resp = json!({ "ok": true });
             (
@@ -680,6 +828,91 @@ async fn route_request(
                 serde_json::to_vec(&resp).unwrap(),
             )
         }
+        ("POST", "/tag") => {
+            let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
+            let target = body_json.get("target").cloned().unwrap_or(json!({}));
+            let target_index = target.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
+            let target_rev = target.get("rev").and_then(|v| v.as_u64()).unwrap_or(0);
+            let tag = body_json.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+            if tag.trim().is_empty() || tag.len() > 256 {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid tag: must not be blank or exceed 256 characters",
+                        "hint": "provide a non-blank tag of at most 256 characters"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+
+            let current_rev = state.rev.load(Ordering::SeqCst);
+            if target_rev != current_rev {
+                let err = json!({
+                    "error": {
+                        "code": "NODE_OUTDATED",
+                        "message": "tree refreshed since reference; re-run /ui-tree",
+                        "hint": "re-run device_tree, re-target"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+
+            // Validate index bounds against fixture
+            let fixture_file = if state.scenario_name == "token_budget" {
+                "contract/fixtures/deep_gauntlet_tree.json"
+            } else {
+                "contract/fixtures/ui_tree.json"
+            };
+            let fixture_path = Path::new(&state.root_dir).join(fixture_file);
+            let nodes = load_fixture_nodes(&fixture_path);
+            if target_index as usize >= nodes.len() {
+                let err = json!({
+                    "error": {
+                        "code": "NODE_OUTDATED",
+                        "message": "tree refreshed since reference; re-run /ui-tree",
+                        "hint": "re-run device_tree, re-target"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+
+            // Mutate in-memory tag registry (survives refreshes) by storing on state.
+            // Tag the node: store mapping tag -> index in a registry; the /ui-tree
+            // response will reflect the tag as the node's id on next fetch.
+            {
+                let mut tags = state.tags.lock().await;
+                tags.insert(tag.clone(), target_index);
+            }
+
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let event = json!({
+                "type": "tree_changed",
+                "rev": new_rev
+            });
+            let _ = state.ws_sender.send(event.to_string());
+
+            // Update the cached fixture? We can't easily mutate fixture file.
+            // Instead, /ui-tree handler applies tags from state.tags to nodes.
+            let resp = json!({ "ok": true });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
         ("GET", "/screenshot") => {
             // PNG magic bytes + valid minimal PNG chunks
             let scale = if query_str.contains("scale=1.0") {
@@ -690,8 +923,14 @@ async fn route_request(
                 0.5
             };
 
-            // Vary byte size based on scale to satisfy BB-A4
-            let png_bytes = make_png_bytes(scale);
+            // Region crop (map #36, #30): region=x,y,w,h → crop dimensions.
+            let (rw, rh) = parse_region(query_str).unwrap_or((0, 0));
+            // Vary byte size based on scale (and region if present) to satisfy BB-A4
+            let png_bytes = if rw > 0 && rh > 0 {
+                make_png_bytes_region(scale, rw, rh)
+            } else {
+                make_png_bytes(scale)
+            };
             (
                 "200 OK",
                 vec![("Content-Type", "image/png".to_string())],
@@ -725,6 +964,52 @@ async fn route_request(
             )
         }
     }
+}
+
+fn parse_region(q: &str) -> Option<(u32, u32)> {
+    for part in q.split('&') {
+        if let Some(val) = part.strip_prefix("region=") {
+            let nums: Vec<&str> = val.split(',').collect();
+            if nums.len() == 4 {
+                if let (Ok(_x), Ok(_y), Ok(w), Ok(h)) =
+                    (nums[0].parse::<i32>(), nums[1].parse::<i32>(), nums[2].parse::<u32>(), nums[3].parse::<u32>())
+                {
+                    if w > 0 && h > 0 {
+                        return Some((w, h));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn make_png_bytes_region(scale: f64, rw: u32, rh: u32) -> Vec<u8> {
+    let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let width: u32 = ((rw as f64) * scale) as u32;
+    let height: u32 = ((rh as f64) * scale) as u32;
+    let width = width.max(1);
+    let height = height.max(1);
+
+    let mut ihdr_data = Vec::new();
+    ihdr_data.extend_from_slice(&width.to_be_bytes());
+    ihdr_data.extend_from_slice(&height.to_be_bytes());
+    ihdr_data.push(8);
+    ihdr_data.push(6);
+    ihdr_data.push(0);
+    ihdr_data.push(0);
+    ihdr_data.push(0);
+
+    write_png_chunk(&mut bytes, b"IHDR", &ihdr_data);
+
+    let tag = format!("region={}x{} scale={}", rw, rh, scale);
+    write_png_chunk(&mut bytes, b"tEXt", tag.as_bytes());
+
+    let idat_data = [0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01];
+    write_png_chunk(&mut bytes, b"IDAT", &idat_data);
+
+    write_png_chunk(&mut bytes, b"IEND", &[]);
+    bytes
 }
 
 fn make_png_bytes(scale: f64) -> Vec<u8> {
