@@ -63,6 +63,34 @@ pub struct StepRecord {
     pub timestamp_offset_ms: u64,
 }
 
+/// Per-scenario pass-rate aggregation over the most recent N runs,
+/// powering the regression trend report's flaky detection (issue #27).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScenarioTrend {
+    pub scenario_id: String,
+    pub name: String,
+    pub runs: usize,
+    pub passes: usize,
+    pub fails: usize,
+    pub skips: usize,
+}
+
+impl ScenarioTrend {
+    /// Pass rate in [0.0, 1.0] across the aggregated runs.
+    pub fn pass_rate(&self) -> f64 {
+        if self.runs == 0 {
+            0.0
+        } else {
+            self.passes as f64 / self.runs as f64
+        }
+    }
+
+    /// Flaky = sometimes passes, sometimes fails: strictly between 0% and 100%.
+    pub fn is_flaky(&self) -> bool {
+        self.runs >= 2 && self.pass_rate() > 0.0 && self.pass_rate() < 1.0
+    }
+}
+
 pub struct HistoryStore {
     db_path: PathBuf,
 }
@@ -378,6 +406,39 @@ impl HistoryStore {
         Ok(steps)
     }
 
+    pub fn get_scenario_stats(&self, limit: usize) -> Result<Vec<ScenarioTrend>, HistoryError> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT sr.scenario_id, MAX(sr.name) AS name, COUNT(*) AS runs,
+                    SUM(CASE WHEN sr.status = 'PASS' THEN 1 ELSE 0 END) AS passes,
+                    SUM(CASE WHEN sr.status = 'FAIL' THEN 1 ELSE 0 END) AS fails,
+                    SUM(CASE WHEN sr.status IN ('SKIP', 'DEVICE-SKIP') THEN 1 ELSE 0 END) AS skips
+             FROM scenario_results AS sr
+             WHERE sr.run_id IN (
+                 SELECT run_id FROM runs ORDER BY timestamp DESC, run_id DESC LIMIT ?1
+             )
+             GROUP BY sr.scenario_id
+             ORDER BY sr.scenario_id ASC;",
+        )?;
+
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            Ok(ScenarioTrend {
+                scenario_id: row.get(0)?,
+                name: row.get(1)?,
+                runs: row.get::<_, i64>(2)? as usize,
+                passes: row.get::<_, i64>(3)? as usize,
+                fails: row.get::<_, i64>(4)? as usize,
+                skips: row.get::<_, i64>(5)? as usize,
+            })
+        })?;
+
+        let mut stats = Vec::new();
+        for r in rows {
+            stats.push(r?);
+        }
+        Ok(stats)
+    }
+
     pub fn render_history_cli(&self, limit: usize, format: &str) -> Result<String, HistoryError> {
         let runs = self.list_runs(limit)?;
         if format.eq_ignore_ascii_case("json") {
@@ -544,6 +605,115 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn test_scenario_stats_flaky_detection() {
+        let temp_dir = tempdir().expect("Failed to create tempdir");
+        let db_path = temp_dir.path().join("history.db");
+        let store = HistoryStore::open_at(db_path).expect("Failed to open store");
+
+        // Three runs: BB-A1 = pass, pass, fail (flaky); BB-A2 = pass x3 (stable).
+        for (i, (a1_status, a2_status)) in [("PASS", "PASS"), ("PASS", "PASS"), ("FAIL", "PASS")]
+            .iter()
+            .enumerate()
+        {
+            let run = RunRecord {
+                run_id: format!("run_2026111{i}_000000"),
+                timestamp: format!("2026-11-1{i}T10:00:00Z"),
+                app_version_name: None,
+                build_hash: None,
+                branch: None,
+                total_scenarios: 2,
+                passed: if *a1_status == "PASS" { 2 } else { 1 },
+                failed: if *a1_status == "PASS" { 0 } else { 1 },
+                duration_ms: 1000,
+            };
+            let scenarios = vec![
+                ScenarioResultRecord {
+                    id: None,
+                    run_id: run.run_id.clone(),
+                    scenario_id: "BB-A1".to_string(),
+                    name: "Static UI tree".to_string(),
+                    status: a1_status.to_string(),
+                    target: None,
+                    duration_ms: 300,
+                    error_code: None,
+                    error_message: None,
+                    evidence_bundle_path: None,
+                },
+                ScenarioResultRecord {
+                    id: None,
+                    run_id: run.run_id.clone(),
+                    scenario_id: "BB-A2".to_string(),
+                    name: "Mutating actions".to_string(),
+                    status: a2_status.to_string(),
+                    target: None,
+                    duration_ms: 500,
+                    error_code: None,
+                    error_message: None,
+                    evidence_bundle_path: None,
+                },
+            ];
+            store
+                .record_run(&run, &scenarios, &[])
+                .expect("record failed");
+        }
+
+        let stats = store.get_scenario_stats(10).expect("stats failed");
+        assert_eq!(stats.len(), 2, "one row per distinct scenario");
+
+        let a1 = stats.iter().find(|s| s.scenario_id == "BB-A1").unwrap();
+        assert_eq!(a1.runs, 3);
+        assert_eq!(a1.passes, 2);
+        assert_eq!(a1.fails, 1);
+        assert!((a1.pass_rate() - 2.0 / 3.0).abs() < 1e-9);
+        assert!(a1.is_flaky(), "2/3 pass rate must be flagged flaky");
+
+        let a2 = stats.iter().find(|s| s.scenario_id == "BB-A2").unwrap();
+        assert_eq!(a2.passes, 3);
+        assert!(!a2.is_flaky(), "100% pass rate is not flaky");
+    }
+
+    #[test]
+    fn test_scenario_stats_respects_limit() {
+        let temp_dir = tempdir().expect("Failed to create tempdir");
+        let db_path = temp_dir.path().join("history.db");
+        let store = HistoryStore::open_at(db_path).expect("Failed to open store");
+
+        for i in 0..5 {
+            let run = RunRecord {
+                run_id: format!("run_2026111{i}_000000"),
+                timestamp: format!("2026-11-1{i}T10:00:00Z"),
+                app_version_name: None,
+                build_hash: None,
+                branch: None,
+                total_scenarios: 1,
+                passed: 1,
+                failed: 0,
+                duration_ms: 1000,
+            };
+            let scenarios = vec![ScenarioResultRecord {
+                id: None,
+                run_id: run.run_id.clone(),
+                scenario_id: "BB-A1".to_string(),
+                name: "Static UI tree".to_string(),
+                status: "PASS".to_string(),
+                target: None,
+                duration_ms: 300,
+                error_code: None,
+                error_message: None,
+                evidence_bundle_path: None,
+            }];
+            store
+                .record_run(&run, &scenarios, &[])
+                .expect("record failed");
+        }
+
+        let stats = store.get_scenario_stats(3).expect("stats failed");
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].runs, 3, "stats must only span the newest N runs");
+    }
+
+    #[test]
     fn test_scenario_steps_filtered_by_target() {
         let temp_dir = tempdir().expect("Failed to create tempdir");
         let db_path = temp_dir.path().join("history.db");
@@ -704,6 +874,7 @@ mod tests {
             .expect("get_run on migrated DB")
             .expect("run should exist");
         assert_eq!(detail.1[0].target, None);
+    }
     }
 
     #[test]

@@ -6,11 +6,13 @@ pub mod history;
 pub mod recording;
 pub mod runner;
 pub mod scenario;
+pub mod trace;
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::BufRead;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -128,6 +130,19 @@ struct Args {
     /// Path to custom history SQLite database (default: .texure/history.db)
     #[arg(long)]
     history_db: Option<PathBuf>,
+
+    /// Render self-contained HTML trace for a run: run ID in the history DB,
+    /// or a path to a history DB file (renders its newest run)
+    #[arg(long)]
+    trace: Option<String>,
+
+    /// Render regression trend HTML dashboard from run history
+    #[arg(long)]
+    trend: bool,
+
+    /// Output HTML path for --trace / --trend (default: trace.html | trend.html)
+    #[arg(long)]
+    out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -382,6 +397,30 @@ async fn main() {
 
     let args = Args::parse();
 
+    // HTML report modes (--trace / --trend): read-only over the history DB,
+    // zero-config default .texure/history.db (issue #27).
+    if args.trace.is_some() || args.trend {
+        if args.trace.is_some() && args.trend && args.out.is_some() {
+            eprintln!(
+                "--out is ambiguous when both --trace and --trend are given; run them separately"
+            );
+            std::process::exit(2);
+        }
+        if let Some(ref trace_arg) = args.trace {
+            if let Err(e) = run_trace_command(trace_arg, &args) {
+                eprintln!("Error rendering trace: {e}");
+                std::process::exit(1);
+            }
+        }
+        if args.trend {
+            if let Err(e) = run_trend_command(&args) {
+                eprintln!("Error rendering trend: {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
     // Check if querying history
     if args.history {
         let db_path = args
@@ -483,9 +522,10 @@ async fn main() {
     println!("--------------------------------------------------------------------------------");
 
     let mut results = Vec::new();
+    let mut step_traces: Vec<(String, Vec<runner::StepTrace>)> = Vec::new();
 
     for test in selected_tests {
-        let result = runner::run_test(
+        let (result, steps) = runner::run_test(
             &test,
             &args.scenarios_dir,
             &args.root,
@@ -503,6 +543,7 @@ async fn main() {
             result.reason.as_deref().unwrap_or("")
         );
 
+        step_traces.push((result.id.clone(), steps));
         results.push(result);
     }
 
@@ -610,7 +651,26 @@ async fn main() {
                 })
                 .collect();
 
-            if let Err(e) = store.record_run(&run_record, &scenario_records, &[]) {
+            let step_records: Vec<history::StepRecord> = step_traces
+                .iter()
+                .flat_map(|(scenario_id, steps)| {
+                    let run_id = run_id.clone();
+                    steps.iter().map(move |st| history::StepRecord {
+                        id: None,
+                        run_id: run_id.clone(),
+                        scenario_id: scenario_id.clone(),
+                        step_index: st.step_index,
+                        tool_name: st.tool_name.clone(),
+                        params_json: st.params_json.clone(),
+                        result_json: st.result_json.clone(),
+                        rev_before: st.rev_before,
+                        rev_after: st.rev_after,
+                        timestamp_offset_ms: st.timestamp_offset_ms,
+                    })
+                })
+                .collect();
+
+            if let Err(e) = store.record_run(&run_record, &scenario_records, &step_records) {
                 eprintln!("Warning: failed to record run history into SQLite: {e}");
             }
         }
@@ -823,4 +883,90 @@ async fn run_replay(
     }
 
     0
+}
+
+/// `--trace <run-id|db-path>`: render the self-contained HTML trace viewer for
+/// one recorded run. A filesystem path is treated as a history DB and renders
+/// its newest run; anything else is a run ID resolved against the default (or
+/// --history_db) database.
+fn run_trace_command(trace_arg: &str, args: &Args) -> Result<(), String> {
+    let arg_path = PathBuf::from(trace_arg);
+    let is_db_file = arg_path.is_file()
+        && arg_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("db") || e.eq_ignore_ascii_case("sqlite"))
+            .unwrap_or(false);
+
+    let (db_path, run_id) = if is_db_file {
+        (arg_path, None) // newest run in the given DB
+    } else {
+        (
+            args.history_db
+                .clone()
+                .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH)),
+            Some(trace_arg.to_string()),
+        )
+    };
+
+    let store = history::HistoryStore::open_at(db_path).map_err(|e| e.to_string())?;
+
+    let run_id = match run_id {
+        Some(id) => id,
+        None => store
+            .list_runs(1)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .next()
+            .map(|r| r.run_id)
+            .ok_or_else(|| "History DB contains no runs".to_string())?,
+    };
+
+    let (run, scenarios) = store
+        .get_run(&run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Run '{run_id}' not found in history DB"))?;
+
+    let mut steps = Vec::new();
+    for s in &scenarios {
+        steps.extend(
+            store
+                .get_scenario_steps(&run_id, &s.scenario_id)
+                .map_err(|e| e.to_string())?,
+        );
+    }
+
+    let html = trace::render_trace_html(&run, &scenarios, &steps);
+    write_html_output(html, args.out.as_deref(), "trace.html")
+}
+
+/// `--trend`: render the regression trend HTML dashboard from the history DB.
+fn run_trend_command(args: &Args) -> Result<(), String> {
+    let db_path = args
+        .history_db
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH));
+    let store = history::HistoryStore::open_at(db_path).map_err(|e| e.to_string())?;
+
+    let runs = store.list_runs(args.limit).map_err(|e| e.to_string())?;
+    let stats = store
+        .get_scenario_stats(args.limit)
+        .map_err(|e| e.to_string())?;
+
+    let html = trace::render_trend_html(&runs, &stats);
+    write_html_output(html, args.out.as_deref(), "trend.html")
+}
+
+fn write_html_output(html: String, out: Option<&Path>, default_name: &str) -> Result<(), String> {
+    let path = out
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(default_name));
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+    fs::write(&path, html).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    println!("HTML written to: {}", path.display());
+    Ok(())
 }
