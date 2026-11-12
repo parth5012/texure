@@ -386,7 +386,8 @@ async fn main() {
     if args.history {
         let db_path = args
             .history_db
-            .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH));
+            .clone()
+            .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH));
         match history::HistoryStore::open_at(db_path) {
             Ok(store) => match store.render_history_cli(args.limit, &args.format) {
                 Ok(output) => {
@@ -548,13 +549,17 @@ async fn main() {
     // Auto-record to SQLite history store
     let db_path = args
         .history_db
-        .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH));
+        .clone()
+        .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH));
     match history::HistoryStore::open_at(db_path) {
         Ok(store) => {
             let run_id = history::generate_run_id();
+            // Git metadata must come from the repository the caller targeted
+            // via --root, not the process's current directory.
             let git_meta = |git_args: &[&str]| -> Option<String> {
                 let out = std::process::Command::new("git")
                     .args(git_args)
+                    .current_dir(&args.root)
                     .output()
                     .ok()?;
                 if !out.status.success() {
@@ -591,12 +596,15 @@ async fn main() {
                     scenario_id: r.id.clone(),
                     name: r.name.clone(),
                     status: r.status.to_uppercase(),
+                    target: Some(r.target.clone()),
                     duration_ms: r.duration_ms,
+                    // Only recognized error codes; skip/scenario-load
+                    // reasons are free text and must not become codes.
                     error_code: r
                         .reason
                         .as_deref()
-                        .and_then(|res| res.split(':').next())
-                        .map(|s| s.trim().to_string()),
+                        .and_then(runner::extract_error_code)
+                        .map(|s| s.to_string()),
                     error_message: r.reason.clone(),
                     evidence_bundle_path: r.evidence_bundle.clone(),
                 })
