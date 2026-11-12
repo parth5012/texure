@@ -369,9 +369,12 @@ impl McpServer {
             return Ok((client.clone(), ws.clone()));
         }
 
-        let resolved = load_resolved_config_async(self.custom_config_path.as_deref(), self.profile_override.as_deref())
-            .await
-            .map_err(|(c, msg)| (c, msg))?;
+        let resolved = load_resolved_config_async(
+            self.custom_config_path.as_deref(),
+            self.profile_override.as_deref(),
+        )
+        .await
+        .map_err(|(c, msg)| (c, msg))?;
         let client = BridgeClient::new(resolved.clone()).map_err(|e| {
             error!("Bridge client creation failed: {}", e.message);
             (e.code, Some(e.message))

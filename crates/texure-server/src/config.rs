@@ -114,7 +114,8 @@ mod tests {
             .build()
             .expect("runtime");
         let res = rt.block_on(async {
-            load_resolved_config_async(Some(Path::new("/nonexistent/texure_config.toml")), None).await
+            load_resolved_config_async(Some(Path::new("/nonexistent/texure_config.toml")), None)
+                .await
         });
 
         std::env::remove_var("TEXURE_URL");
