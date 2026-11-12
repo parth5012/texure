@@ -153,6 +153,23 @@ __SCENARIOS__
     try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }
   }
 
+  function chip(cls, text) {
+    var el = document.createElement("span");
+    el.className = "chip chip-" + cls;
+    el.textContent = text;
+    return el;
+  }
+
+  function addSection(container, title, text) {
+    var h = document.createElement("h3");
+    h.style.cssText = "font-size:12px;color:#9aa1b5;margin:8px 0 2px";
+    h.textContent = title;
+    var pre = document.createElement("pre");
+    pre.textContent = text;
+    container.appendChild(h);
+    container.appendChild(pre);
+  }
+
   function showStep(i) {
     var st = steps[i];
     if (!st) return;
@@ -160,29 +177,43 @@ __SCENARIOS__
     pos.textContent = (i + 1) + " / " + steps.length;
     items.forEach(function (li, j) { li.classList.toggle("active", j === i); });
 
+    // Build the detail pane via DOM APIs (textContent, never innerHTML):
+    // embedded JSON payloads are untrusted and must not become markup.
+    detail.textContent = "";
     var status = scenStatus[st.scenario_id] || "";
     var failed = status === "FAIL";
     var resultHasError = false;
     try { resultHasError = !!(st.result_json && JSON.parse(st.result_json).error); } catch (e) {}
-    var html = "";
     if (failed || resultHasError) {
-      html += "<div class='error-banner'><strong>ERROR</strong> scenario status: " + status +
-        (resultHasError ? " - step result carries an error envelope" : "") + "</div>";
+      var banner = document.createElement("div");
+      banner.className = "error-banner";
+      var strong = document.createElement("strong");
+      strong.textContent = "ERROR";
+      banner.appendChild(strong);
+      banner.appendChild(document.createTextNode(" scenario status: " + status +
+        (resultHasError ? " - step result carries an error envelope" : "")));
+      detail.appendChild(banner);
     }
-    html += "<p><span class='chip chip-" + (failed ? "fail" : "pass") + "'>" + (status || "?") + "</span> <code>" +
-      st.scenario_id + "</code> step " + st.step_index + " - tool: <strong>" + st.tool_name +
-      "</strong> - +" + st.timestamp_offset_ms + "ms</p>";
+    var line = document.createElement("p");
+    line.appendChild(chip(failed ? "fail" : "pass", status || "?"));
+    var code = document.createElement("code");
+    code.textContent = " " + st.scenario_id + " step " + st.step_index + " - tool: ";
+    line.appendChild(code);
+    var tool = document.createElement("strong");
+    tool.textContent = st.tool_name;
+    line.appendChild(tool);
+    line.appendChild(document.createTextNode(" - +" + st.timestamp_offset_ms + "ms"));
+    detail.appendChild(line);
     if (st.params_json) {
-      html += "<h3 style='font-size:12px;color:#9aa1b5;margin:8px 0 2px'>Params</h3><pre>";
-      try { html += pretty(JSON.parse(st.params_json)); } catch (e) { html += st.params_json; }
-      html += "</pre>";
+      var ptext;
+      try { ptext = pretty(JSON.parse(st.params_json)); } catch (e) { ptext = st.params_json; }
+      addSection(detail, "Params", ptext);
     }
     if (st.result_json) {
-      html += "<h3 style='font-size:12px;color:#9aa1b5;margin:8px 0 2px'>Result</h3><pre>";
-      try { html += pretty(JSON.parse(st.result_json)); } catch (e) { html += st.result_json; }
-      html += "</pre>";
+      var rtext;
+      try { rtext = pretty(JSON.parse(st.result_json)); } catch (e) { rtext = st.result_json; }
+      addSection(detail, "Result", rtext);
     }
-    detail.innerHTML = html;
     var parsed = null;
     try { parsed = st.result_json ? JSON.parse(st.result_json) : null; } catch (e) {}
     if (parsed && (st.tool_name === "device_tree" || (parsed.nodes && Array.isArray(parsed.nodes)))) {
@@ -201,9 +232,11 @@ __SCENARIOS__
   steps.forEach(function (st, i) {
     var li = document.createElement("li");
     var failed = scenStatus[st.scenario_id] === "FAIL";
-    li.innerHTML = "<span class='chip chip-" + (failed ? "fail" : "pass") + "'>" + st.tool_name +
-      "</span><span style='color:#9aa1b5'>" + st.scenario_id + " #" + st.step_index +
-      " - +" + st.timestamp_offset_ms + "ms</span>";
+    li.appendChild(chip(failed ? "fail" : "pass", st.tool_name));
+    var meta = document.createElement("span");
+    meta.style.color = "#9aa1b5";
+    meta.textContent = st.scenario_id + " #" + st.step_index + " - +" + st.timestamp_offset_ms + "ms";
+    li.appendChild(meta);
     li.addEventListener("click", function () { showStep(i); });
     list.appendChild(li);
     items.push(li);
@@ -323,7 +356,7 @@ pub fn render_trace_html(
     for s in scenarios {
         let cls = status_class(&s.status);
         scen_rows.push_str("<tr><td><span class=\"chip chip-");
-        scen_rows.push_str(&cls);
+        scen_rows.push_str(cls);
         scen_rows.push_str("\">");
         scen_rows.push_str(&esc(&s.status));
         scen_rows.push_str("</span></td><td><code>");
@@ -372,11 +405,7 @@ pub fn render_trend_html(runs: &[RunRecord], stats: &[ScenarioTrend]) -> String 
     let mut run_rows = String::new();
     for r in runs {
         let total = r.passed + r.failed;
-        let pct = if total == 0 {
-            0
-        } else {
-            (r.passed * 100 / total) as u32
-        };
+        let pct = (r.passed * 100).checked_div(total).unwrap_or(0) as u32;
         run_rows.push_str("<tr><td><code>");
         run_rows.push_str(&esc(&r.run_id));
         run_rows.push_str("</code></td><td>");
@@ -703,5 +732,22 @@ mod tests {
         let embedded = embed_json(&payload);
         assert!(!embedded.contains("</script>"));
         assert!(embedded.contains("\\u003c/script\\u003e"));
+    }
+
+    #[test]
+    fn test_trace_js_never_injects_untrusted_data_via_innerhtml() {
+        let (run, scenarios, steps) = fixture_run();
+        let html = render_trace_html(&run, &scenarios, &steps);
+
+        // The viewer JS must build step content with textContent (DOM-safe),
+        // never innerHTML string concatenation over embedded JSON payloads.
+        assert!(
+            !html.contains("detail.innerHTML"),
+            "viewer JS must not assign innerHTML from embedded data"
+        );
+        assert!(
+            !html.contains("li.innerHTML"),
+            "step list must not use innerHTML"
+        );
     }
 }
