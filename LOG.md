@@ -1,5 +1,14 @@
 # Log
 
+## 2026-11-12 (session) — Wayfinder map 7 (#28): PR #92 babysit + ticket #27 AFK ship
+- Map 7 pre-flight: gh auth ok, git ok. OCR LLM gateway (100.87.250.35:20128, debian host) OFFLINE 15h → OCR lane ran degraded (`ocr delegate preview/rule`, rule-based, no LLM); findings applied by host agent. Both worktrees: wf-92-fix + wf-27-trace.
+- PR #92 (ticket #26 history store) was OPEN + CONFLICTING + lint-gate red. Rebased onto main (4f9e252): resolved 3 conflicts keeping recording+history modules and Record/Replay CLI. Applied 6 CodeRabbit findings: unique sub-second run IDs, plain INSERT (no row clobber), git rev-parse status/non-empty checks, ast-grep extension-neutral-first + .cmd retry, npx.cmd→npx NotFound retry, cargo fmt. Separated unrelated texure-server fmt drift into its own style commit. L0 lint 0 + fmt clean · L1 blackbox 12/12 + workspace green · L2 mcp-fake 14/14. Pushed 2d6b336+90c3638.
+- Babysit round: CI clippy 1.99 map_identity flagged 2 pre-existing texure-server sites (came from map 8 merges) → removed identity map_err (50c754a), server tests 13/13. Watching PR #92.
+- Ticket #27 (trace viewer + trend) implemented by delegate agent on wf/28-27-trace-viewer (base 90c3638): trace.rs (707L, hand-rolled templates, embed_json script-safe escaping), runner StepTrace capture across mcp/mcp-real/http walks, step_records now persisted (was &[]), --trace/--trend/--out flags, get_scenario_stats flaky aggregation. TDD red: tmp/evidence/27/red-run.txt (7 failing).
+- Self-review 2 findings applied (f000c01): detail pane + step list built via DOM textContent instead of innerHTML (embedded-JSON XSS hardening), new no-innerHTML unit test; clippy too_many_arguments allow on recorder, checked_div, needless deref. OCR delegate rule lane: nothing new.
+- VERIFY: L0 fmt clean, texure-lint 0, clippy clean (1.99) · L1 blackbox 22/22, workspace 65/65 · L2 mcp-fake 14/14 · --trace run_20261112_044347.412 → tmp/evidence/27/trace.html (23KB, self-contained, 0 external URLs), --trend → tmp/evidence/27/trend.html.
+- Status: #27 Done pending PR. NEXT: file stacked PR (base wf/28-26-history-store), babysit both PRs.
+
 ## 2026-11-10 (session) — Wayfinder map 8 (#36) ticket #33 QR overlay
 - Branch wf/36-33-qr-overlay off wf/36-32-mdns 4ef4616 (stack leg 5/7). Implemented pure-Kotlin QR generator (versions 1-4, byte mode, ECC L) with Reed-Solomon over GF(256), plus "Show QR" toggle in BridgeOverlay rendering QR bitmap. Updated behavior-spec overlay row + ROADMAP.
 - TDD red: QrCodeTest (square matrix, finder patterns, deterministic, too-large null, version growth) captured red-run at tmp/evidence/33/red-run.txt (4 failures before impl).
