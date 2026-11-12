@@ -483,10 +483,7 @@ mod tests {
         assert_eq!(detail.1[0].status, "PASS");
         assert_eq!(detail.1[1].scenario_id, "BB-B3");
         assert_eq!(detail.1[1].status, "FAIL");
-        assert_eq!(
-            detail.1[1].error_code.as_deref(),
-            Some("AUTH_FAILED")
-        );
+        assert_eq!(detail.1[1].error_code.as_deref(), Some("AUTH_FAILED"));
 
         let bb_a1_steps = store
             .get_scenario_steps(&run.run_id, "BB-A1")
