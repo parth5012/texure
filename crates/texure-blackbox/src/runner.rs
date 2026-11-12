@@ -135,6 +135,7 @@ pub async fn run_test(
 }
 
 /// Record one executed step (or a failed action attempt) into the trace.
+#[allow(clippy::too_many_arguments)]
 fn push_step(
     steps: &mut Vec<StepTrace>,
     step_index: usize,
