@@ -875,7 +875,10 @@ fn evaluate_assertion(
     Ok(())
 }
 
-fn extract_error_code(s: &str) -> Option<&str> {
+/// Extract a recognized `UPPERCASE_CODE:` prefix from an error string
+/// (e.g. "AUTH_FAILED: token mismatch"). Used for history error_code
+/// storage so free-text reasons never become codes.
+pub(crate) fn extract_error_code(s: &str) -> Option<&str> {
     if let Some((code, _)) = s.split_once(':') {
         let trimmed = code.trim();
         if trimmed.chars().all(|c| c.is_ascii_uppercase() || c == '_') {

@@ -13,6 +13,8 @@ pub enum HistoryError {
     Io(#[from] std::io::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Unsupported history format: {0} (expected table or json)")]
+    UnsupportedFormat(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,6 +37,10 @@ pub struct ScenarioResultRecord {
     pub scenario_id: String,
     pub name: String,
     pub status: String, // PASS, FAIL, SKIP, DEVICE-SKIP
+    /// Runner target this execution ran against (mcp, mcp-real, http, ...).
+    /// `--target all` executes the same scenario_id on several targets, so
+    /// scenario identity alone is ambiguous (issue review: target column).
+    pub target: Option<String>,
     pub duration_ms: u64,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
@@ -46,6 +52,8 @@ pub struct StepRecord {
     pub id: Option<i64>,
     pub run_id: String,
     pub scenario_id: String,
+    /// Target this step executed on (matches scenario_results.target).
+    pub target: Option<String>,
     pub step_index: usize,
     pub tool_name: String,
     pub params_json: Option<String>,
@@ -109,6 +117,7 @@ impl HistoryStore {
                 scenario_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 status TEXT NOT NULL,
+                target TEXT,
                 duration_ms INTEGER NOT NULL,
                 error_code TEXT,
                 error_message TEXT,
@@ -120,6 +129,7 @@ impl HistoryStore {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id TEXT NOT NULL,
                 scenario_id TEXT NOT NULL,
+                target TEXT,
                 step_index INTEGER NOT NULL,
                 tool_name TEXT NOT NULL,
                 params_json TEXT,
@@ -134,6 +144,29 @@ impl HistoryStore {
             CREATE INDEX IF NOT EXISTS idx_scenario_results_run ON scenario_results(run_id);
             CREATE INDEX IF NOT EXISTS idx_step_records_run_scenario ON step_records(run_id, scenario_id);",
         )?;
+        // Migration for DBs created before the target column existed
+        // (--target all runs were ambiguous across mcp / mcp-real).
+        Self::ensure_column(&conn, "scenario_results", "target", "TEXT")?;
+        Self::ensure_column(&conn, "step_records", "target", "TEXT")?;
+        Ok(())
+    }
+
+    /// Add `column` to `table` if it is missing (internal constants only).
+    fn ensure_column(
+        conn: &Connection,
+        table: &str,
+        column: &str,
+        decl: &str,
+    ) -> Result<(), HistoryError> {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let name: String = row.get(1)?;
+            if name == column {
+                return Ok(());
+            }
+        }
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl};"))?;
         Ok(())
     }
 
@@ -167,14 +200,15 @@ impl HistoryStore {
         for s in scenarios {
             tx.execute(
                 "INSERT INTO scenario_results (
-                    run_id, scenario_id, name, status, duration_ms,
+                    run_id, scenario_id, name, status, target, duration_ms,
                     error_code, error_message, evidence_bundle_path
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
                 params![
                     s.run_id,
                     s.scenario_id,
                     s.name,
                     s.status,
+                    s.target,
                     s.duration_ms as i64,
                     s.error_code,
                     s.error_message,
@@ -186,13 +220,14 @@ impl HistoryStore {
         for st in steps {
             tx.execute(
                 "INSERT INTO step_records (
-                    run_id, scenario_id, step_index, tool_name,
+                    run_id, scenario_id, target, step_index, tool_name,
                     params_json, result_json, rev_before, rev_after,
                     timestamp_offset_ms
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
                 params![
                     st.run_id,
                     st.scenario_id,
+                    st.target,
                     st.step_index as i64,
                     st.tool_name,
                     st.params_json,
@@ -272,7 +307,7 @@ impl HistoryStore {
         };
 
         let mut scen_stmt = conn.prepare(
-            "SELECT id, run_id, scenario_id, name, status, duration_ms,
+            "SELECT id, run_id, scenario_id, name, status, target, duration_ms,
                     error_code, error_message, evidence_bundle_path
              FROM scenario_results
              WHERE run_id = ?1
@@ -286,10 +321,11 @@ impl HistoryStore {
                 scenario_id: row.get(2)?,
                 name: row.get(3)?,
                 status: row.get(4)?,
-                duration_ms: row.get::<_, i64>(5)? as u64,
-                error_code: row.get(6)?,
-                error_message: row.get(7)?,
-                evidence_bundle_path: row.get(8)?,
+                target: row.get(5)?,
+                duration_ms: row.get::<_, i64>(6)? as u64,
+                error_code: row.get(7)?,
+                error_message: row.get(8)?,
+                evidence_bundle_path: row.get(9)?,
             })
         })?;
 
@@ -301,32 +337,37 @@ impl HistoryStore {
         Ok(Some((run_record, scenarios)))
     }
 
+    /// Steps for one scenario execution. `target` disambiguates `--target all`
+    /// runs where the same scenario_id executed on several targets; `None`
+    /// matches legacy rows recorded before the target column existed.
     pub fn get_scenario_steps(
         &self,
         run_id: &str,
         scenario_id: &str,
+        target: Option<&str>,
     ) -> Result<Vec<StepRecord>, HistoryError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, run_id, scenario_id, step_index, tool_name,
+            "SELECT id, run_id, scenario_id, target, step_index, tool_name,
                     params_json, result_json, rev_before, rev_after, timestamp_offset_ms
              FROM step_records
-             WHERE run_id = ?1 AND scenario_id = ?2
+             WHERE run_id = ?1 AND scenario_id = ?2 AND (target IS NULL OR target = ?3)
              ORDER BY step_index ASC;",
         )?;
 
-        let rows = stmt.query_map(params![run_id, scenario_id], |row| {
+        let rows = stmt.query_map(params![run_id, scenario_id, target], |row| {
             Ok(StepRecord {
                 id: Some(row.get(0)?),
                 run_id: row.get(1)?,
                 scenario_id: row.get(2)?,
-                step_index: row.get::<_, i64>(3)? as usize,
-                tool_name: row.get(4)?,
-                params_json: row.get(5)?,
-                result_json: row.get(6)?,
-                rev_before: row.get(7)?,
-                rev_after: row.get(8)?,
-                timestamp_offset_ms: row.get::<_, i64>(9)? as u64,
+                target: row.get(3)?,
+                step_index: row.get::<_, i64>(4)? as usize,
+                tool_name: row.get(5)?,
+                params_json: row.get(6)?,
+                result_json: row.get(7)?,
+                rev_before: row.get(8)?,
+                rev_after: row.get(9)?,
+                timestamp_offset_ms: row.get::<_, i64>(10)? as u64,
             })
         })?;
 
@@ -341,6 +382,11 @@ impl HistoryStore {
         let runs = self.list_runs(limit)?;
         if format.eq_ignore_ascii_case("json") {
             return Ok(serde_json::to_string_pretty(&runs)?);
+        }
+        if !format.eq_ignore_ascii_case("table") {
+            // Unknown formats must fail loudly: a caller expecting JSON must
+            // never silently receive table text.
+            return Err(HistoryError::UnsupportedFormat(format.to_string()));
         }
 
         let mut out = String::new();
@@ -419,6 +465,7 @@ mod tests {
                 scenario_id: "BB-A1".to_string(),
                 name: "Static UI tree".to_string(),
                 status: "PASS".to_string(),
+                target: Some("mcp-fake".to_string()),
                 duration_ms: 400,
                 error_code: None,
                 error_message: None,
@@ -430,6 +477,7 @@ mod tests {
                 scenario_id: "BB-B3".to_string(),
                 name: "Auth rejection".to_string(),
                 status: "FAIL".to_string(),
+                target: Some("mcp-fake".to_string()),
                 duration_ms: 1100,
                 error_code: Some("AUTH_FAILED".to_string()),
                 error_message: Some("Token mismatch".to_string()),
@@ -442,6 +490,7 @@ mod tests {
                 id: None,
                 run_id: run.run_id.clone(),
                 scenario_id: "BB-A1".to_string(),
+                target: Some("mcp-fake".to_string()),
                 step_index: 0,
                 tool_name: "device_tree".to_string(),
                 params_json: Some("{}".to_string()),
@@ -454,6 +503,7 @@ mod tests {
                 id: None,
                 run_id: run.run_id.clone(),
                 scenario_id: "BB-B3".to_string(),
+                target: Some("mcp-fake".to_string()),
                 step_index: 0,
                 tool_name: "tap".to_string(),
                 params_json: Some(r#"{"node_id":"login_btn"}"#.to_string()),
@@ -486,11 +536,174 @@ mod tests {
         assert_eq!(detail.1[1].error_code.as_deref(), Some("AUTH_FAILED"));
 
         let bb_a1_steps = store
-            .get_scenario_steps(&run.run_id, "BB-A1")
+            .get_scenario_steps(&run.run_id, "BB-A1", Some("mcp-fake"))
             .expect("Failed to query steps");
         assert_eq!(bb_a1_steps.len(), 1);
         assert_eq!(bb_a1_steps[0].tool_name, "device_tree");
         assert_eq!(bb_a1_steps[0].rev_after, Some(1));
+    }
+
+    #[test]
+    fn test_scenario_steps_filtered_by_target() {
+        let temp_dir = tempdir().expect("Failed to create tempdir");
+        let db_path = temp_dir.path().join("history.db");
+        let store = HistoryStore::open_at(db_path).expect("Failed to open store");
+
+        // Same scenario_id executed on two targets (mirrors `--target all`).
+        let run = RunRecord {
+            run_id: "run_20261112_120000.000".to_string(),
+            timestamp: "2026-11-12T12:00:00+00:00".to_string(),
+            app_version_name: None,
+            build_hash: None,
+            branch: None,
+            total_scenarios: 2,
+            passed: 2,
+            failed: 0,
+            duration_ms: 1000,
+        };
+        let scenarios = ["mcp", "mcp-real"]
+            .iter()
+            .map(|t| ScenarioResultRecord {
+                id: None,
+                run_id: run.run_id.clone(),
+                scenario_id: "BB-A1".to_string(),
+                name: "Static UI tree".to_string(),
+                status: "PASS".to_string(),
+                target: Some((*t).to_string()),
+                duration_ms: 300,
+                error_code: None,
+                error_message: None,
+                evidence_bundle_path: None,
+            })
+            .collect::<Vec<_>>();
+        let steps = ["mcp", "mcp-real"]
+            .iter()
+            .map(|t| StepRecord {
+                id: None,
+                run_id: run.run_id.clone(),
+                scenario_id: "BB-A1".to_string(),
+                target: Some((*t).to_string()),
+                step_index: 0,
+                tool_name: "device_tree".to_string(),
+                params_json: None,
+                result_json: Some(r#"{"rev":1}"#.to_string()),
+                rev_before: None,
+                rev_after: Some(1),
+                timestamp_offset_ms: 50,
+            })
+            .collect::<Vec<_>>();
+        store
+            .record_run(&run, &scenarios, &steps)
+            .expect("Failed to record run");
+
+        // Each target sees only its own steps, never the other target's.
+        let mcp = store
+            .get_scenario_steps(&run.run_id, "BB-A1", Some("mcp"))
+            .expect("Failed to query mcp steps");
+        assert_eq!(mcp.len(), 1);
+        assert_eq!(mcp[0].target.as_deref(), Some("mcp"));
+
+        let real = store
+            .get_scenario_steps(&run.run_id, "BB-A1", Some("mcp-real"))
+            .expect("Failed to query mcp-real steps");
+        assert_eq!(real.len(), 1);
+        assert_eq!(real[0].target.as_deref(), Some("mcp-real"));
+    }
+
+    #[test]
+    fn test_unsupported_format_is_rejected() {
+        let temp_dir = tempdir().expect("Failed to create tempdir");
+        let store = HistoryStore::open_at(temp_dir.path().join("history.db"))
+            .expect("Failed to open store");
+
+        let err = store
+            .render_history_cli(10, "jsno")
+            .expect_err("unknown format must be rejected");
+        assert!(
+            err.to_string().contains("Unsupported history format"),
+            "wrong error: {err}"
+        );
+
+        // Documented formats still work.
+        assert!(store.render_history_cli(10, "table").is_ok());
+        assert!(store.render_history_cli(10, "json").is_ok());
+    }
+
+    #[test]
+    fn test_legacy_db_without_target_column_migrates() {
+        let temp_dir = tempdir().expect("Failed to create tempdir");
+        let db_path = temp_dir.path().join("history.db");
+
+        // Create a pre-target-schema DB by hand.
+        let conn = rusqlite::Connection::open(&db_path).expect("Failed to open raw db");
+        conn.execute_batch(
+            "CREATE TABLE runs (
+                run_id TEXT PRIMARY KEY, timestamp TEXT NOT NULL,
+                app_version_name TEXT, build_hash TEXT, branch TEXT,
+                total_scenarios INTEGER NOT NULL, passed INTEGER NOT NULL,
+                failed INTEGER NOT NULL, duration_ms INTEGER NOT NULL
+            );
+            CREATE TABLE scenario_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL, scenario_id TEXT NOT NULL,
+                name TEXT NOT NULL, status TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL, error_code TEXT,
+                error_message TEXT, evidence_bundle_path TEXT
+            );
+            CREATE TABLE step_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL, scenario_id TEXT NOT NULL,
+                step_index INTEGER NOT NULL, tool_name TEXT NOT NULL,
+                params_json TEXT, result_json TEXT,
+                rev_before INTEGER, rev_after INTEGER,
+                timestamp_offset_ms INTEGER NOT NULL
+            );",
+        )
+        .expect("Failed to create legacy schema");
+        drop(conn);
+
+        // Opening through HistoryStore must migrate without dropping data.
+        let store = HistoryStore::open_at(db_path).expect("Failed to open store");
+        let run = RunRecord {
+            run_id: "run_legacy_001".to_string(),
+            timestamp: "2026-11-12T12:00:00+00:00".to_string(),
+            app_version_name: None,
+            build_hash: None,
+            branch: None,
+            total_scenarios: 1,
+            passed: 1,
+            failed: 0,
+            duration_ms: 100,
+        };
+        store
+            .record_run(
+                &run,
+                &[ScenarioResultRecord {
+                    id: None,
+                    run_id: run.run_id.clone(),
+                    scenario_id: "BB-A1".to_string(),
+                    name: "Legacy row".to_string(),
+                    status: "PASS".to_string(),
+                    target: None,
+                    duration_ms: 100,
+                    error_code: None,
+                    error_message: None,
+                    evidence_bundle_path: None,
+                }],
+                &[],
+            )
+            .expect("record on migrated DB must work");
+
+        // Legacy rows (NULL target) stay queryable via the None filter.
+        let steps = store
+            .get_scenario_steps(&run.run_id, "BB-A1", None)
+            .expect("Failed to query legacy steps");
+        assert!(steps.is_empty(), "no steps were recorded for this run");
+        let detail = store
+            .get_run(&run.run_id)
+            .expect("get_run on migrated DB")
+            .expect("run should exist");
+        assert_eq!(detail.1[0].target, None);
     }
 
     #[test]
