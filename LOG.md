@@ -201,3 +201,11 @@
 - L2 notes: FakeBridge records mutations while recording as synthetic actions (deterministic replay source); real bridge excludes agent events (verified L1/L3 in #23). mcp-real skips recording tests with reason (HTTP-only routes).
 - VERIFY: L0 pass (texure-lint 0) · L1 pass (9/9 blackbox + 4/4 lint unit) · L2 pass (--target all 34/0/4-skip/6-device-skip; --target http 5/5) · L3 parked (no device) · CLI record/replay smoke pass.
 - Review: self-review (OCR backend down, documented degraded mode). Remaining: checkpoint PR.
+
+## 2026-11-12 (session) — Wayfinder map 8, ticket #27 via wayfinder subagent
+- Status: Done (ticket #27). Branch wf/28-27-trace-viewer stacked on 90c3638 (tip of wf/28-26-history-store). No push, no PR (per orchestrator instruction).
+- Scope: HTML trace viewer CLI + regression trend dashboard + suite-runner per-step persistence into history step_records.
+- TDD: red first — 7 failing tests (trace HTML scrubber/error/self-contained/escaping, trend flaky rows, scenario-stats aggregation) captured in tmp/evidence/27/red-run.txt; then GREEN.
+- Files: crates/texure-blackbox/src/trace.rs (new, HTML templates + tests), history.rs (ScenarioTrend + get_scenario_stats + tests), runner.rs (StepTrace capture through all three walk targets), main.rs (--trace/--trend/--out flags + step record wiring).
+- CLI decision (DECISIONS.md): --trend (not ticket's literal --report, which was taken by the JSON report flag).
+- VERIFY: L0 pass (texure-lint 0 findings, cargo fmt clean, cargo check 0 warnings; clippy unavailable on this toolchain — not installed for stable-x86_64-pc-windows-gnu) · L1 pass (21 blackbox + 26 server + 4 lint + 13 contract) · L2 pass (--target mcp-fake 14/14, step records persisted: 19 rows verified in .texure/history.db with tool names/rev/offsets) · L3 n/a (no device surface touched) · artifacts tmp/evidence/27/{trace.html,trend.html,trace-db-path.html} with zero external URLs.
