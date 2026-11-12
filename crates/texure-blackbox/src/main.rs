@@ -553,13 +553,20 @@ async fn main() {
         Ok(store) => {
             let run_id = history::generate_run_id();
             let git_meta = |git_args: &[&str]| -> Option<String> {
-                let out = std::process::Command::new("git").args(git_args).output().ok()?;
+                let out = std::process::Command::new("git")
+                    .args(git_args)
+                    .output()
+                    .ok()?;
                 if !out.status.success() {
                     return None;
                 }
                 let s = String::from_utf8(out.stdout).ok()?;
                 let s = s.trim();
-                if s.is_empty() { None } else { Some(s.to_string()) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
             };
             let branch = git_meta(&["rev-parse", "--abbrev-ref", "HEAD"]);
             let build_hash = git_meta(&["rev-parse", "--short", "HEAD"]);

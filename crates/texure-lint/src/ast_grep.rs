@@ -201,7 +201,11 @@ fn run_sg_scan(root_dir: &Path) -> Result<String, String> {
     // 3. Fall back to `npx -y -p @ast-grep/cli ast-grep scan --json`.
     //    On Windows try `npx.cmd` first, retrying with `npx` only when the
     //    shim itself is not found. Other spawn failures surface as errors.
-    let npx_attempts: &[&str] = if cfg!(windows) { &["npx.cmd", "npx"] } else { &["npx"] };
+    let npx_attempts: &[&str] = if cfg!(windows) {
+        &["npx.cmd", "npx"]
+    } else {
+        &["npx"]
+    };
     let mut npx_res: Option<std::process::Output> = None;
     let mut spawn_err: Option<String> = None;
     for npx_cmd in npx_attempts {
