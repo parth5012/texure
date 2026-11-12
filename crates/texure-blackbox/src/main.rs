@@ -651,14 +651,16 @@ async fn main() {
                 })
                 .collect();
 
-            let step_records: Vec<history::StepRecord> = step_traces
+            let step_records: Vec<history::StepRecord> = results
                 .iter()
-                .flat_map(|(scenario_id, steps)| {
+                .zip(step_traces.iter())
+                .flat_map(|(r, (_, steps))| {
                     let run_id = run_id.clone();
                     steps.iter().map(move |st| history::StepRecord {
                         id: None,
                         run_id: run_id.clone(),
-                        scenario_id: scenario_id.clone(),
+                        scenario_id: r.id.clone(),
+                        target: Some(r.target.clone()),
                         step_index: st.step_index,
                         tool_name: st.tool_name.clone(),
                         params_json: st.params_json.clone(),
@@ -904,7 +906,7 @@ fn run_trace_command(trace_arg: &str, args: &Args) -> Result<(), String> {
         (
             args.history_db
                 .clone()
-                .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH)),
+                .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH)),
             Some(trace_arg.to_string()),
         )
     };
@@ -931,7 +933,7 @@ fn run_trace_command(trace_arg: &str, args: &Args) -> Result<(), String> {
     for s in &scenarios {
         steps.extend(
             store
-                .get_scenario_steps(&run_id, &s.scenario_id)
+                .get_scenario_steps(&run_id, &s.scenario_id, s.target.as_deref())
                 .map_err(|e| e.to_string())?,
         );
     }
@@ -945,7 +947,7 @@ fn run_trend_command(args: &Args) -> Result<(), String> {
     let db_path = args
         .history_db
         .clone()
-        .unwrap_or_else(|| PathBuf::from(history::HistoryStore::DEFAULT_DB_PATH));
+        .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH));
     let store = history::HistoryStore::open_at(db_path).map_err(|e| e.to_string())?;
 
     let runs = store.list_runs(args.limit).map_err(|e| e.to_string())?;

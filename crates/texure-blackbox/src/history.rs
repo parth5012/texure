@@ -605,7 +605,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_scenario_stats_flaky_detection() {
         let temp_dir = tempdir().expect("Failed to create tempdir");
         let db_path = temp_dir.path().join("history.db");
@@ -874,7 +873,6 @@ mod tests {
             .expect("get_run on migrated DB")
             .expect("run should exist");
         assert_eq!(detail.1[0].target, None);
-    }
     }
 
     #[test]
