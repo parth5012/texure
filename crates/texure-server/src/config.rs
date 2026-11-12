@@ -66,9 +66,8 @@ pub async fn load_resolved_config_async(
     profile_override: Option<&str>,
 ) -> Result<ResolvedDeviceConfig, (ErrorCode, Option<String>)> {
     let config = read_config(custom_path);
-    let mut resolved = config
-        .resolve_with_profile(profile_override, |key| std::env::var(key).ok())
-        .map_err(|(code, msg)| (code, msg))?;
+    let mut resolved =
+        config.resolve_with_profile(profile_override, |key| std::env::var(key).ok())?;
     if crate::mdns::is_auto_url(&resolved.url) {
         match crate::mdns::discover().await {
             Some(service) => {
