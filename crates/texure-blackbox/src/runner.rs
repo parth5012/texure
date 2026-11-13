@@ -1490,50 +1490,6 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
-mod assertion_tests {
-    use super::evaluate_assertion;
-    use crate::scenario::Assertion;
-    use serde_json::{json, Value};
-
-    fn assertion(pred: &str, target: &str, value: Option<Value>) -> Assertion {
-        Assertion {
-            pred: pred.to_string(),
-            target: target.to_string(),
-            value,
-        }
-    }
-
-    #[test]
-    fn state_unsupported_target_fails_instead_of_passing() {
-        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
-        let res = evaluate_assertion(&a, &json!({}), None);
-        assert!(
-            res.is_err(),
-            "unhandled state target must not silently pass"
-        );
-        let msg = res.unwrap_err();
-        assert!(msg.contains("not yet supported"), "message: {msg}");
-    }
-
-    #[test]
-    fn state_generic_target_compares_last_response_state() {
-        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
-        assert!(evaluate_assertion(&a, &json!({ "state": "CONNECTED" }), None).is_ok());
-        let res = evaluate_assertion(&a, &json!({ "state": "DROPPED" }), None);
-        assert!(res.is_err());
-        assert!(res.unwrap_err().contains("expected CONNECTED, got DROPPED"));
-    }
-
-    #[test]
-    fn state_bridge_arm_unchanged() {
-        let a = assertion("state", "bridge", Some(json!("IDLE")));
-        assert!(evaluate_assertion(&a, &json!({}), None).is_ok());
-        let a = assertion("state", "bridge", Some(json!("ACTIVE")));
-        assert!(evaluate_assertion(&a, &json!({}), None).is_err());
-    }
-}
-
 fn evaluate_assertion(
     assertion: &crate::scenario::Assertion,
     last_response: &Value,
@@ -1692,4 +1648,48 @@ pub(crate) fn extract_error_code(s: &str) -> Option<&str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod assertion_tests {
+    use super::evaluate_assertion;
+    use crate::scenario::Assertion;
+    use serde_json::{json, Value};
+
+    fn assertion(pred: &str, target: &str, value: Option<Value>) -> Assertion {
+        Assertion {
+            pred: pred.to_string(),
+            target: target.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn state_unsupported_target_fails_instead_of_passing() {
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        let res = evaluate_assertion(&a, &json!({}), None);
+        assert!(
+            res.is_err(),
+            "unhandled state target must not silently pass"
+        );
+        let msg = res.unwrap_err();
+        assert!(msg.contains("not yet supported"), "message: {msg}");
+    }
+
+    #[test]
+    fn state_generic_target_compares_last_response_state() {
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        assert!(evaluate_assertion(&a, &json!({ "state": "CONNECTED" }), None).is_ok());
+        let res = evaluate_assertion(&a, &json!({ "state": "DROPPED" }), None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("expected CONNECTED, got DROPPED"));
+    }
+
+    #[test]
+    fn state_bridge_arm_unchanged() {
+        let a = assertion("state", "bridge", Some(json!("IDLE")));
+        assert!(evaluate_assertion(&a, &json!({}), None).is_ok());
+        let a = assertion("state", "bridge", Some(json!("ACTIVE")));
+        assert!(evaluate_assertion(&a, &json!({}), None).is_err());
+    }
 }
