@@ -1490,6 +1490,50 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod assertion_tests {
+    use super::evaluate_assertion;
+    use crate::scenario::Assertion;
+    use serde_json::{json, Value};
+
+    fn assertion(pred: &str, target: &str, value: Option<Value>) -> Assertion {
+        Assertion {
+            pred: pred.to_string(),
+            target: target.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn state_unsupported_target_fails_instead_of_passing() {
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        let res = evaluate_assertion(&a, &json!({}), None);
+        assert!(
+            res.is_err(),
+            "unhandled state target must not silently pass"
+        );
+        let msg = res.unwrap_err();
+        assert!(msg.contains("not yet supported"), "message: {msg}");
+    }
+
+    #[test]
+    fn state_generic_target_compares_last_response_state() {
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        assert!(evaluate_assertion(&a, &json!({ "state": "CONNECTED" }), None).is_ok());
+        let res = evaluate_assertion(&a, &json!({ "state": "DROPPED" }), None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("expected CONNECTED, got DROPPED"));
+    }
+
+    #[test]
+    fn state_bridge_arm_unchanged() {
+        let a = assertion("state", "bridge", Some(json!("IDLE")));
+        assert!(evaluate_assertion(&a, &json!({}), None).is_ok());
+        let a = assertion("state", "bridge", Some(json!("ACTIVE")));
+        assert!(evaluate_assertion(&a, &json!({}), None).is_err());
+    }
+}
+
 fn evaluate_assertion(
     assertion: &crate::scenario::Assertion,
     last_response: &Value,
@@ -1598,6 +1642,38 @@ fn evaluate_assertion(
                 .unwrap_or("IDLE");
             if expected_state != "IDLE" {
                 return Err(format!("Bridge state mismatch: expected {expected_state}"));
+            }
+        }
+        "state" => {
+            let expected_state = assertion
+                .value
+                .as_ref()
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if expected_state.is_empty() {
+                return Err(format!(
+                    "state predicate for target '{}' requires a value",
+                    assertion.target
+                ));
+            }
+            // Generic state targets (tunnel, pairing, transport, ...) must
+            // compare against a `state` field surfaced by the last response.
+            // Failing loudly here keeps authored-red suites honest: no
+            // silent Ok(()) for targets the runner cannot evaluate yet.
+            match last_response.get("state").and_then(|s| s.as_str()) {
+                Some(actual) if actual == expected_state => {}
+                Some(actual) => {
+                    return Err(format!(
+                        "state mismatch for target '{}': expected {expected_state}, got {actual}",
+                        assertion.target
+                    ))
+                }
+                None => {
+                    return Err(format!(
+                        "state predicate target '{}' not yet supported by the runner (no state surfaced in last response)",
+                        assertion.target
+                    ))
+                }
             }
         }
         _ => {}
