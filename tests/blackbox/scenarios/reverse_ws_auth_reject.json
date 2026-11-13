@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "reverse_ws_auth_reject",
+  "kind": "scenario",
+  "description": "BB-R2 (spec 3R row 2): mismatched bearer token is rejected with AUTH_FAILED and no tunnel established",
+  "tags": ["remote", "tunnel", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "mismatched-token"
+      },
+      "expect": { "code": "AUTH_FAILED", "connected": false }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "UNPAIRED" }
+  ]
+}
