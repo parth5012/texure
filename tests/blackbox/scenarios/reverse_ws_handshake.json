@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "reverse_ws_handshake",
+  "kind": "scenario",
+  "description": "BB-R1 (spec 3R row 1): companion dials the desktop reverse-WS tunnel endpoint with a valid bearer token; tunnel enters CONNECTED",
+  "tags": ["remote", "tunnel", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

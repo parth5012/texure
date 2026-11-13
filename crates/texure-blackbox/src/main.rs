@@ -363,6 +363,28 @@ pub fn get_all_tests() -> Vec<TestDef> {
             target: "device".to_string(),
             is_device: true,
         },
+        // Group R: remote tunnel & gateway (write-first red suite, map 9 #41)
+        TestDef {
+            id: "BB-R1".to_string(),
+            name: "Reverse WS handshake with valid bearer token".to_string(),
+            scenario_file: "reverse_ws_handshake.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R2".to_string(),
+            name: "Reverse WS auth rejection on mismatched token".to_string(),
+            scenario_file: "reverse_ws_auth_reject.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R3".to_string(),
+            name: "Reverse WS supervisor reconnect with exponential backoff".to_string(),
+            scenario_file: "reverse_ws_reconnect.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
     ]
 }
 

@@ -46,6 +46,10 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "recording_stop",
         "recording_export",
         "recording_clear",
+        // Group R (maps 10-13, write-first): remote tunnel & gateway
+        "tunnel_connect",
+        "tunnel_drop",
+        "tunnel_heartbeat",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 

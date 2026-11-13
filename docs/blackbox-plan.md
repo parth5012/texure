@@ -63,6 +63,32 @@ Test IDs: `BB-<group><n>`. Every row from behavior-spec is covered or explicitly
 | C2 | `slow_screen`: `wait_for` timeout ≤ 30s → `{ok:false,last_rev}` + re-plan hint; WS-down path falls back to HTTP polling |
 | C3 | `steer_flow`: human touch mid-flow → agent receives steering signal and completes after re-fetch (human+agent cooperative flow) |
 
+### Group R — remote tunnel, gateway, Shizuku, pairing (write-first, maps 10–13)
+
+Authored RED before implementation (map 9, issue #41). Every row maps to a
+behavior-spec §3R row; flips green when its owning map lands.
+
+| ID | Asserts | Scenario | Target |
+|---|---|---|---|
+| R1 | Reverse WS handshake with valid bearer token → CONNECTED | `reverse_ws_handshake` | mcp |
+| R2 | Mismatched token → `AUTH_FAILED`, no tunnel | `reverse_ws_auth_reject` | mcp |
+| R3 | Drop → supervisor reconnect with exponential backoff | `reverse_ws_reconnect` | mcp |
+| R4 | `device_tree` RPC proxied across tunnel verbatim | `gateway_proxy_tree` | mcp |
+| R5 | Mutating `tap` proxied with verify-at-execute rev check | `gateway_proxy_tap` | mcp |
+| R6 | Bridge `NODE_OUTDATED` relayed unchanged | `gateway_error_propagation` | mcp |
+| R7 | Shizuku `wake` + `keyguard_dismiss` executed | `shizuku_wake_keyguard` | mcp |
+| R8 | `am start` cold launch when bridge offline | `shizuku_cold_start` | mcp |
+| R9 | `pm grant` runtime permission auto-grant | `shizuku_pm_grant` | mcp |
+| R10 | System `input tap` fallback injection | `shizuku_input_tap` | mcp |
+| R11 | Pairing QR payload: `wss://` endpoint + bearer token | `pairing_qr` | mcp |
+| R12 | Fallback `reverse_ws` → `lan_direct` when tunnel absent | `transport_fallback` | mcp |
+| R13 | Second tunnel connection → `BUSY` + owner | `tunnel_single_flight` | mcp |
+
+New actions: `tunnel_connect`, `tunnel_drop`, `tunnel_heartbeat`, `gateway_proxy`,
+`shizuku_cmd`, `pairing_qr`, `transport_resolve`. Protocol envelopes live in
+`contract/fixtures/` (`reverse_ws_envelope.json`, `gateway_rpc_envelope.json`,
+`shizuku_command_schema.json`, `pairing_qr_payload.json`, `transport_order.json`).
+
 ## Phases and gates
 
 | Phase | When | Contents | Gate to pass |
