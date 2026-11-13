@@ -887,18 +887,37 @@ async fn run_replay(
     0
 }
 
+/// Render the trace HTML for one recorded run, gathering all its scenario
+/// results and steps (target-disambiguated). Shared by `--trace` and `--trend`
+/// (which writes one trace artifact per run so trend links stay accurate).
+fn build_trace_html(store: &history::HistoryStore, run_id: &str) -> Result<String, String> {
+    let (run, scenarios) = store
+        .get_run(run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Run '{run_id}' not found in history DB"))?;
+
+    let mut steps = Vec::new();
+    for s in &scenarios {
+        steps.extend(
+            store
+                .get_scenario_steps(run_id, &s.scenario_id, s.target.as_deref())
+                .map_err(|e| e.to_string())?,
+        );
+    }
+
+    Ok(trace::render_trace_html(&run, &scenarios, &steps))
+}
+
 /// `--trace <run-id|db-path>`: render the self-contained HTML trace viewer for
 /// one recorded run. A filesystem path is treated as a history DB and renders
 /// its newest run; anything else is a run ID resolved against the default (or
 /// --history_db) database.
 fn run_trace_command(trace_arg: &str, args: &Args) -> Result<(), String> {
     let arg_path = PathBuf::from(trace_arg);
-    let is_db_file = arg_path.is_file()
-        && arg_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.eq_ignore_ascii_case("db") || e.eq_ignore_ascii_case("sqlite"))
-            .unwrap_or(false);
+    // Any existing file is accepted as a history DB path, regardless of
+    // extension; opening it validates its contents. Only nonexistent paths
+    // are treated as run IDs.
+    let is_db_file = arg_path.is_file();
 
     let (db_path, run_id) = if is_db_file {
         (arg_path, None) // newest run in the given DB
@@ -924,21 +943,7 @@ fn run_trace_command(trace_arg: &str, args: &Args) -> Result<(), String> {
             .ok_or_else(|| "History DB contains no runs".to_string())?,
     };
 
-    let (run, scenarios) = store
-        .get_run(&run_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Run '{run_id}' not found in history DB"))?;
-
-    let mut steps = Vec::new();
-    for s in &scenarios {
-        steps.extend(
-            store
-                .get_scenario_steps(&run_id, &s.scenario_id, s.target.as_deref())
-                .map_err(|e| e.to_string())?,
-        );
-    }
-
-    let html = trace::render_trace_html(&run, &scenarios, &steps);
+    let html = build_trace_html(&store, &run_id)?;
     write_html_output(html, args.out.as_deref(), "trace.html")
 }
 
@@ -955,8 +960,36 @@ fn run_trend_command(args: &Args) -> Result<(), String> {
         .get_scenario_stats(args.limit)
         .map_err(|e| e.to_string())?;
 
-    let html = trace::render_trend_html(&runs, &stats);
-    write_html_output(html, args.out.as_deref(), "trend.html")
+    // Every trend row links to that run's own trace artifact, written next
+    // to the trend output; trace.html embeds exactly one run, so a shared
+    // link would open the wrong run for all but one row.
+    let out_path = args
+        .out
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("trend.html"));
+    let out_dir = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if let Some(parent) = out_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+    let mut trace_files: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for r in &runs {
+        let file = format!("trace-{}.html", r.run_id);
+        let html = build_trace_html(&store, &r.run_id)?;
+        fs::write(out_dir.join(&file), html)
+            .map_err(|e| format!("failed to write {}: {e}", out_dir.join(&file).display()))?;
+        trace_files.insert(r.run_id.clone(), file);
+    }
+
+    let html = trace::render_trend_html(&runs, &stats, &|run_id: &str| {
+        trace_files.get(run_id).cloned().unwrap_or_default()
+    });
+    write_html_output(html, Some(&out_path), "trend.html")
 }
 
 fn write_html_output(html: String, out: Option<&Path>, default_name: &str) -> Result<(), String> {

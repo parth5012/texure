@@ -243,6 +243,24 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                 let caps = init_resp.get("capabilities").and_then(|c| c.as_object());
                 if let Some(caps) = caps {
                     if caps.len() != 1 || !caps.contains_key("tools") {
+                        // Record the handshake that executed so the trace
+                        // doesn't end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": format!(
+                                    "MCP server must declare ONLY tools capability; found: {:?}",
+                                    caps.keys()
+                                ) },
+                                "response": init_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
                         return Err((
                             steps,
                             format!(
@@ -252,6 +270,19 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                         ));
                     }
                 } else {
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": "Missing capabilities in MCP initialize response" },
+                            "response": init_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
                     return Err((
                         steps,
                         "Missing capabilities in MCP initialize response".to_string(),
@@ -276,14 +307,45 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                 let tools = match tools_resp.get("tools").and_then(|t| t.as_array()) {
                     Some(t) => t,
                     None => {
+                        // Record the executed handshake so the trace doesn't
+                        // end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": "tools/list response missing 'tools' array" },
+                                "response": tools_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
                         return Err((
                             steps,
                             "tools/list response missing 'tools' array".to_string(),
-                        ))
+                        ));
                     }
                 };
 
                 if tools.len() != 6 {
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": format!(
+                                "MCP tools count must be exactly 6; found {}",
+                                tools.len()
+                            ) },
+                            "response": tools_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
                     return Err((
                         steps,
                         format!("MCP tools count must be exactly 6; found {}", tools.len()),
@@ -593,6 +655,24 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
                 let caps = init_resp.get("capabilities").and_then(|c| c.as_object());
                 if let Some(caps) = caps {
                     if caps.len() != 1 || !caps.contains_key("tools") {
+                        // Record the handshake that executed so the trace
+                        // doesn't end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": format!(
+                                    "MCP server must declare ONLY tools capability; found: {:?}",
+                                    caps.keys()
+                                ) },
+                                "response": init_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
                         return Err((
                             steps,
                             format!(
@@ -602,6 +682,19 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
                         ));
                     }
                 } else {
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": "Missing capabilities in MCP initialize response" },
+                            "response": init_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
                     return Err((
                         steps,
                         "Missing capabilities in MCP initialize response".to_string(),
@@ -626,14 +719,45 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
                 let tools = match tools_resp.get("tools").and_then(|t| t.as_array()) {
                     Some(t) => t,
                     None => {
+                        // Record the executed handshake so the trace doesn't
+                        // end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": "tools/list response missing 'tools' array" },
+                                "response": tools_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
                         return Err((
                             steps,
                             "tools/list response missing 'tools' array".to_string(),
-                        ))
+                        ));
                     }
                 };
 
                 if tools.len() != 6 {
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": format!(
+                                "MCP tools count must be exactly 6; found {}",
+                                tools.len()
+                            ) },
+                            "response": tools_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
                     return Err((
                         steps,
                         format!("MCP tools count must be exactly 6; found {}", tools.len()),
@@ -872,6 +996,9 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
 
+                // Record the resolved parameters actually sent to the
+                // client (not the raw template expressions).
+                let params = json!({ "node": node, "rev": rev });
                 match client.tap(node, rev).await {
                     Ok(resp) => {
                         last_response = resp;
@@ -879,7 +1006,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                             &mut steps,
                             idx,
                             &step.action,
-                            Some(&step.args),
+                            Some(&params),
                             &last_response,
                             Some(rev as i64),
                             None,
@@ -894,7 +1021,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                             &mut steps,
                             idx,
                             &step.action,
-                            Some(&step.args),
+                            Some(&params),
                             &last_response,
                             Some(rev as i64),
                             None,
@@ -906,7 +1033,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                             &mut steps,
                             idx,
                             &step.action,
-                            Some(&step.args),
+                            Some(&params),
                             &e.to_string(),
                             offset_ms,
                         );
@@ -934,6 +1061,9 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
 
+                // Record the resolved parameters actually sent to the
+                // client (not the raw template expressions).
+                let params = json!({ "node": node, "text": text, "rev": rev });
                 match client.type_text(node, text, rev).await {
                     Ok(resp) => {
                         last_response = resp;
@@ -941,7 +1071,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                             &mut steps,
                             idx,
                             &step.action,
-                            Some(&step.args),
+                            Some(&params),
                             &last_response,
                             Some(rev as i64),
                             None,
@@ -956,7 +1086,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                             &mut steps,
                             idx,
                             &step.action,
-                            Some(&step.args),
+                            Some(&params),
                             &last_response,
                             Some(rev as i64),
                             None,
@@ -968,7 +1098,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                             &mut steps,
                             idx,
                             &step.action,
-                            Some(&step.args),
+                            Some(&params),
                             &e.to_string(),
                             offset_ms,
                         );
@@ -1079,6 +1209,22 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                         if bytes.len() < 8
                             || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
                         {
+                            // Record the executed screenshot attempt so the
+                            // trace shows why the validation failed.
+                            push_step(
+                                &mut steps,
+                                idx,
+                                &step.action,
+                                Some(&step.args),
+                                &json!({
+                                    "error": { "message":
+                                        "Screenshot did not return PNG magic bytes" },
+                                    "bytes_len": bytes.len(),
+                                }),
+                                None,
+                                None,
+                                offset_ms,
+                            );
                             server.stop();
                             return Err((
                                 steps,
