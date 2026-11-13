@@ -50,6 +50,8 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "tunnel_connect",
         "tunnel_drop",
         "tunnel_heartbeat",
+        // Group R: companion gateway proxying
+        "gateway_proxy",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 
