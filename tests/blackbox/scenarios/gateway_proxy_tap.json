@@ -25,6 +25,14 @@
       "action": "gateway_proxy",
       "args": {
         "rpc": "tap",
+        "args": { "node": 3, "rev": 1 }
+      },
+      "expect": { "code": "NODE_OUTDATED" }
+    },
+    {
+      "action": "gateway_proxy",
+      "args": {
+        "rpc": "tap",
         "args": { "node": 3, "rev": "$tree.rev" }
       },
       "expect": { "ok": true, "verify_at_execute": true }
