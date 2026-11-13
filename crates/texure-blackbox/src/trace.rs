@@ -60,7 +60,7 @@ footer { padding:10px 20px; color:var(--dim); font-size:11px; }
 </header>
 <section id="scenarios">
 <h2>Scenario results</h2>
-<table><tr><th>Status</th><th>ID</th><th>Name</th><th>Duration</th><th>Error</th></tr>
+<table><tr><th>Status</th><th>ID</th><th>Name</th><th>Target</th><th>Duration</th><th>Error</th></tr>
 __SCENARIOS__
 </table>
 </section>
@@ -84,7 +84,13 @@ __SCENARIOS__
   var data = JSON.parse(document.getElementById("trace-data").textContent);
   var steps = data.steps || [];
   var scenStatus = {};
-  (data.scenarios || []).forEach(function (s) { scenStatus[s.scenario_id] = s.status; });
+  function scenKey(sid, target) { return sid + "\u0000" + (target || ""); }
+  (data.scenarios || []).forEach(function (s) {
+    // Key by scenario_id + target: --target all runs have the same scenario
+    // ID on several targets and the later execution must not overwrite the
+    // earlier status.
+    scenStatus[scenKey(s.scenario_id, s.target)] = s.status;
+  });
   var list = document.getElementById("step-list");
   var detail = document.getElementById("step-detail");
   var slider = document.getElementById("timeline");
@@ -180,7 +186,7 @@ __SCENARIOS__
     // Build the detail pane via DOM APIs (textContent, never innerHTML):
     // embedded JSON payloads are untrusted and must not become markup.
     detail.textContent = "";
-    var status = scenStatus[st.scenario_id] || "";
+    var status = scenStatus[scenKey(st.scenario_id, st.target)] || "";
     var failed = status === "FAIL";
     var resultHasError = false;
     try { resultHasError = !!(st.result_json && JSON.parse(st.result_json).error); } catch (e) {}
@@ -231,11 +237,13 @@ __SCENARIOS__
 
   steps.forEach(function (st, i) {
     var li = document.createElement("li");
-    var failed = scenStatus[st.scenario_id] === "FAIL";
+    var failed = scenStatus[scenKey(st.scenario_id, st.target)] === "FAIL";
     li.appendChild(chip(failed ? "fail" : "pass", st.tool_name));
     var meta = document.createElement("span");
     meta.style.color = "#9aa1b5";
-    meta.textContent = st.scenario_id + " #" + st.step_index + " - +" + st.timestamp_offset_ms + "ms";
+    meta.textContent = st.scenario_id +
+      (st.target ? " @" + st.target : "") +
+      " #" + st.step_index + " - +" + st.timestamp_offset_ms + "ms";
     li.appendChild(meta);
     li.addEventListener("click", function () { showStep(i); });
     list.appendChild(li);
@@ -317,7 +325,7 @@ __RUN_ROWS__
 </section>
 <section id="scenarios">
 <h2>Scenario breakdown (pass rate over recent runs)</h2>
-<table><tr><th>ID</th><th>Name</th><th>Runs</th><th>Pass</th><th>Fail</th><th>Skip</th><th>Pass rate</th><th>Verdict</th></tr>
+<table><tr><th>ID</th><th>Name</th><th>Target</th><th>Runs</th><th>Pass</th><th>Fail</th><th>Skip</th><th>Pass rate</th><th>Verdict</th></tr>
 __SCEN_ROWS__
 </table>
 </section>
@@ -364,6 +372,10 @@ pub fn render_trace_html(
         scen_rows.push_str("</code></td><td>");
         scen_rows.push_str(&esc(&s.name));
         scen_rows.push_str("</td><td>");
+        if let Some(ref t) = s.target {
+            scen_rows.push_str(&esc(t));
+        }
+        scen_rows.push_str("</td><td>");
         scen_rows.push_str(&s.duration_ms.to_string());
         scen_rows.push_str("ms</td>");
         if let Some(ref code) = s.error_code {
@@ -371,6 +383,12 @@ pub fn render_trace_html(
             scen_rows.push_str(&esc(code));
             scen_rows.push_str("</strong> ");
             scen_rows.push_str(&esc(s.error_message.as_deref().unwrap_or("")));
+            scen_rows.push_str("</td>");
+        } else if let Some(ref msg) = s.error_message {
+            // Scenario-load and assertion failures have a message but no
+            // recognized code — the viewer must still explain the failure.
+            scen_rows.push_str("<td class=\"error-banner\">");
+            scen_rows.push_str(&esc(msg));
             scen_rows.push_str("</td>");
         } else {
             scen_rows.push_str("<td></td>");
@@ -400,8 +418,13 @@ pub fn render_trace_html(
         .replace("__DATA__", &embed_json(&doc))
 }
 
-/// Render the single-file regression trend dashboard HTML.
-pub fn render_trend_html(runs: &[RunRecord], stats: &[ScenarioTrend]) -> String {
+/// Render the single-file regression trend dashboard HTML. `trace_href` maps
+/// a run ID to that run's trace artifact path (relative to the trend file).
+pub fn render_trend_html(
+    runs: &[RunRecord],
+    stats: &[ScenarioTrend],
+    trace_href: &dyn Fn(&str) -> String,
+) -> String {
     let mut run_rows = String::new();
     for r in runs {
         let total = r.passed + r.failed;
@@ -420,8 +443,8 @@ pub fn render_trend_html(runs: &[RunRecord], stats: &[ScenarioTrend]) -> String 
         run_rows.push_str(&r.failed.to_string());
         run_rows.push_str("F</td><td>");
         run_rows.push_str(&pct.to_string());
-        run_rows.push_str("%</td><td><a href=\"trace.html?run=");
-        run_rows.push_str(&esc(&r.run_id));
+        run_rows.push_str("%</td><td><a href=\"");
+        run_rows.push_str(&esc(&trace_href(&r.run_id)));
         run_rows.push_str("\">trace</a></td></tr>");
     }
 
@@ -447,8 +470,14 @@ pub fn render_trend_html(runs: &[RunRecord], stats: &[ScenarioTrend]) -> String 
             scen_rows.push_str("<span class=\"flaky-badge\">flaky</span>");
         } else if s.pass_rate() >= 1.0 {
             scen_rows.push_str("<span class=\"chip chip-pass\">stable-pass</span>");
-        } else if s.runs > 0 {
+        } else if s.fails > 0 {
             scen_rows.push_str("<span class=\"chip chip-fail\">failing</span>");
+        } else if s.passes > 0 {
+            scen_rows.push_str("<span class=\"chip chip-pass\">passing</span>");
+        } else if s.runs > 0 {
+            // All executions skipped (e.g. device-only scenarios without a
+            // phone) — not a failure.
+            scen_rows.push_str("<span class=\"chip chip-skip\">skipped</span>");
         } else {
             scen_rows.push_str("<span class=\"chip chip-skip\">no data</span>");
         }
@@ -668,6 +697,7 @@ mod tests {
             ScenarioTrend {
                 scenario_id: "BB-A1".to_string(),
                 name: "Static UI tree".to_string(),
+                target: None,
                 runs: 3,
                 passes: 2,
                 fails: 1,
@@ -676,13 +706,14 @@ mod tests {
             ScenarioTrend {
                 scenario_id: "BB-A2".to_string(),
                 name: "Mutating actions".to_string(),
+                target: None,
                 runs: 3,
                 passes: 3,
                 fails: 0,
                 skips: 0,
             },
         ];
-        let html = render_trend_html(&runs, &stats);
+        let html = render_trend_html(&runs, &stats, &|_rid: &str| format!("trace-{}.html", _rid));
 
         assert!(html.contains("trend"), "missing trend section");
         assert!(html.contains("BB-A1"), "missing scenario breakdown row");
@@ -692,8 +723,8 @@ mod tests {
         );
         assert!(html.contains("run_2026"), "missing run rows");
         assert!(
-            html.contains("trace.html?run="),
-            "missing per-run trace links"
+            html.contains("trace-run_2026"),
+            "missing per-run trace artifact links"
         );
         assert!(!html.contains("http://"), "external http URL leaked in");
         assert!(!html.contains("https://"), "external https URL leaked in");
@@ -707,6 +738,7 @@ mod tests {
             ScenarioTrend {
                 scenario_id: "BB-A1".to_string(),
                 name: "Always pass".to_string(),
+                target: None,
                 runs: 2,
                 passes: 2,
                 fails: 0,
@@ -715,18 +747,43 @@ mod tests {
             ScenarioTrend {
                 scenario_id: "BB-B3".to_string(),
                 name: "Always fail".to_string(),
+                target: None,
                 runs: 2,
                 passes: 0,
                 fails: 2,
                 skips: 0,
             },
         ];
-        let html = render_trend_html(&runs, &stats);
+        let html = render_trend_html(&runs, &stats, &|_rid: &str| format!("trace-{}.html", _rid));
 
         assert!(html.contains("BB-B3"), "missing always-fail scenario row");
         assert!(
             !html.contains(r#"<span class="flaky-badge">flaky</span>"#),
             "consistent scenarios must not be flagged flaky"
+        );
+    }
+
+    #[test]
+    fn test_trend_skipped_only_scenario_is_not_failing() {
+        let runs = fixture_runs(3);
+        let stats = vec![ScenarioTrend {
+            scenario_id: "BB-D1".to_string(),
+            name: "Device only".to_string(),
+            target: None,
+            runs: 3,
+            passes: 0,
+            fails: 0,
+            skips: 3,
+        }];
+        let html = render_trend_html(&runs, &stats, &|_rid: &str| format!("trace-{}.html", _rid));
+
+        assert!(
+            html.contains(r#"<span class="chip chip-skip">skipped</span>"#),
+            "skipped-only scenario must show a skipped verdict"
+        );
+        assert!(
+            !html.contains(r#"<span class="chip chip-fail">failing</span>"#),
+            "skipped-only scenario must not be labeled failing"
         );
     }
 

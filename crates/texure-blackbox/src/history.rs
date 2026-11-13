@@ -69,6 +69,10 @@ pub struct StepRecord {
 pub struct ScenarioTrend {
     pub scenario_id: String,
     pub name: String,
+    /// Runner target this aggregate covers; `None` for legacy rows recorded
+    /// before the target column. Kept in the aggregation key so `--target
+    /// all` runs don't merge fake/real executions into one flaky row.
+    pub target: Option<String>,
     pub runs: usize,
     pub passes: usize,
     pub fails: usize,
@@ -85,9 +89,10 @@ impl ScenarioTrend {
         }
     }
 
-    /// Flaky = sometimes passes, sometimes fails: strictly between 0% and 100%.
+    /// Flaky = sometimes passes, sometimes fails: requires at least one
+    /// actual failure and one actual pass (skips are neither).
     pub fn is_flaky(&self) -> bool {
-        self.runs >= 2 && self.pass_rate() > 0.0 && self.pass_rate() < 1.0
+        self.runs >= 2 && self.passes > 0 && self.fails > 0
     }
 }
 
@@ -409,7 +414,7 @@ impl HistoryStore {
     pub fn get_scenario_stats(&self, limit: usize) -> Result<Vec<ScenarioTrend>, HistoryError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT sr.scenario_id, MAX(sr.name) AS name, COUNT(*) AS runs,
+            "SELECT sr.scenario_id, MAX(sr.name) AS name, sr.target, COUNT(*) AS runs,
                     SUM(CASE WHEN sr.status = 'PASS' THEN 1 ELSE 0 END) AS passes,
                     SUM(CASE WHEN sr.status = 'FAIL' THEN 1 ELSE 0 END) AS fails,
                     SUM(CASE WHEN sr.status IN ('SKIP', 'DEVICE-SKIP') THEN 1 ELSE 0 END) AS skips
@@ -417,18 +422,19 @@ impl HistoryStore {
              WHERE sr.run_id IN (
                  SELECT run_id FROM runs ORDER BY timestamp DESC, run_id DESC LIMIT ?1
              )
-             GROUP BY sr.scenario_id
-             ORDER BY sr.scenario_id ASC;",
+             GROUP BY sr.scenario_id, sr.target
+             ORDER BY sr.scenario_id ASC, sr.target ASC;",
         )?;
 
         let rows = stmt.query_map(params![limit as i64], |row| {
             Ok(ScenarioTrend {
                 scenario_id: row.get(0)?,
                 name: row.get(1)?,
-                runs: row.get::<_, i64>(2)? as usize,
-                passes: row.get::<_, i64>(3)? as usize,
-                fails: row.get::<_, i64>(4)? as usize,
-                skips: row.get::<_, i64>(5)? as usize,
+                target: row.get(2)?,
+                runs: row.get::<_, i64>(3)? as usize,
+                passes: row.get::<_, i64>(4)? as usize,
+                fails: row.get::<_, i64>(5)? as usize,
+                skips: row.get::<_, i64>(6)? as usize,
             })
         })?;
 
@@ -602,6 +608,103 @@ mod tests {
         assert_eq!(bb_a1_steps.len(), 1);
         assert_eq!(bb_a1_steps[0].tool_name, "device_tree");
         assert_eq!(bb_a1_steps[0].rev_after, Some(1));
+    }
+
+    #[test]
+    fn test_flaky_requires_an_actual_failure() {
+        // pass + skip: sometimes-passes is not flaky without a failure.
+        let mixed = ScenarioTrend {
+            scenario_id: "BB-A1".to_string(),
+            name: "Static UI tree".to_string(),
+            target: None,
+            runs: 2,
+            passes: 1,
+            fails: 0,
+            skips: 1,
+        };
+        assert!(!mixed.is_flaky(), "pass+skip must not be flaky");
+
+        let flaky = ScenarioTrend {
+            scenario_id: "BB-A1".to_string(),
+            name: "Static UI tree".to_string(),
+            target: None,
+            runs: 2,
+            passes: 1,
+            fails: 1,
+            skips: 0,
+        };
+        assert!(flaky.is_flaky(), "pass+fail is flaky");
+    }
+
+    #[test]
+    fn test_scenario_stats_group_by_target() {
+        let temp_dir = tempdir().expect("Failed to create tempdir");
+        let db_path = temp_dir.path().join("history.db");
+        let store = HistoryStore::open_at(db_path).expect("Failed to open store");
+
+        // `--target all`: fake executions pass, real executions always fail.
+        // Merged into one row, this would look flaky; per-target it must not.
+        for i in 0..3 {
+            let run = RunRecord {
+                run_id: format!("run_2026111{i}_000000"),
+                timestamp: format!("2026-11-1{i}T10:00:00Z"),
+                app_version_name: None,
+                build_hash: None,
+                branch: None,
+                total_scenarios: 2,
+                passed: 1,
+                failed: 1,
+                duration_ms: 1000,
+            };
+            let scenarios = vec![
+                ScenarioResultRecord {
+                    id: None,
+                    run_id: run.run_id.clone(),
+                    scenario_id: "BB-A1".to_string(),
+                    name: "Static UI tree".to_string(),
+                    status: "PASS".to_string(),
+                    target: Some("mcp".to_string()),
+                    duration_ms: 300,
+                    error_code: None,
+                    error_message: None,
+                    evidence_bundle_path: None,
+                },
+                ScenarioResultRecord {
+                    id: None,
+                    run_id: run.run_id.clone(),
+                    scenario_id: "BB-A1".to_string(),
+                    name: "Static UI tree".to_string(),
+                    status: "FAIL".to_string(),
+                    target: Some("mcp-real".to_string()),
+                    duration_ms: 300,
+                    error_code: Some("AUTH_FAILED".to_string()),
+                    error_message: Some("Token mismatch".to_string()),
+                    evidence_bundle_path: None,
+                },
+            ];
+            store
+                .record_run(&run, &scenarios, &[])
+                .expect("record failed");
+        }
+
+        let stats = store.get_scenario_stats(10).expect("stats failed");
+        assert_eq!(
+            stats.len(),
+            2,
+            "fake and real executions must stay separate rows"
+        );
+
+        let fake = stats.iter().find(|s| s.target.as_deref() == Some("mcp"));
+        let real = stats
+            .iter()
+            .find(|s| s.target.as_deref() == Some("mcp-real"));
+        assert!(fake.is_some() && real.is_some(), "both targets present");
+        let fake = fake.unwrap();
+        let real = real.unwrap();
+        assert_eq!(fake.passes, 3);
+        assert_eq!(real.fails, 3);
+        assert!(!fake.is_flaky(), "always-pass target is not flaky");
+        assert!(!real.is_flaky(), "always-fail target is not flaky");
     }
 
     #[test]
