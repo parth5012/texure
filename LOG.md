@@ -236,3 +236,8 @@
 - TDD: the red suite IS the deliverable; BB-R1..R13 verified RED via --target mcp ("Unsupported action in MCP test: <action>") — clean fail-until-implemented per docs/agent-test-loop.md rule 2.
 - VERIFY: L0 pass (texure-lint 0 findings) · L1 pass (28 blackbox + 4 lint unit tests green) · L2 pass-red (13/13 R scenarios authored red; existing A/B/C suites untouched) · L3 n/a (no device surface; maps 10-13 implement the real targets) · FLIPS: none (write-first; flip happens when maps 10-13 land).
 - Review: independent reviewer subagent + OCR both DOWN (LLM endpoint conn refused / HTTP-to-HTTPS 400). Degraded mode: mechanical self-review checklist in-context — action lists identical, 13/13 registry/plan/spec/file consistency, no false-green paths (every R scenario starts on an unknown action), no duplicate IDs, no real credentials. GREEN, zero findings, no parked items.
+
+## 2026-11-13 (session) — map 9 PR #105 babysit, CodeRabbit round-1
+- CI 7/7 green on 95da3ef; CodeRabbit review triggered manually (repo <10 stars, no auto-review).
+- Round-1: 3 Minor findings. Applied 2 concrete fixes (commit fix(#41)): stale-rev refusal path in gateway_proxy_tap (BB-R5); evaluate_assertion state-predicate no longer silently passes for unhandled targets (generic targets compare last-response `state` field, fail loudly otherwise) + 3 new assertion tests (31 total). Parked 1 verbatim on ticket #40: owner-identity field for tunnel BUSY refusal — needs bridge-contract field definition, map 10 decision.
+- VERIFY after fixes: L0 lint 0 · L1 31 blackbox + 4 lint green · clippy 0 · fmt clean · L2 BB-R suite still authored red.
