@@ -218,3 +218,10 @@
 - Files: crates/texure-blackbox/src/trace.rs (new, HTML templates + tests), history.rs (ScenarioTrend + get_scenario_stats + tests), runner.rs (StepTrace capture through all three walk targets), main.rs (--trace/--trend/--out flags + step record wiring).
 - CLI decision (DECISIONS.md): --trend (not ticket's literal --report, which was taken by the JSON report flag).
 - VERIFY: L0 pass (texure-lint 0 findings, cargo fmt clean, cargo check 0 warnings; clippy unavailable on this toolchain — not installed for stable-x86_64-pc-windows-gnu) · L1 pass (21 blackbox + 26 server + 4 lint + 13 contract) · L2 pass (--target mcp-fake 14/14, step records persisted: 19 rows verified in .texure/history.db with tool names/rev/offsets) · L3 n/a (no device surface touched) · artifacts tmp/evidence/27/{trace.html,trend.html,trace-db-path.html} with zero external URLs.
+
+## 2026-11-13 - map 28 restack complete (PR #104)
+- Rebased wf/28-27-trace-viewer onto wf/28-26-history-store (5a920ab, CodeRabbit round-2 fixes). Test-region conflict in history.rs resolved by keeping both PR suites (HEAD target-filter/format/migration tests + #104 stats tests, #104 literals adapted with target: None). One stray brace + duplicate #[test] cleaned after splice.
+- Restack adaptations: StepRecord.target from results[i].target (zip results/step_traces), get_scenario_steps calls pass s.target.as_deref(), --trace/--trend default DB path now args.root-relative (deferred #92 fix applied), trace.rs fixtures gain target field.
+- VERIFY: L1 pass (25 blackbox + 26 server + 4 lint + 13 contract) · clippy 0 · fmt clean · L2 pass (mcp-fake 14/14) · artifacts regenerated tmp/evidence/27/{trace.html,trend.html}, trace shows mcp-fake target labels, zero external URLs.
+- Pushed 9d518ff --force-with-lease. PR #104 CI 2/2 green; CodeRabbit auto-review skipped (non-default base) -> manual @coderabbitai review triggered (comment 6843369206), watching for round-1 findings. Stale trace-db-path.html artifact removed.
+- PR #92: CodeRabbit link-artifact comment only, CI green on 5a920ab, no action needed.
