@@ -1,0 +1,33 @@
+{
+  "name": "gateway_rpc_envelope",
+  "kind": "fixture",
+  "description": "BB-R4..R6 protocol envelope: encapsulated RPC payload carried inside a tunnel frame (desktop -> companion -> bridge). Mutating RPCs carry the revision for verify-at-execute; bridge errors are relayed unchanged.",
+  "request": {
+    "v": 1,
+    "seq": 2,
+    "auth": { "bearer": "<pairing-token>" },
+    "payload": {
+      "type": "rpc",
+      "rpc": "tap",
+      "args": { "node": 3, "rev": 7 },
+      "verify_at_execute": true
+    }
+  },
+  "reply_ok": {
+    "v": 1,
+    "seq": 2,
+    "payload": { "ok": true, "rev": 8 }
+  },
+  "reply_error_relayed": {
+    "v": 1,
+    "seq": 2,
+    "payload": {
+      "error": {
+        "code": "NODE_OUTDATED",
+        "message": "tree changed before execute",
+        "hint": "re-fetch /ui-tree and retry",
+        "relayed": true
+      }
+    }
+  }
+}

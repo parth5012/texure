@@ -83,6 +83,8 @@ impl Scenario {
             "tunnel_connect",
             "tunnel_drop",
             "tunnel_heartbeat",
+            // Group R: companion gateway proxying
+            "gateway_proxy",
         ];
 
         for step in &self.steps {

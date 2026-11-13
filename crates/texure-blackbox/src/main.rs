@@ -385,6 +385,27 @@ pub fn get_all_tests() -> Vec<TestDef> {
             target: "mcp".to_string(),
             is_device: false,
         },
+        TestDef {
+            id: "BB-R4".to_string(),
+            name: "Gateway proxies device_tree RPC across tunnel".to_string(),
+            scenario_file: "gateway_proxy_tree.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R5".to_string(),
+            name: "Gateway proxies mutating tap with rev check".to_string(),
+            scenario_file: "gateway_proxy_tap.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R6".to_string(),
+            name: "Gateway relays bridge NODE_OUTDATED error".to_string(),
+            scenario_file: "gateway_error_propagation.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
     ]
 }
 
