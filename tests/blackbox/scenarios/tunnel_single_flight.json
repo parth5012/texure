@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "tunnel_single_flight",
+  "kind": "scenario",
+  "description": "BB-R13 (spec 3R row 13): single-flight lock enforced across remote tunnel connections; second connection is refused with BUSY + owner identity",
+  "tags": ["remote", "tunnel", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token",
+        "client": "owner"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token",
+        "client": "loser"
+      },
+      "expect": { "code": "BUSY", "connected": false }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

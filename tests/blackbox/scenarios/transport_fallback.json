@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "transport_fallback",
+  "kind": "scenario",
+  "description": "BB-R12 (spec 3R row 12): transport resolution fails over from reverse_ws to lan_direct when the tunnel is absent",
+  "tags": ["remote", "transport", "write-first"],
+  "steps": [
+    {
+      "action": "transport_resolve",
+      "args": {
+        "order": ["reverse_ws", "lan_direct"],
+        "reverse_ws": "absent"
+      },
+      "expect": { "selected": "lan_direct" }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "transport", "value": "FALLBACK" }
+  ]
+}

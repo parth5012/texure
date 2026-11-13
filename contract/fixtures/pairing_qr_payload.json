@@ -1,0 +1,17 @@
+{
+  "name": "pairing_qr_payload",
+  "kind": "fixture",
+  "description": "BB-R11 golden pairing payload: the QR the companion app scans carries the desktop wss:// tunnel endpoint plus the bearer token. Nothing else is embedded (no IPs, no secrets beyond the pairing token).",
+  "valid_payload": {
+    "scheme": "wss",
+    "host": "desktop.example",
+    "port": 443,
+    "path": "/tunnel",
+    "token": "<pairing-token>",
+    "app": "texure"
+  },
+  "invalid_payloads": [
+    { "reason": "missing token", "payload": { "scheme": "wss", "host": "desktop.example", "port": 443, "path": "/tunnel", "app": "texure" } },
+    { "reason": "plain ws endpoint", "payload": { "scheme": "ws", "host": "desktop.example", "port": 8080, "path": "/tunnel", "token": "<pairing-token>", "app": "texure" } }
+  ]
+}

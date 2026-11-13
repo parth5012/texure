@@ -434,6 +434,27 @@ pub fn get_all_tests() -> Vec<TestDef> {
             target: "mcp".to_string(),
             is_device: false,
         },
+        TestDef {
+            id: "BB-R11".to_string(),
+            name: "Pairing QR payload generation & validation".to_string(),
+            scenario_file: "pairing_qr.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R12".to_string(),
+            name: "Transport fallback reverse_ws -> lan_direct".to_string(),
+            scenario_file: "transport_fallback.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R13".to_string(),
+            name: "Single-flight lock across remote tunnel (BUSY)".to_string(),
+            scenario_file: "tunnel_single_flight.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
     ]
 }
 

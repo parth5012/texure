@@ -54,6 +54,9 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "gateway_proxy",
         // Group R: Shizuku remote lifecycle
         "shizuku_cmd",
+        // Group R: pairing QR & multi-transport fallback
+        "pairing_qr",
+        "transport_resolve",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 

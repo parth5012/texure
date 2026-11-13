@@ -87,6 +87,9 @@ impl Scenario {
             "gateway_proxy",
             // Group R: Shizuku remote lifecycle
             "shizuku_cmd",
+            // Group R: pairing QR & multi-transport fallback
+            "pairing_qr",
+            "transport_resolve",
         ];
 
         for step in &self.steps {
