@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "shizuku_input_tap",
+  "kind": "scenario",
+  "description": "BB-R10 (spec 3R row 10): system-level fallback tap injection via input tap for OS permission popups outside the app's own windows (Shizuku-gated exception)",
+  "tags": ["remote", "shizuku", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "shizuku_cmd",
+      "args": {
+        "op": "input_tap",
+        "x": 540,
+        "y": 960
+      },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

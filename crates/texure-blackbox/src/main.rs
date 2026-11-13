@@ -406,6 +406,34 @@ pub fn get_all_tests() -> Vec<TestDef> {
             target: "mcp".to_string(),
             is_device: false,
         },
+        TestDef {
+            id: "BB-R7".to_string(),
+            name: "Shizuku wake & keyguard dismiss".to_string(),
+            scenario_file: "shizuku_wake_keyguard.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R8".to_string(),
+            name: "Shizuku cold app launch (am start)".to_string(),
+            scenario_file: "shizuku_cold_start.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R9".to_string(),
+            name: "Shizuku runtime permission grant (pm grant)".to_string(),
+            scenario_file: "shizuku_pm_grant.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
+        TestDef {
+            id: "BB-R10".to_string(),
+            name: "Shizuku fallback system tap injection".to_string(),
+            scenario_file: "shizuku_input_tap.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+        },
     ]
 }
 

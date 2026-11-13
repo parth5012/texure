@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "shizuku_pm_grant",
+  "kind": "scenario",
+  "description": "BB-R9 (spec 3R row 9): runtime permission auto-grant for the target app via pm grant",
+  "tags": ["remote", "shizuku", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "shizuku_cmd",
+      "args": {
+        "op": "pm_grant",
+        "package": "com.example.target",
+        "permission": "android.permission.POST_NOTIFICATIONS"
+      },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

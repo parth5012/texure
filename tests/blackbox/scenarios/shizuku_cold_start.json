@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "shizuku_cold_start",
+  "kind": "scenario",
+  "description": "BB-R8 (spec 3R row 8): cold-launch the target app via am start when its bridge was offline",
+  "tags": ["remote", "shizuku", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "shizuku_cmd",
+      "args": {
+        "op": "am_start",
+        "package": "com.example.target"
+      },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

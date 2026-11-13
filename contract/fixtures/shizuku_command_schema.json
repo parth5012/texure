@@ -1,0 +1,13 @@
+{
+  "name": "shizuku_command_schema",
+  "kind": "fixture",
+  "description": "BB-R7..R10 command payload schema: Shizuku shell ops issued by the companion over the tunnel, and their mock execution results in FakeBridge.",
+  "ops": [
+    { "op": "wake", "args": {}, "mock_result": { "ok": true, "state": "screen_on" } },
+    { "op": "keyguard_dismiss", "args": {}, "mock_result": { "ok": true, "state": "unlocked" } },
+    { "op": "am_start", "args": { "package": "com.example.target" }, "mock_result": { "ok": true, "bridge": "online" } },
+    { "op": "pm_grant", "args": { "package": "com.example.target", "permission": "android.permission.POST_NOTIFICATIONS" }, "mock_result": { "ok": true, "granted": true } },
+    { "op": "input_tap", "args": { "x": 540, "y": 960 }, "mock_result": { "ok": true, "injected": "system" } }
+  ],
+  "failure_shape": { "ok": false, "error": { "code": "OFFLINE", "hint": "request Shizuku permission on the device" } }
+}

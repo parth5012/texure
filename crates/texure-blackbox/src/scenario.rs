@@ -85,6 +85,8 @@ impl Scenario {
             "tunnel_heartbeat",
             // Group R: companion gateway proxying
             "gateway_proxy",
+            // Group R: Shizuku remote lifecycle
+            "shizuku_cmd",
         ];
 
         for step in &self.steps {
