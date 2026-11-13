@@ -229,3 +229,15 @@
 ## 2026-11-13 - map 7 CodeRabbit round-1 findings on #104 (bd906e5)
 - Applied all 9 findings: flaky requires actual failure; stats+trace keyed/grouped by (scenario_id, target); error_message shown without code; skipped-only verdict; --trace accepts any existing DB file; MCP/HTTP validation returns record failing action first; HTTP tap/type record resolved params; --trend writes per-run trace-<run_id>.html artifacts and links each row to its own trace (was shared trace.html?run= which never selected another run).
 - Tests: 28 blackbox (3 new: flaky-requires-failure, stats group-by-target, skipped-only verdict), 26 server, 4 lint, 13 contract all green; clippy/fmt clean; L2 mcp-fake 14/14; artifacts regenerated, per-run links verified, 0 external URLs.
+
+## 2026-11-13 (session) — Wayfinder map 9 (#41) shipped via wayfinder-ship
+- Status: Done (tickets #37-#40). Branch wf/41-blackbox-map9 off origin/main, single-PR mode (4 AFK < 5).
+- Scope: write-first RED blackbox suite BB-R1..R13 (reverse tunnel handshake/auth/reconnect, gateway proxy + error propagation, Shizuku lifecycle, pairing QR + transport fallback), Group R spec rows in behavior-spec.md §3R + blackbox-plan.md, DSL actions tunnel_connect/tunnel_drop/tunnel_heartbeat/gateway_proxy/shizuku_cmd/pairing_qr/transport_resolve (runner + lint), docs-gate R-group support (regex [A-C]→[A-R] + expected-ID list), 5 contract fixtures.
+- TDD: the red suite IS the deliverable; BB-R1..R13 verified RED via --target mcp ("Unsupported action in MCP test: <action>") — clean fail-until-implemented per docs/agent-test-loop.md rule 2.
+- VERIFY: L0 pass (texure-lint 0 findings) · L1 pass (28 blackbox + 4 lint unit tests green) · L2 pass-red (13/13 R scenarios authored red; existing A/B/C suites untouched) · L3 n/a (no device surface; maps 10-13 implement the real targets) · FLIPS: none (write-first; flip happens when maps 10-13 land).
+- Review: independent reviewer subagent + OCR both DOWN (LLM endpoint conn refused / HTTP-to-HTTPS 400). Degraded mode: mechanical self-review checklist in-context — action lists identical, 13/13 registry/plan/spec/file consistency, no false-green paths (every R scenario starts on an unknown action), no duplicate IDs, no real credentials. GREEN, zero findings, no parked items.
+
+## 2026-11-13 (session) — map 9 PR #105 babysit, CodeRabbit round-1
+- CI 7/7 green on 95da3ef; CodeRabbit review triggered manually (repo <10 stars, no auto-review).
+- Round-1: 3 Minor findings. Applied 2 concrete fixes (commit fix(#41)): stale-rev refusal path in gateway_proxy_tap (BB-R5); evaluate_assertion state-predicate no longer silently passes for unhandled targets (generic targets compare last-response `state` field, fail loudly otherwise) + 3 new assertion tests (31 total). Parked 1 verbatim on ticket #40: owner-identity field for tunnel BUSY refusal — needs bridge-contract field definition, map 10 decision.
+- VERIFY after fixes: L0 lint 0 · L1 31 blackbox + 4 lint green · clippy 0 · fmt clean · L2 BB-R suite still authored red.

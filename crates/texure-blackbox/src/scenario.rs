@@ -79,6 +79,17 @@ impl Scenario {
             "recording_stop",
             "recording_export",
             "recording_clear",
+            // Group R (maps 10-13, write-first): remote tunnel & gateway
+            "tunnel_connect",
+            "tunnel_drop",
+            "tunnel_heartbeat",
+            // Group R: companion gateway proxying
+            "gateway_proxy",
+            // Group R: Shizuku remote lifecycle
+            "shizuku_cmd",
+            // Group R: pairing QR & multi-transport fallback
+            "pairing_qr",
+            "transport_resolve",
         ];
 
         for step in &self.steps {

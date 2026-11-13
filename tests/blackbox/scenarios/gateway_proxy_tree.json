@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "gateway_proxy_tree",
+  "kind": "scenario",
+  "description": "BB-R4 (spec 3R row 4): desktop forwards a device_tree RPC encapsulated in the tunnel envelope to the target bridge and returns the result verbatim",
+  "tags": ["remote", "gateway", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "gateway_proxy",
+      "args": {
+        "rpc": "device_tree",
+        "args": {}
+      },
+      "expect": { "rpc": "device_tree" }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

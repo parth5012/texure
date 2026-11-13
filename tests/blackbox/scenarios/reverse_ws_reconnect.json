@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "reverse_ws_reconnect",
+  "kind": "scenario",
+  "description": "BB-R3 (spec 3R row 3): supervisor detects a tunnel drop and reconnects with exponential backoff until CONNECTED",
+  "tags": ["remote", "tunnel", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "tunnel_drop",
+      "args": { "reason": "network_drop" },
+      "expect": { "dropped": true }
+    },
+    {
+      "action": "tunnel_heartbeat",
+      "args": { "interval_ms": 1000, "backoff": "exponential" },
+      "expect": { "reconnected": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "name": "gateway_proxy_tap",
+  "kind": "scenario",
+  "description": "BB-R5 (spec 3R row 5): desktop forwards a mutating tap RPC with a verify-at-execute revision check; stale revision is refused at the bridge",
+  "tags": ["remote", "gateway", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "gateway_proxy",
+      "args": {
+        "rpc": "device_tree",
+        "args": {}
+      },
+      "expect": { "rpc": "device_tree" }
+    },
+    {
+      "action": "gateway_proxy",
+      "args": {
+        "rpc": "tap",
+        "args": { "node": 3, "rev": 1 }
+      },
+      "expect": { "code": "NODE_OUTDATED" }
+    },
+    {
+      "action": "gateway_proxy",
+      "args": {
+        "rpc": "tap",
+        "args": { "node": 3, "rev": "$tree.rev" }
+      },
+      "expect": { "ok": true, "verify_at_execute": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

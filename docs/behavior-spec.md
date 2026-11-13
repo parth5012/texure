@@ -137,6 +137,30 @@ Rules:
 - Bridge and server compute no state on their own; each derives state from connection + device facts. State is surfaced, not hidden.
 - Every refusal carries a correction hint, keeping agents (the primary consumer) self-sufficient.
 
+## 3R. Remote companion, gateway, Shizuku & pairing [R] (maps 10–13, write-first)
+
+Rows below are the write-first contract established by map 9 (issue #41). The red blackbox
+suite BB-R1..R13 is authored against them BEFORE any implementation exists; each row flips
+red→green when its owning map (10–13) lands. Remote surfaces are protocol-only here: the
+desktop server and companion app talk over a reverse WebSocket tunnel (primary transport,
+config-driven fallback order); Shizuku is used only for remote lifecycle bootstrap.
+
+| Behavior | Test ID | Spec |
+|---|---|---|
+| Reverse WS handshake | BB-R1 | Companion dials the desktop `wss://` tunnel endpoint with a valid bearer token; server accepts and the tunnel enters CONNECTED state. |
+| Reverse WS auth rejection | BB-R2 | Mismatched bearer token → connection refused with `AUTH_FAILED` and no tunnel established. |
+| Reverse WS reconnect | BB-R3 | Supervisor detects connection drop and reconnects with exponential backoff until CONNECTED again. |
+| Gateway proxying (read) | BB-R4 | Desktop forwards `device_tree` RPC encapsulated in the tunnel envelope to the target bridge; result returned verbatim. |
+| Gateway proxying (mutate) | BB-R5 | Desktop forwards `tap` with verify-at-execute revision check; stale payload is refused. |
+| Gateway error propagation | BB-R6 | Bridge error `NODE_OUTDATED` is relayed through the tunnel unchanged (code, message, hint). |
+| Shizuku wake & keyguard | BB-R7 | Remote `wake` + `keyguard_dismiss` executed via Shizuku shell when screen is off/locked. |
+| Shizuku cold start | BB-R8 | If the target bridge is offline, `am start` cold-launches the target app before reconnect. |
+| Shizuku permission grant | BB-R9 | `pm grant` auto-grants declared runtime permissions for the target app. |
+| Shizuku fallback tap | BB-R10 | System-level `input tap` injection for OS permission popups outside the app's own windows (documented exception, Shizuku-gated). |
+| Pairing QR payload | BB-R11 | QR payload carries `wss://` endpoint + bearer token; payload validates against the pairing schema. |
+| Transport fallback | BB-R12 | When the reverse WS tunnel is absent, transport resolution fails over to the next configured transport (`lan_direct`). |
+| Remote single-flight | BB-R13 | Second remote tunnel connection while one is active → `BUSY` refusal with owner identity. |
+
 ## 4. Explicit non-behaviors (v1)
 
 - No auto-wake of a powered-off screen.

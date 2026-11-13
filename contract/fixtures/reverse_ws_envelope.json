@@ -1,0 +1,20 @@
+{
+  "name": "reverse_ws_envelope",
+  "kind": "fixture",
+  "description": "BB-R1..R3 protocol envelope: one text frame of the reverse WebSocket tunnel (desktop <- companion). Ping/pong heartbeat rides the same framing; seq strictly increases.",
+  "framing": "websocket-text",
+  "heartbeat": { "ping": "tunnel.ping", "pong": "tunnel.pong", "interval_ms": 5000 },
+  "valid_frame": {
+    "v": 1,
+    "seq": 1,
+    "auth": { "bearer": "<pairing-token>" },
+    "payload": { "type": "rpc", "rpc": "device_tree", "args": {} }
+  },
+  "rejected_frame": {
+    "v": 1,
+    "seq": 1,
+    "auth": { "bearer": "<mismatched-token>" },
+    "payload": { "type": "rpc", "rpc": "device_tree", "args": {} },
+    "reply": { "code": "AUTH_FAILED", "connected": false }
+  }
+}

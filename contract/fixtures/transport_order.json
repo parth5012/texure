@@ -1,0 +1,11 @@
+{
+  "name": "transport_order",
+  "kind": "fixture",
+  "description": "BB-R12 multi-transport mock: config-driven transport order with fallback triggers. reverse_ws is primary; lan_direct is the documented fallback when the tunnel is absent.",
+  "order": ["reverse_ws", "lan_direct"],
+  "fallback_on": ["tunnel_unreachable", "heartbeat_timeout", "auth_failed_no_retry"],
+  "mock_states": [
+    { "reverse_ws": "absent", "expected_selected": "lan_direct" },
+    { "reverse_ws": "absent", "lan_direct": "absent", "expected_selected": null, "expected_code": "OFFLINE" }
+  ]
+}

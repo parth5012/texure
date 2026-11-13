@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "pairing_qr",
+  "kind": "scenario",
+  "description": "BB-R11 (spec 3R row 11): pairing QR payload generation and validation (wss:// endpoint + bearer token)",
+  "tags": ["remote", "pairing", "write-first"],
+  "steps": [
+    {
+      "action": "pairing_qr",
+      "args": {},
+      "expect": {
+        "scheme": "wss",
+        "token_present": true
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "pairing", "value": "UNPAIRED" }
+  ]
+}
