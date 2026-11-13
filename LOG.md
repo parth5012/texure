@@ -225,3 +225,7 @@
 - VERIFY: L1 pass (25 blackbox + 26 server + 4 lint + 13 contract) · clippy 0 · fmt clean · L2 pass (mcp-fake 14/14) · artifacts regenerated tmp/evidence/27/{trace.html,trend.html}, trace shows mcp-fake target labels, zero external URLs.
 - Pushed 9d518ff --force-with-lease. PR #104 CI 2/2 green; CodeRabbit auto-review skipped (non-default base) -> manual @coderabbitai review triggered (comment 6843369206), watching for round-1 findings. Stale trace-db-path.html artifact removed.
 - PR #92: CodeRabbit link-artifact comment only, CI green on 5a920ab, no action needed.
+
+## 2026-11-13 - map 7 CodeRabbit round-1 findings on #104 (bd906e5)
+- Applied all 9 findings: flaky requires actual failure; stats+trace keyed/grouped by (scenario_id, target); error_message shown without code; skipped-only verdict; --trace accepts any existing DB file; MCP/HTTP validation returns record failing action first; HTTP tap/type record resolved params; --trend writes per-run trace-<run_id>.html artifacts and links each row to its own trace (was shared trace.html?run= which never selected another run).
+- Tests: 28 blackbox (3 new: flaky-requires-failure, stats group-by-target, skipped-only verdict), 26 server, 4 lint, 13 contract all green; clippy/fmt clean; L2 mcp-fake 14/14; artifacts regenerated, per-run links verified, 0 external URLs.
