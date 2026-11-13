@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "shizuku_wake_keyguard",
+  "kind": "scenario",
+  "description": "BB-R7 (spec 3R row 7): remote screen wake and keyguard dismiss executed via Shizuku shell commands",
+  "tags": ["remote", "shizuku", "write-first"],
+  "steps": [
+    {
+      "action": "tunnel_connect",
+      "args": {
+        "endpoint": "wss://desktop.example/tunnel",
+        "token": "valid-bearer-token"
+      },
+      "expect": { "connected": true }
+    },
+    {
+      "action": "shizuku_cmd",
+      "args": { "op": "wake" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "shizuku_cmd",
+      "args": { "op": "keyguard_dismiss" },
+      "expect": { "ok": true }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "tunnel", "value": "CONNECTED" }
+  ]
+}

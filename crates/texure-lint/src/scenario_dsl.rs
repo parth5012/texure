@@ -52,6 +52,8 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "tunnel_heartbeat",
         // Group R: companion gateway proxying
         "gateway_proxy",
+        // Group R: Shizuku remote lifecycle
+        "shizuku_cmd",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 
