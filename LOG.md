@@ -241,3 +241,8 @@
 - CI 7/7 green on 95da3ef; CodeRabbit review triggered manually (repo <10 stars, no auto-review).
 - Round-1: 3 Minor findings. Applied 2 concrete fixes (commit fix(#41)): stale-rev refusal path in gateway_proxy_tap (BB-R5); evaluate_assertion state-predicate no longer silently passes for unhandled targets (generic targets compare last-response `state` field, fail loudly otherwise) + 3 new assertion tests (31 total). Parked 1 verbatim on ticket #40: owner-identity field for tunnel BUSY refusal — needs bridge-contract field definition, map 10 decision.
 - VERIFY after fixes: L0 lint 0 · L1 31 blackbox + 4 lint green · clippy 0 · fmt clean · L2 BB-R suite still authored red.
+
+## 2026-11-14 - map 9 PR #105 merged
+- Rebase-merged into main (1ba2361 tip); all 8 commits landed. CI 7/7 green on d97f720 pre-merge.
+- Branch cleanup: remote deleted by gh, local wf/41-blackbox-map9 deleted. T3 session worktree kept (session cwd, platform-managed).
+- PR watcher released (handback). Maps 10-13 unblocked.
