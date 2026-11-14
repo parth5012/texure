@@ -282,3 +282,30 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 ## 2026-11-12 (HTML trace viewer + regression trend, map #8 ticket #27)
 
 **CLI naming: `--trace <run-id|db-path>` and `--trend` with shared `--out`, not the ticket's literal `--report` for the trend report.** `--report` was already the suite-run JSON report path; repurposing it as a bool would break the existing contract. `--trend` renders the regression dashboard, `--trace` the per-run trace viewer; both default to the zero-config `.texure/history.db`. `--trace` accepts a run ID or a history DB file path (renders that DB's newest run). Trace/trend HTML are hand-rolled single-file templates (string constants + `.replace()`, no template crates) with data as embedded JSON (`<`/`>`/`&` escaped so the payload cannot break out of the script tag). Step persistence fills the existing `step_records` table from PR #92's schema — additive only, `schema_version` untouched, no behavior-spec row touched. Step data stores only what actually executed: transport failures record an error envelope step; `mcp_handshake` records one step with `tools_count`; expect mismatches fold `EXPECT_MISMATCH` + full response into the step's result JSON.
+
+---
+
+## 2026-11-14 (Wayfinder Map 9: write-first red blackbox suite for remote companion & Shizuku gateway, issue #41)
+
+1. **Write-First Group R Test Contract (BB-R1..BB-R13).**
+   - *What:* Established write-first RED blackbox test suite standing for the entire remote mobile companion, Shizuku gateway, and reverse WebSocket tunnel ecosystem (BB-R1..BB-R13). Authored red prior to feature implementation in Maps 10–13, adhering to core TDD build order.
+   - *Why:* Locks in the protocol envelopes and observable behavior rows before server and companion code is written.
+
+2. **Scoped Exception to Guardrails G6 & G10 for Shizuku Remote Lifecycle Bootstrap.**
+   - *What:* Formalized a strictly scoped architectural exception to Guardrail G6 (no injection outside own windows) and G10 (no interaction when screen is off/locked):
+     - Shizuku integration is authorized exclusively for remote companion lifecycle management: remote `wake` and `keyguard_dismiss` (BB-R7), cold app start via `am start` (BB-R8), and runtime permission auto-grant via `pm grant` (BB-R9).
+     - System-level `input tap` injection (BB-R10) is permitted solely for system permission dialogs outside the target app's window hierarchy when operating headlessly under agent control.
+   - *Why:* Remote physical devices running unattended tests require bootstrap mechanisms to power on, unlock, start the target app, and dismiss OS-level permission dialogs that in-app view hierarchy injection cannot reach.
+   - *Alternatives rejected:* Accessibility service (permanently banned by G5; MIUI kills services), adb runtime daemon (violates G4).
+
+3. **Group R Naming & Capability Elevation.**
+   - *What:* Reverses the temporary map 6 restriction that limited test groups to `BB-[A-C]`. Group R is elevated to a first-class capability group representing remote transport, companion gateway, and Shizuku lifecycle bootstrap. `docs_gate` linter regex explicitly updated to `BB-(?:[A-C]|R)[0-9]+`.
+   - *Why:* Remote companion capabilities constitute a distinct architectural domain from local MCP server (Group A), in-app bridge internals (Group B), and injection mechanics (Group C). Elevating Group R enables clean separation of protocol boundaries without polluting core in-app test suites.
+
+4. **Architectural Scoping of Guardrail G11 (Reverse WebSocket NAT Traversal for Remote Companions).**
+   - *What:* Formalized network boundary for remote mobile companions under Guardrail G11:
+     - The in-app debug bridge maintains its strict LAN-only boundary in v1, refusing direct off-LAN connections.
+     - Remote physical devices running unattended tests connect outbound to the agent desktop host via an encrypted Reverse WebSocket tunnel (`wss://`) using bearer token authentication (`reverse_ws_envelope.json`).
+     - Transport fallback resolves in strict priority order (`reverse_ws` primary, falling back to `lan_direct` on absence/failure per `transport_order.json`).
+   - *Why:* Unattended test rigs operating across cellular networks or separate subnet VLANs cannot receive inbound LAN connections from the controller desktop. An outbound TLS reverse connection allows secure NAT traversal without opening in-app bridge ports to WAN traffic or relying on heavy VPN setups.
+   - *Alternatives rejected:* In-app bridge exposing public internet ports (violates G11 and release hygiene G1); mandatory VPN/WireGuard daemon (burdens device setup).

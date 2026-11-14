@@ -9,25 +9,42 @@ use std::env;
 use std::path::Path;
 use std::time::Instant;
 
+/// Per-step execution trace captured while walking a scenario, persisted
+/// into the history DB's step_records table (issue #27). Contains only
+/// what actually happened: no data is invented for steps that never ran.
+#[derive(Debug, Clone)]
+pub struct StepTrace {
+    pub step_index: usize,
+    pub tool_name: String,
+    pub params_json: Option<String>,
+    pub result_json: Option<String>,
+    pub rev_before: Option<i64>,
+    pub rev_after: Option<i64>,
+    pub timestamp_offset_ms: u64,
+}
+
 pub async fn run_test(
     test: &TestDef,
     scenarios_dir: &Path,
     root_dir: &Path,
     _bridge_url: &str,
     _token: Option<&str>,
-) -> TestResult {
+) -> (TestResult, Vec<StepTrace>) {
     let start_time = Instant::now();
 
     if test.is_device {
-        return TestResult {
-            id: test.id.clone(),
-            name: test.name.clone(),
-            target: test.target.clone(),
-            status: "device-skip".to_string(),
-            duration_ms: start_time.elapsed().as_millis() as u64,
-            reason: Some("device test skipped (no phone configured/connected)".to_string()),
-            evidence_bundle: None,
-        };
+        return (
+            TestResult {
+                id: test.id.clone(),
+                name: test.name.clone(),
+                target: test.target.clone(),
+                status: "device-skip".to_string(),
+                duration_ms: start_time.elapsed().as_millis() as u64,
+                reason: Some("device test skipped (no phone configured/connected)".to_string()),
+                evidence_bundle: None,
+            },
+            Vec::new(),
+        );
     }
 
     let scenario_path = scenarios_dir.join(&test.scenario_file);
@@ -35,15 +52,18 @@ pub async fn run_test(
         Ok(s) => s,
         Err(e) => {
             let duration_ms = start_time.elapsed().as_millis() as u64;
-            return TestResult {
-                id: test.id.clone(),
-                name: test.name.clone(),
-                target: test.target.clone(),
-                status: "fail".to_string(),
-                duration_ms,
-                reason: Some(format!("Failed to load scenario: {e}")),
-                evidence_bundle: None,
-            };
+            return (
+                TestResult {
+                    id: test.id.clone(),
+                    name: test.name.clone(),
+                    target: test.target.clone(),
+                    status: "fail".to_string(),
+                    duration_ms,
+                    reason: Some(format!("Failed to load scenario: {e}")),
+                    evidence_bundle: None,
+                },
+                Vec::new(),
+            );
         }
     };
 
@@ -54,28 +74,38 @@ pub async fn run_test(
     };
 
     let duration_ms = start_time.elapsed().as_millis() as u64;
+    let (steps, result) = match result {
+        Ok((steps, ())) => (steps, Ok(())),
+        Err((steps, err)) => (steps, Err(err)),
+    };
     match result {
-        Ok(()) => TestResult {
-            id: test.id.clone(),
-            name: test.name.clone(),
-            target: test.target.clone(),
-            status: "pass".to_string(),
-            duration_ms,
-            reason: None,
-            evidence_bundle: None,
-        },
+        Ok(()) => (
+            TestResult {
+                id: test.id.clone(),
+                name: test.name.clone(),
+                target: test.target.clone(),
+                status: "pass".to_string(),
+                duration_ms,
+                reason: None,
+                evidence_bundle: None,
+            },
+            steps,
+        ),
         Err(err) => {
             // Target-compatibility skips are not failures.
             if let Some(skip_reason) = err.strip_prefix("SKIP: ") {
-                return TestResult {
-                    id: test.id.clone(),
-                    name: test.name.clone(),
-                    target: test.target.clone(),
-                    status: "skip".to_string(),
-                    duration_ms,
-                    reason: Some(skip_reason.to_string()),
-                    evidence_bundle: None,
-                };
+                return (
+                    TestResult {
+                        id: test.id.clone(),
+                        name: test.name.clone(),
+                        target: test.target.clone(),
+                        status: "skip".to_string(),
+                        duration_ms,
+                        reason: Some(skip_reason.to_string()),
+                        evidence_bundle: None,
+                    },
+                    steps,
+                );
             }
 
             let bundle_dir = Path::new("tmp/evidence").join(&test.id);
@@ -88,105 +118,332 @@ pub async fn run_test(
                 ),
             );
 
-            TestResult {
-                id: test.id.clone(),
-                name: test.name.clone(),
-                target: test.target.clone(),
-                status: "fail".to_string(),
-                duration_ms,
-                reason: Some(err),
-                evidence_bundle: Some(bundle_dir.to_string_lossy().to_string()),
-            }
+            (
+                TestResult {
+                    id: test.id.clone(),
+                    name: test.name.clone(),
+                    target: test.target.clone(),
+                    status: "fail".to_string(),
+                    duration_ms,
+                    reason: Some(err),
+                    evidence_bundle: Some(bundle_dir.to_string_lossy().to_string()),
+                },
+                steps,
+            )
         }
     }
 }
 
-async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> Result<(), String> {
-    let current_exe = env::current_exe().map_err(|e| format!("Cannot locate current exe: {e}"))?;
-    let current_exe_str = current_exe
-        .to_str()
-        .ok_or_else(|| "Current executable path is not valid UTF-8".to_string())?;
-    let mut client = McpStdioClient::spawn(
+/// Record one executed step (or a failed action attempt) into the trace.
+#[allow(clippy::too_many_arguments)]
+fn push_step(
+    steps: &mut Vec<StepTrace>,
+    step_index: usize,
+    tool_name: &str,
+    params: Option<&Value>,
+    result: &Value,
+    rev_before: Option<i64>,
+    rev_after: Option<i64>,
+    offset_ms: u64,
+) {
+    steps.push(StepTrace {
+        step_index,
+        tool_name: tool_name.to_string(),
+        params_json: params.map(|p| p.to_string()),
+        result_json: Some(result.to_string()),
+        rev_before,
+        rev_after,
+        timestamp_offset_ms: offset_ms,
+    });
+}
+
+/// Record a transport-level failure (no response envelope available).
+fn push_error_step(
+    steps: &mut Vec<StepTrace>,
+    step_index: usize,
+    tool_name: &str,
+    params: Option<&Value>,
+    error: &str,
+    offset_ms: u64,
+) {
+    steps.push(StepTrace {
+        step_index,
+        tool_name: tool_name.to_string(),
+        params_json: params.map(|p| p.to_string()),
+        result_json: Some(json!({ "error": { "message": error } }).to_string()),
+        rev_before: None,
+        rev_after: None,
+        timestamp_offset_ms: offset_ms,
+    });
+}
+
+/// On expect mismatch, fold the failure into the step's result payload so the
+/// trace viewer renders an error banner with the full response preserved.
+fn mark_expect_failure(steps: &mut [StepTrace], response: &Value, error: &str) {
+    if let Some(last) = steps.last_mut() {
+        last.result_json = Some(
+            json!({
+                "error": { "code": "EXPECT_MISMATCH", "message": error },
+                "response": response,
+            })
+            .to_string(),
+        );
+    }
+}
+
+/// Walk-fn signature: steps collected so far travel with both Ok and Err so
+/// partial traces survive failures.
+type WalkOutcome = Result<(Vec<StepTrace>, ()), (Vec<StepTrace>, String)>;
+
+async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
+    let start_time = Instant::now();
+    let mut steps: Vec<StepTrace> = Vec::new();
+    let current_exe = match env::current_exe() {
+        Ok(e) => e,
+        Err(e) => return Err((steps, format!("Cannot locate current exe: {e}"))),
+    };
+    let current_exe_str = match current_exe.to_str() {
+        Some(s) => s,
+        None => {
+            return Err((
+                steps,
+                "Current executable path is not valid UTF-8".to_string(),
+            ))
+        }
+    };
+    let mut client = match McpStdioClient::spawn(
         current_exe_str,
         &["--fake-mcp", "--scenario", &scenario.name],
-    )
-    .map_err(|e| format!("Failed to spawn fake MCP server: {e}"))?;
+    ) {
+        Ok(c) => c,
+        Err(e) => return Err((steps, format!("Failed to spawn fake MCP server: {e}"))),
+    };
 
     let mut last_response = json!({});
+    let mut context: HashMap<String, Value> = HashMap::new();
 
-    for step in &scenario.steps {
+    for (idx, step) in scenario.steps.iter().enumerate() {
+        let offset_ms = start_time.elapsed().as_millis() as u64;
         match step.action.as_str() {
             "mcp_handshake" => {
-                let init_resp = client
-                    .initialize()
-                    .await
-                    .map_err(|e| format!("MCP initialize failed: {e}"))?;
+                let init_resp = match client.initialize().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("MCP initialize failed: {e}")));
+                    }
+                };
 
                 let caps = init_resp.get("capabilities").and_then(|c| c.as_object());
                 if let Some(caps) = caps {
                     if caps.len() != 1 || !caps.contains_key("tools") {
-                        return Err(format!(
-                            "MCP server must declare ONLY tools capability; found: {:?}",
-                            caps.keys()
+                        // Record the handshake that executed so the trace
+                        // doesn't end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": format!(
+                                    "MCP server must declare ONLY tools capability; found: {:?}",
+                                    caps.keys()
+                                ) },
+                                "response": init_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                        return Err((
+                            steps,
+                            format!(
+                                "MCP server must declare ONLY tools capability; found: {:?}",
+                                caps.keys()
+                            ),
                         ));
                     }
                 } else {
-                    return Err("Missing capabilities in MCP initialize response".to_string());
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": "Missing capabilities in MCP initialize response" },
+                            "response": init_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                    return Err((
+                        steps,
+                        "Missing capabilities in MCP initialize response".to_string(),
+                    ));
                 }
 
-                let tools_resp = client
-                    .list_tools()
-                    .await
-                    .map_err(|e| format!("tools/list failed: {e}"))?;
+                let tools_resp = match client.list_tools().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("tools/list failed: {e}")));
+                    }
+                };
 
-                let tools = tools_resp
-                    .get("tools")
-                    .and_then(|t| t.as_array())
-                    .ok_or_else(|| "tools/list response missing 'tools' array".to_string())?;
+                let tools = match tools_resp.get("tools").and_then(|t| t.as_array()) {
+                    Some(t) => t,
+                    None => {
+                        // Record the executed handshake so the trace doesn't
+                        // end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": "tools/list response missing 'tools' array" },
+                                "response": tools_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                        return Err((
+                            steps,
+                            "tools/list response missing 'tools' array".to_string(),
+                        ));
+                    }
+                };
 
                 if tools.len() != 6 {
-                    return Err(format!(
-                        "MCP tools count must be exactly 6; found {}",
-                        tools.len()
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": format!(
+                                "MCP tools count must be exactly 6; found {}",
+                                tools.len()
+                            ) },
+                            "response": tools_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                    return Err((
+                        steps,
+                        format!("MCP tools count must be exactly 6; found {}", tools.len()),
                     ));
                 }
 
                 last_response = json!({ "tools_count": tools.len() });
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    None,
+                    &last_response,
+                    None,
+                    None,
+                    offset_ms,
+                );
 
                 if let Some(ref expect) = step.expect {
                     if let Some(expected_count) = expect.get("tools_count").and_then(|c| c.as_u64())
                     {
                         if tools.len() as u64 != expected_count {
-                            return Err(format!(
+                            let err = format!(
                                 "tools_count mismatch: expected {expected_count}, got {}",
                                 tools.len()
-                            ));
+                            );
+                            mark_expect_failure(&mut steps, &last_response, &err);
+                            return Err((steps, err));
                         }
                     }
                 }
             }
             "device_tree" | "tap" | "type" | "keypress" | "screenshot" | "wait_for" => {
-                let call_res = client
-                    .call_tool(&step.action, step.args.clone())
-                    .await
-                    .map_err(|e| format!("call_tool({}) failed: {e}", step.action))?;
+                let call_res = match client.call_tool(&step.action, step.args.clone()).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("call_tool({}) failed: {e}", step.action)));
+                    }
+                };
 
                 last_response = mcp_content_to_response(&call_res);
+                record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
+
+                let rev_after = last_response.get("rev").and_then(|r| r.as_i64());
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&step.args),
+                    &last_response,
+                    None,
+                    rev_after,
+                    offset_ms,
+                );
 
                 if let Some(ref expect) = step.expect {
-                    verify_expect(&last_response, expect)?;
+                    if let Err(e) = verify_expect(&last_response, expect) {
+                        mark_expect_failure(&mut steps, &last_response, &e);
+                        return Err((steps, e));
+                    }
                 }
             }
-            other => return Err(format!("Unsupported action in MCP test: {other}")),
+            other => {
+                push_error_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&step.args),
+                    &format!("Unsupported action in MCP test: {other}"),
+                    offset_ms,
+                );
+                return Err((steps, format!("Unsupported action in MCP test: {other}")));
+            }
         }
     }
 
     // Evaluate scenario assertions
     for assertion in &scenario.assertions {
-        evaluate_assertion(assertion, &last_response, None)?;
+        if let Err(e) = evaluate_assertion(
+            assertion,
+            &last_response,
+            context.get("tree"),
+            Some(&context),
+        ) {
+            return Err((steps, e));
+        }
     }
 
-    Ok(())
+    Ok((steps, ()))
 }
 
 /// Normalize an MCP `tools/call` result into the response Value the expect and
@@ -296,24 +553,25 @@ fn locate_server_bin() -> Result<String, String> {
 /// Recording routes are bridge-HTTP control routes, not MCP tools: they
 /// cannot run over the stdio transport. On this target they are reported as
 /// skipped (never silently passed); coverage lives in http / mcp-fake runs.
-async fn run_mcp_real_test(
-    _test: &TestDef,
-    scenario: &Scenario,
-    root_dir: &Path,
-) -> Result<(), String> {
+async fn run_mcp_real_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path) -> WalkOutcome {
+    let steps: Vec<StepTrace> = Vec::new();
     if scenario.steps.iter().any(|s| {
         matches!(
             s.action.as_str(),
-            "recording_start" | "recording_stop" | "recording_export" | "recording_clear"
+            "recording_start" | "recording_stop" | "recording_export" | "recording_clear" | "tag"
         )
     }) {
-        return Err(
-            "SKIP: recording_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
+        return Err((
+            steps,
+            "SKIP: tag and recording_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
                 .to_string(),
-        );
+        ));
     }
 
-    let server_bin = locate_server_bin()?;
+    let server_bin = match locate_server_bin() {
+        Ok(b) => b,
+        Err(e) => return Err((steps, e)),
+    };
 
     // The FakeBridge expects "test-token"; auth_reject deliberately configures
     // the server with the wrong one so the 401 AUTH_FAILED path is exercised.
@@ -325,16 +583,18 @@ async fn run_mcp_real_test(
 
     let needs_bridge = !NO_CONFIG_SCENARIOS.contains(&scenario.name.as_str());
     let mut bridge = if needs_bridge {
-        Some(
-            FakeBridgeServer::start(FakeBridgeConfig {
-                scenario_name: scenario.name.clone(),
-                root_dir: root_dir.to_string_lossy().to_string(),
-                port: 0,
-                token: "test-token".to_string(),
-            })
-            .await
-            .map_err(|e| format!("Failed to start FakeBridge: {e}"))?,
-        )
+        let started = match FakeBridgeServer::start(FakeBridgeConfig {
+            scenario_name: scenario.name.clone(),
+            root_dir: root_dir.to_string_lossy().to_string(),
+            port: 0,
+            token: "test-token".to_string(),
+        })
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => return Err((steps, format!("Failed to start FakeBridge: {e}"))),
+        };
+        Some(started)
     } else {
         None
     };
@@ -349,7 +609,7 @@ async fn run_mcp_real_test(
             "url = \"http://127.0.0.1:{addr}\"\ntoken = \"{server_token}\"\ntimeout_secs = 10\n"
         );
         if let Err(e) = std::fs::write(&config_path, config_body) {
-            return Err(format!("Failed to write temp server config: {e}"));
+            return Err((steps, format!("Failed to write temp server config: {e}")));
         }
         vec![
             "--config".to_string(),
@@ -366,8 +626,11 @@ async fn run_mcp_real_test(
     };
 
     let arg_refs: Vec<&str> = server_args.iter().map(String::as_str).collect();
-    let mut client = McpStdioClient::spawn_filtered(&server_bin, &arg_refs, &TEXURE_ENV_KEYS)
-        .map_err(|e| format!("Failed to spawn texure-server: {e}"))?;
+    let mut client = match McpStdioClient::spawn_filtered(&server_bin, &arg_refs, &TEXURE_ENV_KEYS)
+    {
+        Ok(c) => c,
+        Err(e) => return Err((steps, format!("Failed to spawn texure-server: {e}"))),
+    };
 
     let outcome = walk_mcp_real_steps(scenario, &mut client).await;
 
@@ -381,144 +644,350 @@ async fn run_mcp_real_test(
     outcome
 }
 
-async fn walk_mcp_real_steps(
-    scenario: &Scenario,
-    client: &mut McpStdioClient,
-) -> Result<(), String> {
+async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -> WalkOutcome {
+    let start_time = Instant::now();
+    let mut steps: Vec<StepTrace> = Vec::new();
     let mut context: HashMap<String, Value> = HashMap::new();
     let mut last_response = json!({});
 
-    for step in &scenario.steps {
+    for (idx, step) in scenario.steps.iter().enumerate() {
+        let offset_ms = start_time.elapsed().as_millis() as u64;
         match step.action.as_str() {
             "mcp_handshake" => {
-                let init_resp = client
-                    .initialize()
-                    .await
-                    .map_err(|e| format!("MCP initialize failed: {e}"))?;
+                let init_resp = match client.initialize().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("MCP initialize failed: {e}")));
+                    }
+                };
 
                 let caps = init_resp.get("capabilities").and_then(|c| c.as_object());
                 if let Some(caps) = caps {
                     if caps.len() != 1 || !caps.contains_key("tools") {
-                        return Err(format!(
-                            "MCP server must declare ONLY tools capability; found: {:?}",
-                            caps.keys()
+                        // Record the handshake that executed so the trace
+                        // doesn't end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": format!(
+                                    "MCP server must declare ONLY tools capability; found: {:?}",
+                                    caps.keys()
+                                ) },
+                                "response": init_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                        return Err((
+                            steps,
+                            format!(
+                                "MCP server must declare ONLY tools capability; found: {:?}",
+                                caps.keys()
+                            ),
                         ));
                     }
                 } else {
-                    return Err("Missing capabilities in MCP initialize response".to_string());
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": "Missing capabilities in MCP initialize response" },
+                            "response": init_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                    return Err((
+                        steps,
+                        "Missing capabilities in MCP initialize response".to_string(),
+                    ));
                 }
 
-                let tools_resp = client
-                    .list_tools()
-                    .await
-                    .map_err(|e| format!("tools/list failed: {e}"))?;
+                let tools_resp = match client.list_tools().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("tools/list failed: {e}")));
+                    }
+                };
 
-                let tools = tools_resp
-                    .get("tools")
-                    .and_then(|t| t.as_array())
-                    .ok_or_else(|| "tools/list response missing 'tools' array".to_string())?;
+                let tools = match tools_resp.get("tools").and_then(|t| t.as_array()) {
+                    Some(t) => t,
+                    None => {
+                        // Record the executed handshake so the trace doesn't
+                        // end before the failing action.
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            None,
+                            &json!({
+                                "error": { "message": "tools/list response missing 'tools' array" },
+                                "response": tools_resp,
+                            }),
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                        return Err((
+                            steps,
+                            "tools/list response missing 'tools' array".to_string(),
+                        ));
+                    }
+                };
 
                 if tools.len() != 6 {
-                    return Err(format!(
-                        "MCP tools count must be exactly 6; found {}",
-                        tools.len()
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        None,
+                        &json!({
+                            "error": { "message": format!(
+                                "MCP tools count must be exactly 6; found {}",
+                                tools.len()
+                            ) },
+                            "response": tools_resp,
+                        }),
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                    return Err((
+                        steps,
+                        format!("MCP tools count must be exactly 6; found {}", tools.len()),
                     ));
                 }
 
                 last_response = json!({ "tools_count": tools.len() });
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    None,
+                    &last_response,
+                    None,
+                    None,
+                    offset_ms,
+                );
 
                 if let Some(ref expect) = step.expect {
                     if let Some(expected_count) = expect.get("tools_count").and_then(|c| c.as_u64())
                     {
                         if tools.len() as u64 != expected_count {
-                            return Err(format!(
+                            let err = format!(
                                 "tools_count mismatch: expected {expected_count}, got {}",
                                 tools.len()
-                            ));
+                            );
+                            mark_expect_failure(&mut steps, &last_response, &err);
+                            return Err((steps, err));
                         }
                     }
                 }
                 continue; // handshake expect (tools_count) handled above
             }
             "back" => {
-                let call_res = client
-                    .call_tool("keypress", json!({ "key": "BACK" }))
-                    .await
-                    .map_err(|e| format!("call_tool(keypress BACK) failed: {e}"))?;
+                let call_res = match client.call_tool("keypress", json!({ "key": "BACK" })).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(&mut steps, idx, "back", None, &e.to_string(), offset_ms);
+                        return Err((steps, format!("call_tool(keypress BACK) failed: {e}")));
+                    }
+                };
                 last_response = mcp_content_to_response(&call_res);
+                record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
+                push_step(
+                    &mut steps,
+                    idx,
+                    "back",
+                    Some(&json!({ "key": "BACK" })),
+                    &last_response,
+                    None,
+                    None,
+                    offset_ms,
+                );
             }
             "device_tree" | "tap" | "type" | "keypress" | "screenshot" | "wait_for" => {
-                let args = resolve_step_args(&step.action, &step.args, &context)?;
-                let call_res = client
-                    .call_tool(&step.action, args)
-                    .await
-                    .map_err(|e| format!("call_tool({}) failed: {e}", step.action))?;
+                let args = match resolve_step_args(&step.action, &step.args, &context) {
+                    Ok(a) => a,
+                    Err(e) => return Err((steps, e)),
+                };
+                let rev_before = args.get("rev").and_then(|r| r.as_i64());
+                let call_res = match client.call_tool(&step.action, args.clone()).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("call_tool({}) failed: {e}", step.action)));
+                    }
+                };
                 last_response = mcp_content_to_response(&call_res);
+                record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
 
-                if step.action == "device_tree" && last_response.get("rev").is_some() {
-                    context.insert("tree".to_string(), last_response.clone());
-                }
+                let rev_after = if step.action == "device_tree" {
+                    last_response.get("rev").and_then(|r| r.as_i64())
+                } else {
+                    None
+                };
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&args),
+                    &last_response,
+                    rev_before,
+                    rev_after,
+                    offset_ms,
+                );
             }
-            other => return Err(format!("Unsupported action in mcp-real test: {other}")),
+            other => {
+                return Err((
+                    steps,
+                    format!("Unsupported action in mcp-real test: {other}"),
+                ))
+            }
         }
 
         if let Some(ref expect) = step.expect {
-            verify_expect(&last_response, expect)?;
+            if let Err(e) = verify_expect(&last_response, expect) {
+                mark_expect_failure(&mut steps, &last_response, &e);
+                return Err((steps, e));
+            }
         }
     }
 
     // Evaluate scenario assertions
     for assertion in &scenario.assertions {
-        evaluate_assertion(assertion, &last_response, context.get("tree"))?;
-    }
-
-    Ok(())
-}
-
-fn resolve_step_args(
-    action: &str,
-    args: &Value,
-    context: &HashMap<String, Value>,
-) -> Result<Value, String> {
-    if !matches!(action, "tap" | "type") {
-        return Ok(args.clone());
-    }
-
-    let mut resolved = args.clone();
-    if let Some(rev_str) = args.get("rev").and_then(|r| r.as_str()) {
-        if rev_str.starts_with('$') {
-            let value = resolve_variable(rev_str, context)
-                .map_err(|e| format!("Variable resolution error: {e}"))?;
-            resolved["rev"] = value;
+        if let Err(e) = evaluate_assertion(
+            assertion,
+            &last_response,
+            context.get("tree"),
+            Some(&context),
+        ) {
+            return Err((steps, e));
         }
     }
-    if let Some(hash_str) = args.get("hash").and_then(|h| h.as_str()) {
-        if hash_str.starts_with('$') {
-            let value = resolve_variable(hash_str, context)
-                .map_err(|e| format!("Variable resolution error: {e}"))?;
-            if let Some(s) = value.as_str() {
-                resolved["hash"] = serde_json::json!(s);
-            } else {
-                resolved["hash"] = value;
+
+    Ok((steps, ()))
+}
+
+fn record_step_context(
+    context: &mut HashMap<String, Value>,
+    action: &str,
+    args: Option<&Value>,
+    response: &Value,
+) {
+    let state_val = response
+        .get("state")
+        .or_else(|| response.get("reply").and_then(|r| r.get("state")))
+        .and_then(|v| v.as_str());
+
+    if let Some(s) = state_val {
+        context.insert(format!("state:{action}"), json!(s));
+        if matches!(
+            action,
+            "tunnel_connect" | "tunnel_drop" | "tunnel_heartbeat"
+        ) {
+            context.insert("state:tunnel".to_string(), json!(s));
+        } else if action == "pairing_qr" {
+            context.insert("state:pairing".to_string(), json!(s));
+        } else if action == "transport_resolve" {
+            context.insert("state:transport".to_string(), json!(s));
+        }
+    }
+
+    if action == "device_tree" {
+        context.insert("tree".to_string(), response.clone());
+    } else if action == "gateway_proxy" {
+        if let Some(rpc) = args.and_then(|a| a.get("rpc")).and_then(|v| v.as_str()) {
+            if rpc == "device_tree" {
+                let tree_payload = response
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or_else(|| response.clone());
+                context.insert("tree".to_string(), tree_payload);
             }
         }
     }
-    Ok(resolved)
 }
 
-async fn run_http_fake_test(
-    _test: &TestDef,
-    scenario: &Scenario,
-    root_dir: &Path,
-) -> Result<(), String> {
-    let mut server = FakeBridgeServer::start(FakeBridgeConfig {
+fn resolve_step_args(
+    _action: &str,
+    args: &Value,
+    context: &HashMap<String, Value>,
+) -> Result<Value, String> {
+    if !args.is_object() && !args.is_array() {
+        return Ok(args.clone());
+    }
+
+    fn resolve_value(val: &Value, context: &HashMap<String, Value>) -> Result<Value, String> {
+        match val {
+            Value::String(s) if s.starts_with('$') => {
+                resolve_variable(s, context).map_err(|e| format!("Variable resolution error: {e}"))
+            }
+            Value::Object(map) => {
+                let mut new_map = serde_json::Map::new();
+                for (k, v) in map {
+                    new_map.insert(k.clone(), resolve_value(v, context)?);
+                }
+                Ok(Value::Object(new_map))
+            }
+            Value::Array(arr) => {
+                let mut new_arr = Vec::new();
+                for item in arr {
+                    new_arr.push(resolve_value(item, context)?);
+                }
+                Ok(Value::Array(new_arr))
+            }
+            other => Ok(other.clone()),
+        }
+    }
+
+    resolve_value(args, context)
+}
+
+async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path) -> WalkOutcome {
+    let start_time = Instant::now();
+    let mut steps: Vec<StepTrace> = Vec::new();
+    let mut server = match FakeBridgeServer::start(FakeBridgeConfig {
         scenario_name: scenario.name.clone(),
         root_dir: root_dir.to_string_lossy().to_string(),
         port: 0,
         token: "test-token".to_string(),
     })
     .await
-    .map_err(|e| format!("Failed to start FakeBridge: {e}"))?;
+    {
+        Ok(s) => s,
+        Err(e) => return Err((steps, format!("Failed to start FakeBridge: {e}"))),
+    };
 
     let base_url = format!("http://127.0.0.1:{}", server.addr.port());
     let token = if scenario.name == "auth_reject" {
@@ -531,7 +1000,8 @@ async fn run_http_fake_test(
     let mut context: HashMap<String, Value> = HashMap::new();
     let mut last_response = json!({});
 
-    for step in &scenario.steps {
+    for (idx, step) in scenario.steps.iter().enumerate() {
+        let offset_ms = start_time.elapsed().as_millis() as u64;
         match step.action.as_str() {
             "device_tree" => {
                 let max_depth = step
@@ -542,24 +1012,59 @@ async fn run_http_fake_test(
                 match client.get_ui_tree(max_depth).await {
                     Ok(tree) => {
                         context.insert("tree".to_string(), tree.clone());
+                        let rev_after = tree.get("rev").and_then(|r| r.as_i64());
                         last_response = tree;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            rev_after,
+                            offset_ms,
+                        );
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
                         let err_val: Value =
                             serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
                     }
-                    Err(e) => return Err(format!("get_ui_tree failed: {e}")),
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("get_ui_tree failed: {e}")));
+                    }
                 }
             }
             "tap" => {
                 let node = step.args.get("node").and_then(|n| n.as_u64()).unwrap_or(0);
                 let rev = if let Some(rev_str) = step.args.get("rev").and_then(|r| r.as_str()) {
                     if rev_str.starts_with('$') {
-                        resolve_variable(rev_str, &context)
-                            .map_err(|e| format!("Variable resolution error: {e}"))?
-                            .as_u64()
-                            .unwrap_or(0)
+                        match resolve_variable(rev_str, &context) {
+                            Ok(v) => v.as_u64().unwrap_or(0),
+                            Err(e) => {
+                                server.stop();
+                                return Err((steps, format!("Variable resolution error: {e}")));
+                            }
+                        }
                     } else {
                         0
                     }
@@ -567,25 +1072,61 @@ async fn run_http_fake_test(
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
 
+                // Record the resolved parameters actually sent to the
+                // client (not the raw template expressions).
                 let hash = if let Some(h) = step.args.get("hash").and_then(|h| h.as_str()) {
                     if h.starts_with('$') {
-                        resolve_variable(h, &context).ok().and_then(|v| v.as_str().map(String::from))
+                        resolve_variable(h, &context)
+                            .ok()
+                            .and_then(|v| v.as_str().map(String::from))
                     } else {
                         Some(h.to_string())
                     }
                 } else {
                     None
                 };
+                let params = json!({ "node": node, "rev": rev, "hash": hash });
                 match client.tap(node, rev, hash.as_deref()).await {
                     Ok(resp) => {
                         last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &last_response,
+                            Some(rev as i64),
+                            None,
+                            offset_ms,
+                        );
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
                         let err_val: Value =
                             serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &last_response,
+                            Some(rev as i64),
+                            None,
+                            offset_ms,
+                        );
                     }
-                    Err(e) => return Err(format!("tap failed: {e}")),
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("tap failed: {e}")));
+                    }
                 }
             }
             "type" => {
@@ -593,10 +1134,13 @@ async fn run_http_fake_test(
                 let text = step.args.get("text").and_then(|t| t.as_str()).unwrap_or("");
                 let rev = if let Some(rev_str) = step.args.get("rev").and_then(|r| r.as_str()) {
                     if rev_str.starts_with('$') {
-                        resolve_variable(rev_str, &context)
-                            .map_err(|e| format!("Variable resolution error: {e}"))?
-                            .as_u64()
-                            .unwrap_or(0)
+                        match resolve_variable(rev_str, &context) {
+                            Ok(v) => v.as_u64().unwrap_or(0),
+                            Err(e) => {
+                                server.stop();
+                                return Err((steps, format!("Variable resolution error: {e}")));
+                            }
+                        }
                     } else {
                         0
                     }
@@ -604,25 +1148,61 @@ async fn run_http_fake_test(
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
 
+                // Record the resolved parameters actually sent to the
+                // client (not the raw template expressions).
                 let hash = if let Some(h) = step.args.get("hash").and_then(|h| h.as_str()) {
                     if h.starts_with('$') {
-                        resolve_variable(h, &context).ok().and_then(|v| v.as_str().map(String::from))
+                        resolve_variable(h, &context)
+                            .ok()
+                            .and_then(|v| v.as_str().map(String::from))
                     } else {
                         Some(h.to_string())
                     }
                 } else {
                     None
                 };
+                let params = json!({ "node": node, "text": text, "rev": rev, "hash": hash });
                 match client.type_text(node, text, rev, hash.as_deref()).await {
                     Ok(resp) => {
                         last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &last_response,
+                            Some(rev as i64),
+                            None,
+                            offset_ms,
+                        );
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
                         let err_val: Value =
                             serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &last_response,
+                            Some(rev as i64),
+                            None,
+                            offset_ms,
+                        );
                     }
-                    Err(e) => return Err(format!("type failed: {e}")),
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("type failed: {e}")));
+                    }
                 }
             }
             "keypress" => {
@@ -634,51 +1214,148 @@ async fn run_http_fake_test(
                 match client.keypress(key).await {
                     Ok(resp) => {
                         last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
                         let err_val: Value =
                             serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
                     }
-                    Err(e) => return Err(format!("keypress failed: {e}")),
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("keypress failed: {e}")));
+                    }
                 }
             }
             "back" => match client.back().await {
                 Ok(resp) => {
                     last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
                 }
                 Err(HttpBridgeError::StatusError { body, .. }) => {
                     let err_val: Value =
                         serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                     last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
                 }
-                Err(e) => return Err(format!("back failed: {e}")),
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("back failed: {e}")));
+                }
             },
             "tag" => {
                 let index = step.args.get("index").and_then(|n| n.as_u64()).unwrap_or(0);
                 let tag = step.args.get("tag").and_then(|t| t.as_str()).unwrap_or("");
                 let rev = if let Some(rev_str) = step.args.get("rev").and_then(|r| r.as_str()) {
                     if rev_str.starts_with('$') {
-                        resolve_variable(rev_str, &context)
-                            .map_err(|e| format!("Variable resolution error: {e}"))?
-                            .as_u64()
-                            .unwrap_or(0)
+                        match resolve_variable(rev_str, &context) {
+                            Ok(v) => v.as_u64().unwrap_or(0),
+                            Err(e) => {
+                                server.stop();
+                                return Err((steps, format!("Variable resolution error: {e}")));
+                            }
+                        }
                     } else {
                         0
                     }
                 } else {
                     step.args.get("rev").and_then(|r| r.as_u64()).unwrap_or(0)
                 };
+                let params = json!({ "index": index, "rev": rev, "tag": tag });
                 match client.tag(index, rev, tag).await {
                     Ok(resp) => {
                         last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &last_response,
+                            Some(rev as i64),
+                            None,
+                            offset_ms,
+                        );
                     }
                     Err(HttpBridgeError::StatusError { body, .. }) => {
                         let err_val: Value =
                             serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
                         last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &last_response,
+                            Some(rev as i64),
+                            None,
+                            offset_ms,
+                        );
                     }
-                    Err(e) => return Err(format!("tag failed: {e}")),
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&params),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("tag failed: {e}")));
+                    }
                 }
             }
             "screenshot" => {
@@ -687,20 +1364,58 @@ async fn run_http_fake_test(
                     .get("scale")
                     .and_then(|s| s.as_f64())
                     .map(|s| s as f32);
-                let region = step
-                    .args
-                    .get("region")
-                    .and_then(|r| r.as_str());
+                let region = step.args.get("region").and_then(|r| r.as_str());
                 match client.screenshot(scale, region).await {
                     Ok(bytes) => {
                         if bytes.len() < 8
                             || bytes[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
                         {
-                            return Err("Screenshot did not return PNG magic bytes".to_string());
+                            // Record the executed screenshot attempt so the
+                            // trace shows why the validation failed.
+                            push_step(
+                                &mut steps,
+                                idx,
+                                &step.action,
+                                Some(&step.args),
+                                &json!({
+                                    "error": { "message":
+                                        "Screenshot did not return PNG magic bytes" },
+                                    "bytes_len": bytes.len(),
+                                }),
+                                None,
+                                None,
+                                offset_ms,
+                            );
+                            server.stop();
+                            return Err((
+                                steps,
+                                "Screenshot did not return PNG magic bytes".to_string(),
+                            ));
                         }
                         last_response = json!({ "format": "image/png", "bytes_len": bytes.len() });
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
                     }
-                    Err(e) => return Err(format!("screenshot failed: {e}")),
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("screenshot failed: {e}")));
+                    }
                 }
             }
             "wait_for" => {
@@ -709,50 +1424,171 @@ async fn run_http_fake_test(
                 } else {
                     last_response = json!({ "ok": true });
                 }
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&step.args),
+                    &last_response,
+                    None,
+                    None,
+                    offset_ms,
+                );
             }
-            "recording_start" => match client.recording_start().await {
-                Ok(resp) => last_response = resp,
-                Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+            "recording_start" => match normalize_http_result(client.recording_start().await) {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
                 }
-                Err(e) => return Err(format!("recording_start failed: {e}")),
-            },
-            "recording_stop" => match client.recording_stop().await {
-                Ok(resp) => last_response = resp,
-                Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e,
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("recording_start failed: {e}")));
                 }
-                Err(e) => return Err(format!("recording_stop failed: {e}")),
             },
-            "recording_export" => match client.recording_export().await {
-                Ok(resp) => last_response = resp,
-                Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+            "recording_stop" => match normalize_http_result(client.recording_stop().await) {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
                 }
-                Err(e) => return Err(format!("recording_export failed: {e}")),
-            },
-            "recording_clear" => match client.recording_clear().await {
-                Ok(resp) => last_response = resp,
-                Err(HttpBridgeError::StatusError { body, .. }) => {
-                    last_response = serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e,
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("recording_stop failed: {e}")));
                 }
-                Err(e) => return Err(format!("recording_clear failed: {e}")),
             },
-            other => return Err(format!("Unsupported action in HTTP fake test: {other}")),
+            "recording_export" => match normalize_http_result(client.recording_export().await) {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e,
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("recording_export failed: {e}")));
+                }
+            },
+            "recording_clear" => match normalize_http_result(client.recording_clear().await) {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e,
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("recording_clear failed: {e}")));
+                }
+            },
+            other => {
+                server.stop();
+                return Err((
+                    steps,
+                    format!("Unsupported action in HTTP fake test: {other}"),
+                ));
+            }
         }
 
         if let Some(ref expect) = step.expect {
-            verify_expect(&last_response, expect)?;
+            if let Err(e) = verify_expect(&last_response, expect) {
+                mark_expect_failure(&mut steps, &last_response, &e);
+                server.stop();
+                return Err((steps, e));
+            }
         }
     }
 
     // Evaluate scenario assertions
     for assertion in &scenario.assertions {
-        evaluate_assertion(assertion, &last_response, context.get("tree"))?;
+        if let Err(e) = evaluate_assertion(
+            assertion,
+            &last_response,
+            context.get("tree"),
+            Some(&context),
+        ) {
+            server.stop();
+            return Err((steps, e));
+        }
     }
 
     server.stop();
-    Ok(())
+    Ok((steps, ()))
+}
+
+/// Normalize a recording-route result: StatusError bodies are parsed into the
+/// error envelope the expect layer understands (matching the original inline
+/// behavior); transport errors surface as Err for step-trace capture.
+fn normalize_http_result(outcome: Result<Value, HttpBridgeError>) -> Result<Value, String> {
+    match outcome {
+        Ok(resp) => Ok(resp),
+        Err(HttpBridgeError::StatusError { body, .. }) => {
+            Ok(serde_json::from_str(&body).unwrap_or(json!({ "raw": body })))
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
@@ -770,12 +1606,18 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                 }
             }
 
-            if k == "error.code" {
+            if k == "error.code" || k == "code" {
                 let code = actual
                     .get("error")
                     .and_then(|e| e.get("code"))
                     .and_then(|c| c.as_str())
                     .or_else(|| actual.get("code").and_then(|c| c.as_str()))
+                    .or_else(|| {
+                        actual
+                            .get("reply")
+                            .and_then(|r| r.get("code"))
+                            .and_then(|c| c.as_str())
+                    })
                     .or_else(|| {
                         actual
                             .get("raw")
@@ -786,7 +1628,7 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                 let exp_code = expected_val.as_str().unwrap_or("");
                 if code != Some(exp_code) {
                     return Err(format!(
-                        "Expected error.code == '{exp_code}', got '{:?}' in {:?}",
+                        "Expected {k} == '{exp_code}', got '{:?}' in {:?}",
                         code, actual
                     ));
                 }
@@ -794,7 +1636,10 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
             }
 
             if k == "ok" {
-                let actual_ok = actual.get("ok").and_then(|o| o.as_bool());
+                let actual_ok = actual
+                    .get("ok")
+                    .or_else(|| actual.get("reply").and_then(|r| r.get("ok")))
+                    .and_then(|o| o.as_bool());
                 let exp_ok = expected_val.as_bool();
                 if actual_ok != exp_ok {
                     return Err(format!("Expected ok == {:?}, got {:?}", exp_ok, actual_ok));
@@ -814,7 +1659,39 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                 continue;
             }
 
-            return Err(format!("Unsupported expect key: {k}"));
+            if k == "token_present" && expected_val == &json!(true) {
+                let has_token = actual.get("token").is_some()
+                    || actual.get("token_present") == Some(&json!(true))
+                    || actual.get("reply").and_then(|r| r.get("token")).is_some()
+                    || actual
+                        .get("valid_payload")
+                        .and_then(|p| p.get("token"))
+                        .is_some();
+                if !has_token {
+                    return Err(
+                        "Expected token_present == true, but no token found in response"
+                            .to_string(),
+                    );
+                }
+                continue;
+            }
+
+            // Generic match: check top-level actual, actual.error, or actual.reply
+            let match_val = actual
+                .get(k)
+                .or_else(|| actual.get("error").and_then(|e| e.get(k)))
+                .or_else(|| actual.get("reply").and_then(|r| r.get(k)));
+            if let Some(actual_val) = match_val {
+                if actual_val != expected_val {
+                    return Err(format!(
+                        "Expected {k} == {:?}, got {:?}",
+                        expected_val, actual_val
+                    ));
+                }
+                continue;
+            }
+
+            return Err(format!("Missing or unsupported expect key: {k}"));
         }
     }
     Ok(())
@@ -824,6 +1701,7 @@ fn evaluate_assertion(
     assertion: &crate::scenario::Assertion,
     last_response: &Value,
     tree: Option<&Value>,
+    context: Option<&HashMap<String, Value>>,
 ) -> Result<(), String> {
     match assertion.pred.as_str() {
         "exists" => {
@@ -920,14 +1798,51 @@ fn evaluate_assertion(
                 }
             }
         }
-        "state" if assertion.target == "bridge" => {
+        "state" => {
             let expected_state = assertion
                 .value
                 .as_ref()
                 .and_then(|v| v.as_str())
-                .unwrap_or("IDLE");
-            if expected_state != "IDLE" {
-                return Err(format!("Bridge state mismatch: expected {expected_state}"));
+                .unwrap_or_default();
+            if expected_state.is_empty() {
+                return Err(format!(
+                    "state predicate for target '{}' requires a value",
+                    assertion.target
+                ));
+            }
+
+            // Check target-scoped state in context first (e.g. "state:tunnel", "state:bridge"),
+            // falling back to last_response["state"] or last_response["reply"]["state"].
+            let target_key = format!("state:{}", assertion.target);
+            let context_state = context
+                .and_then(|c| c.get(&target_key))
+                .and_then(|v| v.as_str());
+
+            let last_resp_state = last_response
+                .get("state")
+                .or_else(|| last_response.get("reply").and_then(|r| r.get("state")))
+                .and_then(|s| s.as_str());
+
+            let actual_opt = context_state.or(last_resp_state);
+
+            match actual_opt {
+                Some(actual) if actual == expected_state => {}
+                Some(actual) => {
+                    return Err(format!(
+                        "state mismatch for target '{}': expected {expected_state}, got {actual}",
+                        assertion.target
+                    ));
+                }
+                None => {
+                    if assertion.target == "bridge" && expected_state == "IDLE" {
+                        // Legacy default bridge state when no state is surfaced
+                    } else {
+                        return Err(format!(
+                            "state predicate target '{}' not yet supported by the runner (no state surfaced)",
+                            assertion.target
+                        ));
+                    }
+                }
             }
         }
         _ => {}
@@ -935,7 +1850,10 @@ fn evaluate_assertion(
     Ok(())
 }
 
-fn extract_error_code(s: &str) -> Option<&str> {
+/// Extract a recognized `UPPERCASE_CODE:` prefix from an error string
+/// (e.g. "AUTH_FAILED: token mismatch"). Used for history error_code
+/// storage so free-text reasons never become codes.
+pub(crate) fn extract_error_code(s: &str) -> Option<&str> {
     if let Some((code, _)) = s.split_once(':') {
         let trimmed = code.trim();
         if trimmed.chars().all(|c| c.is_ascii_uppercase() || c == '_') {
@@ -943,4 +1861,122 @@ fn extract_error_code(s: &str) -> Option<&str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod assertion_tests {
+    use super::evaluate_assertion;
+    use crate::scenario::Assertion;
+    use serde_json::{json, Value};
+
+    fn assertion(pred: &str, target: &str, value: Option<Value>) -> Assertion {
+        Assertion {
+            pred: pred.to_string(),
+            target: target.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn state_unsupported_target_fails_instead_of_passing() {
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        let res = evaluate_assertion(&a, &json!({}), None, None);
+        assert!(
+            res.is_err(),
+            "unhandled state target must not silently pass"
+        );
+        let msg = res.unwrap_err();
+        assert!(msg.contains("not yet supported"), "message: {msg}");
+    }
+
+    #[test]
+    fn state_generic_target_compares_last_response_state() {
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        assert!(evaluate_assertion(&a, &json!({ "state": "CONNECTED" }), None, None).is_ok());
+        let res = evaluate_assertion(&a, &json!({ "state": "DROPPED" }), None, None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("expected CONNECTED, got DROPPED"));
+    }
+
+    #[test]
+    fn state_target_scoped_context_state_overrides_last_response() {
+        use std::collections::HashMap;
+        let mut ctx = HashMap::new();
+        ctx.insert("state:tunnel".to_string(), json!("CONNECTED"));
+
+        let a = assertion("state", "tunnel", Some(json!("CONNECTED")));
+        // Even when last_response has a different state (e.g. from an unlocked dialog or RPC),
+        // target-scoped context state is checked first!
+        assert!(evaluate_assertion(&a, &json!({ "state": "unlocked" }), None, Some(&ctx)).is_ok());
+    }
+
+    #[test]
+    fn state_bridge_arm_unchanged() {
+        let a = assertion("state", "bridge", Some(json!("IDLE")));
+        assert!(evaluate_assertion(&a, &json!({}), None, None).is_ok());
+        let a = assertion("state", "bridge", Some(json!("ACTIVE")));
+        assert!(evaluate_assertion(&a, &json!({}), None, None).is_err());
+    }
+
+    #[test]
+    fn state_reply_nested_fallback() {
+        let a = assertion("state", "tunnel", Some(json!("UNPAIRED")));
+        let resp = json!({
+            "reply": { "connected": false, "state": "UNPAIRED" }
+        });
+        assert!(evaluate_assertion(&a, &resp, None, None).is_ok());
+    }
+
+    #[test]
+    fn record_step_context_handles_gateway_proxy_and_heartbeat() {
+        use std::collections::HashMap;
+        let mut ctx = HashMap::new();
+
+        // 1. Gateway proxy device_tree unpacks payload into tree
+        let tree_resp = json!({
+            "v": 1,
+            "payload": { "ok": true, "rev": 42, "nodes": [] }
+        });
+        super::record_step_context(
+            &mut ctx,
+            "gateway_proxy",
+            Some(&json!({ "rpc": "device_tree" })),
+            &tree_resp,
+        );
+        assert_eq!(ctx.get("tree").unwrap().get("rev").unwrap(), 42);
+
+        // 2. Tunnel heartbeat updates state:tunnel
+        let hb_resp = json!({
+            "reply": { "connected": true, "state": "CONNECTED" }
+        });
+        super::record_step_context(
+            &mut ctx,
+            "tunnel_heartbeat",
+            Some(&json!({ "interval_ms": 1000 })),
+            &hb_resp,
+        );
+        assert_eq!(ctx.get("state:tunnel").unwrap(), "CONNECTED");
+    }
+
+    #[test]
+    fn verify_expect_checks_nested_reply_and_token_present() {
+        // Nested reply field
+        let resp = json!({
+            "reply": { "code": "AUTH_FAILED", "connected": false }
+        });
+        assert!(
+            super::verify_expect(&resp, &json!({ "code": "AUTH_FAILED", "connected": false }))
+                .is_ok()
+        );
+
+        // Token present check
+        let qr_resp = json!({
+            "scheme": "wss",
+            "token": "secret-pairing-token"
+        });
+        assert!(
+            super::verify_expect(&qr_resp, &json!({ "scheme": "wss", "token_present": true }))
+                .is_ok()
+        );
+    }
 }

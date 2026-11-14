@@ -205,3 +205,15 @@ All resolved (LLD A round 7 + LLD E round 8, 2026-10-30):
 - Index vs node-id beyond rev guard — RESOLVED: verify-at-execute identity-chain check on every mutation (`POST /tap` section); semantic-hash ids RESOLVED (map #36, #29): additive nullable `hash` on each `/ui-tree` node + optional `hash` on `/tap`/`/type` with index-preferred, hash-fallback resolution; `schema_version` stays 1.
 - `/ui-tree` content-descriptions — RESOLVED: additive `cd` field (nullable), schema_version stays 1. Security annotations — RESOLVED: NOT exposed (bridge reads its own app's tree; no v1 value).
 - Screenshot scale default — RESOLVED: `0.5` (matches behavior-spec 1.5).
+
+---
+
+## Remote Companion Gateway & Reverse WebSocket Tunnel (Group R, maps 10–13)
+
+Single authority for remote companion protocol boundaries established in Map 9 (write-first RED suite BB-R1..BB-R13, docs/behavior-spec.md §3R).
+
+1. **Reverse WebSocket Tunnel (`wss://`):** Companion dials the desktop tunnel endpoint with `Authorization: Bearer <token>`. Connection handshake validates bearer token; invalid token returns 401 `AUTH_FAILED`. On drop, supervisor reconnects with exponential backoff (`reverse_ws_envelope.json`).
+2. **Gateway RPC Proxying:** Desktop forwards standard bridge RPCs (`device_tree`, `tap`) encapsulated in tunnel envelopes. Responses, including staleness `NODE_OUTDATED` and verify-at-execute revision errors, are relayed verbatim (`gateway_rpc_envelope.json`).
+3. **Pairing QR Payload:** Carries authenticated endpoint metadata (`wss://`, host, port, token) parsed and validated against `contract/fixtures/pairing_qr_payload.json`.
+4. **Transport Resolution & Fallback:** Transport resolution checks configured transports in strict priority order (`reverse_ws` primary, falling back to `lan_direct` on absence/failure, per `contract/fixtures/transport_order.json`).
+5. **Shizuku Remote Lifecycle Bootstrap:** Remote physical devices running unattended tests utilize Shizuku command execution (`contract/fixtures/shizuku_command_schema.json`) for wake/keyguard dismiss (BB-R7), cold app launch `am start` (BB-R8), runtime permission `pm grant` (BB-R9), and system permission popup tap fallback (BB-R10).

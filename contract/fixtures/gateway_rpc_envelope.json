@@ -16,7 +16,7 @@
   "reply_ok": {
     "v": 1,
     "seq": 2,
-    "payload": { "ok": true, "rev": 8 }
+    "payload": { "ok": true, "rev": 8, "verify_at_execute": true }
   },
   "reply_error_relayed": {
     "v": 1,

@@ -246,3 +246,36 @@
 - Rebase-merged into main (1ba2361 tip); all 8 commits landed. CI 7/7 green on d97f720 pre-merge.
 - Branch cleanup: remote deleted by gh, local wf/41-blackbox-map9 deleted. T3 session worktree kept (session cwd, platform-managed).
 - PR watcher released (handback). Maps 10-13 unblocked.
+
+## 2026-11-14 (session) — Council Reviews Round 1 & Round 2 (Map 9 Issue #41)
+- Council review convened with 3 delegates: Gemini 3.8 Flash, GLM 5.3 Flash, DeepSeek V4.1 Flash.
+- Round 1 scores: Gemini 7.5/10, GLM 7/10, DeepSeek 4/10.
+- Applied Round 1 fixes (commit 08d3800):
+  - Guardrail scoped exceptions G6/G10 documented in docs/guardrails.md and DECISIONS.md.
+  - docs/behavior-spec.md §4 and §5 updated for Group R mappings.
+  - Protocol fixtures updated with reply envelopes, verify_at_execute: true, and flat arg schemas.
+  - Blackbox runner: write_first flag and xfail tracking so authored-red suite does not break L2 gate.
+  - docs_gate regex tightened to BB-(?:[A-C]|R)[0-9]+ with bidirectional validation.
+- Round 2 scores: Gemini 10/10, GLM 8.5/10, DeepSeek 6/10.
+- Applied Round 2 fixes:
+  - Guardrail G11 architectural boundary and threat model documented in docs/guardrails.md and DECISIONS.md item 4.
+  - Runner xfail conversion strictly restricted to feature-absent reasons so scenario I/O and syntax errors fail loudly.
+  - Extracted unified record_step_context function covering gateway_proxy device_tree and tunnel_heartbeat.
+  - Generic verify_expect checks nested reply objects and token_present; evaluate_assertion supports reply.state.
+  - Reconciled fixtures: pairing_qr_payload.json, reverse_ws_envelope.json, transport_order.json, and shizuku_command_schema.json.
+  - docs_gate reports accurate line numbers for unknown blackbox IDs.
+  - Added unit tests: test_all_scenario_files_exist, test_write_first_xfail_predicate, and runner context/assertion tests.
+- VERIFY: L0 pass (texure-lint 0) · L1 pass (81 unit tests passing) · clippy clean · fmt clean · L2 pass (mcp-fake 14 passed / 13 xfail / 0 failed, exit 0).
+
+## 2026-11-14 (session) — Council Review Round 3 & Target Parity Fixes (Map 9 Issue #41)
+- Council Round 3 convened: Gemini 3.8 Flash scored 8.5/10. GLM 5.3 Flash and DeepSeek V4.1 Flash hit OpenCode free usage rate limits (`Free usage limit reached`).
+- Applied Round 3 fixes (commit b96c7e1):
+  - Extracted `is_feature_absent(reason: Option<&str>)` in `crates/texure-blackbox/src/main.rs` matching `"Unsupported action in"` prefix (handling both `mcp-fake` and `mcp-real` runner diagnostics), `"FEATURE_ABSENT"`, and `"not yet implemented"`.
+  - Added test case for `mcp-real` runner prefix in `test_write_first_xfail_predicate`.
+  - Explicitly aliased `state:pairing` for `pairing_qr` and `state:transport` for `transport_resolve` in `record_step_context` in `crates/texure-blackbox/src/runner.rs`.
+- VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings) · L1 pass (`cargo test --workspace` 80/80 passed: 37 blackbox, 26 contract, 4 lint, 13 server) · clippy clean (`cargo clippy --workspace --all-targets` 0 warnings) · fmt clean (`cargo fmt --check`) · L2 pass (`mcp-fake` 14 pass / 13 xfail / 0 fail; `mcp-real` 15 pass / 13 xfail / 4 skip / 0 fail).
+
+## 2026-11-14 (session) — Map 8 / Map 9 Integration & Council Fixes
+- Restored Map 9 blackbox runner capabilities alongside Map 8 additions (`POST /tag`, region screenshot, hash targeting).
+- Applied Council review rounds 1-3 fixes: xfail write-first tracking, threat model documentation in DECISIONS.md/docs/guardrails.md, target parity, and test suite verification.
+- VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings) · L1 pass (`cargo test --workspace` 80/80 passed) · clippy clean (0 warnings) · fmt clean · L2 pass (`mcp-fake` 17 pass / 13 xfail / 0 fail; `mcp-real` 17 pass / 13 xfail / 5 skip / 0 fail).

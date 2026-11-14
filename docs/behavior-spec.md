@@ -163,12 +163,12 @@ config-driven fallback order); Shizuku is used only for remote lifecycle bootstr
 
 ## 4. Explicit non-behaviors (v1)
 
-- No auto-wake of a powered-off screen.
-- No global/system UI interaction outside the app's own windows (keys, nav bar, notifications).
+- No auto-wake of a powered-off screen by the in-app bridge (remote wake via Shizuku in §3R BB-R7 is an explicitly guarded remote bootstrap exception).
+- No global/system UI interaction outside the app's own windows (keys, nav bar, notifications), except for the scoped Shizuku system permission popup fallback in BB-R10.
 - No accessibility service, no LATIN access shortcuts, no MIUI special toggles beyond the battery checklist.
 - No multi-device fanout, no release-build bridge, no token auto-rotation, no CI cloud relay.
 
 ## 5. Verification hooks (link to testing-architecture)
 
-- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`.
+- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, plus Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13).
 - The spec as a whole is the input to the behavior-driven test matrix; breaking a row is a bug, not a choice.
