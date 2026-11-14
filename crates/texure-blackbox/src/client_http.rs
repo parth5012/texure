@@ -74,7 +74,12 @@ impl HttpBridgeClient {
         Ok(json)
     }
 
-    pub async fn tap(&self, node: u64, rev: u64, hash: Option<&str>) -> Result<Value, HttpBridgeError> {
+    pub async fn tap(
+        &self,
+        node: u64,
+        rev: u64,
+        hash: Option<&str>,
+    ) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/tap", self.base_url);
         let mut payload = serde_json::json!({
             "node": node,
@@ -225,7 +230,11 @@ impl HttpBridgeClient {
         Ok(json)
     }
 
-    pub async fn screenshot(&self, scale: Option<f32>, region: Option<&str>) -> Result<Vec<u8>, HttpBridgeError> {
+    pub async fn screenshot(
+        &self,
+        scale: Option<f32>,
+        region: Option<&str>,
+    ) -> Result<Vec<u8>, HttpBridgeError> {
         let mut url = format!("{}/screenshot", self.base_url);
         let mut q = Vec::new();
         if let Some(s) = scale {

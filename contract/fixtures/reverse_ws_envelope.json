@@ -8,13 +8,14 @@
     "v": 1,
     "seq": 1,
     "auth": { "bearer": "<pairing-token>" },
-    "payload": { "type": "rpc", "rpc": "device_tree", "args": {} }
+    "payload": { "type": "rpc", "rpc": "device_tree", "args": {} },
+    "reply": { "connected": true, "state": "CONNECTED" }
   },
   "rejected_frame": {
     "v": 1,
     "seq": 1,
     "auth": { "bearer": "<mismatched-token>" },
     "payload": { "type": "rpc", "rpc": "device_tree", "args": {} },
-    "reply": { "code": "AUTH_FAILED", "connected": false }
+    "reply": { "code": "AUTH_FAILED", "connected": false, "state": "UNPAIRED" }
   }
 }

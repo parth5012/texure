@@ -375,12 +375,28 @@ fn inject_hashes(nodes: &mut Value, ancestor: &[String]) {
     if let Some(arr) = nodes.as_array_mut() {
         for node in arr.iter_mut() {
             if let Some(obj) = node.as_object_mut() {
-                let id = obj.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let text = obj.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let cls = obj.get("cls").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let mut path = ancestor.to_vec();
+                let id = obj
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let text = obj
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let cls = obj
+                    .get("cls")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let path = ancestor.to_vec();
                 // children: path includes this node's segment
-                let seg = if id.is_empty() { cls.clone() } else { id.clone() };
+                let seg = if id.is_empty() {
+                    cls.clone()
+                } else {
+                    id.clone()
+                };
                 let hash = fnv1a_64_hex(&path, &id, &text, &cls);
                 obj.insert("hash".to_string(), json!(hash));
                 if let Some(children) = obj.get_mut("children") {
@@ -598,7 +614,10 @@ async fn route_request(
         ("POST", "/tap") => {
             let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
             let req_node = body_json.get("node").and_then(|v| v.as_u64()).unwrap_or(0);
-            let req_hash = body_json.get("hash").and_then(|v| v.as_str()).map(String::from);
+            let req_hash = body_json
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             // Hash targeting (map #36, #29): validate/resolve by hash when present.
             if let Some(hash) = &req_hash {
@@ -610,7 +629,9 @@ async fn route_request(
                 let fixture_path = Path::new(&state.root_dir).join(fixture_file);
                 let nodes = load_fixture_nodes(&fixture_path);
                 let mut resolved: Option<usize> = None;
-                if (req_node as usize) < nodes.len() && node_hash(&nodes[req_node as usize]) == *hash {
+                if (req_node as usize) < nodes.len()
+                    && node_hash(&nodes[req_node as usize]) == *hash
+                {
                     resolved = Some(req_node as usize);
                 } else {
                     for (i, n) in nodes.iter().enumerate() {
@@ -672,7 +693,10 @@ async fn route_request(
                 .get("text")
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let req_hash = body_json.get("hash").and_then(|v| v.as_str()).map(String::from);
+            let req_hash = body_json
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             if let Some(hash) = &req_hash {
                 let fixture_file = if state.scenario_name == "token_budget" {
@@ -683,7 +707,9 @@ async fn route_request(
                 let fixture_path = Path::new(&state.root_dir).join(fixture_file);
                 let nodes = load_fixture_nodes(&fixture_path);
                 let mut resolved: Option<usize> = None;
-                if (req_node as usize) < nodes.len() && node_hash(&nodes[req_node as usize]) == *hash {
+                if (req_node as usize) < nodes.len()
+                    && node_hash(&nodes[req_node as usize]) == *hash
+                {
                     resolved = Some(req_node as usize);
                 } else {
                     for (i, n) in nodes.iter().enumerate() {
@@ -729,7 +755,8 @@ async fn route_request(
             });
             let _ = state.ws_sender.send(event.to_string());
 
-            capture_recording_action(state, "type", Some(req_node), req_text.as_deref(), None).await;
+            capture_recording_action(state, "type", Some(req_node), req_text.as_deref(), None)
+                .await;
 
             let resp = json!({ "ok": true });
             (
@@ -833,7 +860,11 @@ async fn route_request(
             let target = body_json.get("target").cloned().unwrap_or(json!({}));
             let target_index = target.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
             let target_rev = target.get("rev").and_then(|v| v.as_u64()).unwrap_or(0);
-            let tag = body_json.get("tag").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let tag = body_json
+                .get("tag")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
             if tag.trim().is_empty() || tag.len() > 256 {
                 let err = json!({
@@ -971,9 +1002,12 @@ fn parse_region(q: &str) -> Option<(u32, u32)> {
         if let Some(val) = part.strip_prefix("region=") {
             let nums: Vec<&str> = val.split(',').collect();
             if nums.len() == 4 {
-                if let (Ok(_x), Ok(_y), Ok(w), Ok(h)) =
-                    (nums[0].parse::<i32>(), nums[1].parse::<i32>(), nums[2].parse::<u32>(), nums[3].parse::<u32>())
-                {
+                if let (Ok(_x), Ok(_y), Ok(w), Ok(h)) = (
+                    nums[0].parse::<i32>(),
+                    nums[1].parse::<i32>(),
+                    nums[2].parse::<u32>(),
+                    nums[3].parse::<u32>(),
+                ) {
                     if w > 0 && h > 0 {
                         return Some((w, h));
                     }

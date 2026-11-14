@@ -26,6 +26,7 @@ header h1 { font-size:16px; margin:0 8px 0 0; }
 .chip { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:700; }
 .chip-pass { background:rgba(63,185,106,.15); color:var(--pass); }
 .chip-fail { background:rgba(229,72,77,.15); color:var(--fail); }
+.chip-xfail { background:rgba(217,119,6,.15); color:#d97706; }
 .chip-skip { background:rgba(200,160,74,.15); color:var(--skip); }
 section { padding:14px 20px; }
 h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 8px; }
@@ -305,6 +306,7 @@ a { color:#8ca5ff; }
 .chip { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:700; }
 .chip-pass { background:rgba(63,185,106,.15); color:var(--pass); }
 .chip-fail { background:rgba(229,72,77,.15); color:var(--fail); }
+.chip-xfail { background:rgba(217,119,6,.15); color:#d97706; }
 .chip-skip { background:rgba(200,160,74,.15); color:var(--skip); }
 .flaky-badge { background:rgba(224,135,69,.15); color:var(--flaky); font-size:10px; font-weight:700; padding:1px 8px; border-radius:10px; margin-left:6px; }
 .bar { height:10px; border-radius:5px; background:var(--fail); overflow:hidden; display:inline-block; width:120px; vertical-align:middle; }
@@ -513,6 +515,7 @@ fn status_class(status: &str) -> &'static str {
     match status {
         "PASS" => "pass",
         "FAIL" => "fail",
+        "XFAIL" => "xfail",
         _ => "skip",
     }
 }

@@ -1,5 +1,4 @@
 use regex::Regex;
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use texure_contract::error::ErrorCode;
@@ -45,19 +44,20 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
 
     // Expected full BB suite IDs
     let all_expected_bb_ids = [
-        "BB-A0", "BB-A1", "BB-A2", "BB-A3", "BB-A4", "BB-A5", "BB-A6", "BB-B1", "BB-B2", "BB-B3",
-        "BB-B4", "BB-B5", "BB-B6", "BB-B7", "BB-B8", "BB-B9", "BB-B10", "BB-B11", "BB-C1", "BB-C2",
-        "BB-C3",
+        "BB-A0", "BB-A1", "BB-A2", "BB-A3", "BB-A4", "BB-A5", "BB-A6", "BB-A7", "BB-B1", "BB-B2",
+        "BB-B3", "BB-B4", "BB-B5", "BB-B6", "BB-B7", "BB-B8", "BB-B9", "BB-B10", "BB-B11",
+        "BB-B12", "BB-B13", "BB-B14", "BB-B15", "BB-C1", "BB-C2", "BB-C3",
         // Group R: remote tunnel/gateway/Shizuku/pairing (map 9 #41, write-first)
         "BB-R1", "BB-R2", "BB-R3", "BB-R4", "BB-R5", "BB-R6", "BB-R7", "BB-R8", "BB-R9", "BB-R10",
         "BB-R11", "BB-R12", "BB-R13",
     ];
 
-    let mut mapped_bb_ids = HashSet::new();
+    let mut mapped_bb_ids: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     let mut behavior_rows = Vec::new();
 
     static BB_REGEX: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"BB-[A-R][0-9]+").unwrap());
+        std::sync::LazyLock::new(|| Regex::new(r"BB-(?:[A-C]|R)[0-9]+").unwrap());
 
     let lines: Vec<&str> = content.lines().collect();
     let mut in_table = false;
@@ -127,7 +127,7 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
                     });
                 } else {
                     for id in found_ids {
-                        mapped_bb_ids.insert(id);
+                        mapped_bb_ids.entry(id).or_insert(line_num + 1);
                     }
                 }
             }
@@ -150,15 +150,27 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
         });
     }
 
-    // Check bidirectional: Every expected BB test ID must be covered by behavior-spec
+    // Check bidirectional: Every expected BB test ID must be covered by behavior-spec,
+    // and every mapped ID must belong to the known expected set.
     for expected_id in all_expected_bb_ids {
-        if !mapped_bb_ids.contains(expected_id) {
+        if !mapped_bb_ids.contains_key(expected_id) {
             findings.push(Finding {
                 severity: "FAIL".to_string(),
                 rule: "docs-gate/unmapped-blackbox-id".to_string(),
                 file: "docs/behavior-spec.md".to_string(),
                 line: 1,
                 message: format!("Blackbox test ID '{}' has no corresponding behavior row in docs/behavior-spec.md", expected_id),
+            });
+        }
+    }
+    for (mapped_id, mapped_line) in &mapped_bb_ids {
+        if !all_expected_bb_ids.contains(&mapped_id.as_str()) {
+            findings.push(Finding {
+                severity: "FAIL".to_string(),
+                rule: "docs-gate/unknown-blackbox-id".to_string(),
+                file: "docs/behavior-spec.md".to_string(),
+                line: *mapped_line,
+                message: format!("Unknown blackbox test ID '{}' in docs/behavior-spec.md is not registered in expected test list", mapped_id),
             });
         }
     }

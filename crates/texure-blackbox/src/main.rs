@@ -2,14 +2,17 @@ pub mod client_http;
 pub mod client_mcp;
 pub mod fake_bridge;
 pub mod fake_mcp;
+pub mod history;
 pub mod recording;
 pub mod runner;
 pub mod scenario;
+pub mod trace;
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::BufRead;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -75,7 +78,10 @@ enum Commands {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "texure-blackbox", about = "Texure blackbox test runner")]
+#[command(
+    name = "texure-blackbox",
+    about = "Texure blackbox test runner & regression tracking"
+)]
 struct Args {
     /// Target mode: all | mcp | http | mcp-fake | mcp-real
     #[arg(long, default_value = "all")]
@@ -108,6 +114,35 @@ struct Args {
     /// Run in fake MCP stdio mode (used for MCP testing)
     #[arg(long)]
     fake_mcp: bool,
+
+    /// Query regression run history from SQLite
+    #[arg(long)]
+    history: bool,
+
+    /// History query limit (default: 20)
+    #[arg(long, default_value = "20")]
+    limit: usize,
+
+    /// History output format: table | json (default: table)
+    #[arg(long, default_value = "table")]
+    format: String,
+
+    /// Path to custom history SQLite database (default: .texure/history.db)
+    #[arg(long)]
+    history_db: Option<PathBuf>,
+
+    /// Render self-contained HTML trace for a run: run ID in the history DB,
+    /// or a path to a history DB file (renders its newest run)
+    #[arg(long)]
+    trace: Option<String>,
+
+    /// Render regression trend HTML dashboard from run history
+    #[arg(long)]
+    trend: bool,
+
+    /// Output HTML path for --trace / --trend (default: trace.html | trend.html)
+    #[arg(long)]
+    out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +152,8 @@ pub struct TestDef {
     pub scenario_file: String,
     pub target: String,
     pub is_device: bool,
+    #[serde(default)]
+    pub write_first: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +180,8 @@ pub struct ReportSummary {
     pub total: usize,
     pub passed: usize,
     pub failed: usize,
+    #[serde(default)]
+    pub xfail: usize,
     pub skipped: usize,
     pub device_skipped: usize,
     pub duration_ms: u64,
@@ -157,6 +196,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "mcp_handshake.json".to_string(),
             target: "mcp".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-A1".to_string(),
@@ -164,6 +204,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "static_screen.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-A2".to_string(),
@@ -171,6 +212,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "mutating_actions.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-A3".to_string(),
@@ -178,6 +220,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "error_envelope.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-A4".to_string(),
@@ -185,6 +228,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "screenshot_contract.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-A5".to_string(),
@@ -192,6 +236,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "ws_events.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-A6".to_string(),
@@ -199,6 +244,31 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "token_budget.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-A7".to_string(),
+            name: "Dynamic tagging: POST /tag surfaces tag as id".to_string(),
+            scenario_file: "map8_tagging.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-A8".to_string(),
+            name: "Semantic hash targeting: stale index fallback + unknown hash".to_string(),
+            scenario_file: "map8_hash_targeting.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-A9".to_string(),
+            name: "Partial-region screenshot: region + scale".to_string(),
+            scenario_file: "map8_screenshot_region.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
         },
         // Group B: State machine behaviors
         TestDef {
@@ -207,6 +277,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "no_config.json".to_string(),
             target: "mcp".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B2".to_string(),
@@ -214,6 +285,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "device_offline.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B3".to_string(),
@@ -221,6 +293,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "auth_reject.json".to_string(),
             target: "http".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B4".to_string(),
@@ -228,6 +301,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "stale_screen.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B5".to_string(),
@@ -235,6 +309,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "backgrounded.json".to_string(),
             target: "device".to_string(),
             is_device: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-B6".to_string(),
@@ -242,6 +317,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "lock_screen.json".to_string(),
             target: "device".to_string(),
             is_device: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-B7".to_string(),
@@ -249,6 +325,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "human_win.json".to_string(),
             target: "device".to_string(),
             is_device: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-B8".to_string(),
@@ -256,6 +333,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "busy_second_client.json".to_string(),
             target: "mcp".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B9".to_string(),
@@ -263,6 +341,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "lock_release.json".to_string(),
             target: "mcp".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B10".to_string(),
@@ -270,6 +349,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "verbose_errors.json".to_string(),
             target: "mcp".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B11".to_string(),
@@ -277,6 +357,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "token_rotation.json".to_string(),
             target: "device".to_string(),
             is_device: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-B12".to_string(),
@@ -284,6 +365,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "recording_lifecycle.json".to_string(),
             target: "http".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B13".to_string(),
@@ -291,6 +373,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "record_replay.json".to_string(),
             target: "http".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B14".to_string(),
@@ -298,6 +381,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "record_replay.json".to_string(),
             target: "http".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-B15".to_string(),
@@ -305,6 +389,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "recording_export.json".to_string(),
             target: "http".to_string(),
             is_device: false,
+            write_first: false,
         },
         // Group C: Goal flows
         TestDef {
@@ -313,6 +398,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "login_flow.json".to_string(),
             target: "device".to_string(),
             is_device: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-C2".to_string(),
@@ -320,6 +406,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "slow_screen.json".to_string(),
             target: "mcp".to_string(),
             is_device: false,
+            write_first: false,
         },
         TestDef {
             id: "BB-C3".to_string(),
@@ -327,28 +414,112 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "steer_flow.json".to_string(),
             target: "device".to_string(),
             is_device: true,
+            write_first: false,
         },
-        // Group A (Map 8, #35): Map 8 capabilities against FakeBridge
+        // Group R: remote tunnel & gateway (write-first red suite, map 9 #41)
         TestDef {
-            id: "BB-A7".to_string(),
-            name: "Dynamic tagging: POST /tag surfaces tag as id".to_string(),
-            scenario_file: "map8_tagging.json".to_string(),
-            target: "mcp-fake".to_string(),
+            id: "BB-R1".to_string(),
+            name: "Reverse WS handshake with valid bearer token".to_string(),
+            scenario_file: "reverse_ws_handshake.json".to_string(),
+            target: "mcp".to_string(),
             is_device: false,
-        },
-        TestDef {
-            id: "BB-A8".to_string(),
-            name: "Semantic hash targeting: stale index fallback + unknown hash".to_string(),
-            scenario_file: "map8_hash_targeting.json".to_string(),
-            target: "mcp-fake".to_string(),
-            is_device: false,
+            write_first: true,
         },
         TestDef {
-            id: "BB-A9".to_string(),
-            name: "Partial-region screenshot: region + scale".to_string(),
-            scenario_file: "map8_screenshot_region.json".to_string(),
-            target: "mcp-fake".to_string(),
+            id: "BB-R2".to_string(),
+            name: "Reverse WS auth rejection on mismatched token".to_string(),
+            scenario_file: "reverse_ws_auth_reject.json".to_string(),
+            target: "mcp".to_string(),
             is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R3".to_string(),
+            name: "Reverse WS supervisor reconnect with exponential backoff".to_string(),
+            scenario_file: "reverse_ws_reconnect.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R4".to_string(),
+            name: "Gateway proxies device_tree RPC across tunnel".to_string(),
+            scenario_file: "gateway_proxy_tree.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R5".to_string(),
+            name: "Gateway proxies mutating tap with rev check".to_string(),
+            scenario_file: "gateway_proxy_tap.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R6".to_string(),
+            name: "Gateway relays bridge NODE_OUTDATED error".to_string(),
+            scenario_file: "gateway_error_propagation.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R7".to_string(),
+            name: "Shizuku wake & keyguard dismiss".to_string(),
+            scenario_file: "shizuku_wake_keyguard.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R8".to_string(),
+            name: "Shizuku cold app launch (am start)".to_string(),
+            scenario_file: "shizuku_cold_start.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R9".to_string(),
+            name: "Shizuku runtime permission grant (pm grant)".to_string(),
+            scenario_file: "shizuku_pm_grant.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R10".to_string(),
+            name: "Shizuku fallback system tap injection".to_string(),
+            scenario_file: "shizuku_input_tap.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R11".to_string(),
+            name: "Pairing QR payload generation & validation".to_string(),
+            scenario_file: "pairing_qr.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R12".to_string(),
+            name: "Transport fallback reverse_ws -> lan_direct".to_string(),
+            scenario_file: "transport_fallback.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-R13".to_string(),
+            name: "Single-flight lock across remote tunnel (BUSY)".to_string(),
+            scenario_file: "tunnel_single_flight.json".to_string(),
+            target: "mcp".to_string(),
+            is_device: false,
+            write_first: true,
         },
     ]
 }
@@ -383,6 +554,54 @@ async fn main() {
     }
 
     let args = Args::parse();
+
+    // HTML report modes (--trace / --trend): read-only over the history DB,
+    // zero-config default .texure/history.db (issue #27).
+    if args.trace.is_some() || args.trend {
+        if args.trace.is_some() && args.trend && args.out.is_some() {
+            eprintln!(
+                "--out is ambiguous when both --trace and --trend are given; run them separately"
+            );
+            std::process::exit(2);
+        }
+        if let Some(ref trace_arg) = args.trace {
+            if let Err(e) = run_trace_command(trace_arg, &args) {
+                eprintln!("Error rendering trace: {e}");
+                std::process::exit(1);
+            }
+        }
+        if args.trend {
+            if let Err(e) = run_trend_command(&args) {
+                eprintln!("Error rendering trend: {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
+    // Check if querying history
+    if args.history {
+        let db_path = args
+            .history_db
+            .clone()
+            .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH));
+        match history::HistoryStore::open_at(db_path) {
+            Ok(store) => match store.render_history_cli(args.limit, &args.format) {
+                Ok(output) => {
+                    print!("{output}");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("Error rendering history: {e}");
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("Error opening history store: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
 
     // Check if running as fake MCP stdio server
     if args.fake_mcp {
@@ -461,9 +680,10 @@ async fn main() {
     println!("--------------------------------------------------------------------------------");
 
     let mut results = Vec::new();
+    let mut step_traces: Vec<(String, Vec<runner::StepTrace>)> = Vec::new();
 
     for test in selected_tests {
-        let result = runner::run_test(
+        let (mut result, steps) = runner::run_test(
             &test,
             &args.scenarios_dir,
             &args.root,
@@ -471,6 +691,13 @@ async fn main() {
             args.token.as_deref(),
         )
         .await;
+
+        if test.write_first
+            && result.status == "fail"
+            && is_feature_absent(result.reason.as_deref())
+        {
+            result.status = "xfail".to_string();
+        }
 
         println!(
             "{:<8} {:<10} {:<12} {:>6}ms   {}",
@@ -481,21 +708,24 @@ async fn main() {
             result.reason.as_deref().unwrap_or("")
         );
 
+        step_traces.push((result.id.clone(), steps));
         results.push(result);
     }
 
     let total_duration_ms = start_time.elapsed().as_millis() as u64;
     let passed = results.iter().filter(|r| r.status == "pass").count();
     let failed = results.iter().filter(|r| r.status == "fail").count();
+    let xfail = results.iter().filter(|r| r.status == "xfail").count();
     let skipped = results.iter().filter(|r| r.status == "skip").count();
     let device_skipped = results.iter().filter(|r| r.status == "device-skip").count();
 
     println!("--------------------------------------------------------------------------------");
     println!(
-        "Summary: {} total | {} passed | {} failed | {} skipped | {} device-skipped | Duration: {}ms",
+        "Summary: {} total | {} passed | {} failed | {} xfail | {} skipped | {} device-skipped | Duration: {}ms",
         results.len(),
         passed,
         failed,
+        xfail,
         skipped,
         device_skipped,
         total_duration_ms
@@ -507,11 +737,12 @@ async fn main() {
             total: results.len(),
             passed,
             failed,
+            xfail,
             skipped,
             device_skipped,
             duration_ms: total_duration_ms,
         },
-        tests: results,
+        tests: results.clone(),
     };
 
     if let Some(ref report_path) = args.report {
@@ -521,6 +752,100 @@ async fn main() {
         if let Ok(json_str) = serde_json::to_string_pretty(&report) {
             let _ = fs::write(report_path, json_str);
             println!("Report written to: {}", report_path.display());
+        }
+    }
+
+    // Auto-record to SQLite history store
+    let db_path = args
+        .history_db
+        .clone()
+        .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH));
+    match history::HistoryStore::open_at(db_path) {
+        Ok(store) => {
+            let run_id = history::generate_run_id();
+            // Git metadata must come from the repository the caller targeted
+            // via --root, not the process's current directory.
+            let git_meta = |git_args: &[&str]| -> Option<String> {
+                let out = std::process::Command::new("git")
+                    .args(git_args)
+                    .current_dir(&args.root)
+                    .output()
+                    .ok()?;
+                if !out.status.success() {
+                    return None;
+                }
+                let s = String::from_utf8(out.stdout).ok()?;
+                let s = s.trim();
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
+            };
+            let branch = git_meta(&["rev-parse", "--abbrev-ref", "HEAD"]);
+            let build_hash = git_meta(&["rev-parse", "--short", "HEAD"]);
+
+            let run_record = history::RunRecord {
+                run_id: run_id.clone(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                app_version_name: None,
+                build_hash,
+                branch,
+                total_scenarios: results.len(),
+                passed,
+                failed,
+                duration_ms: total_duration_ms,
+            };
+
+            let scenario_records: Vec<history::ScenarioResultRecord> = results
+                .iter()
+                .map(|r| history::ScenarioResultRecord {
+                    id: None,
+                    run_id: run_id.clone(),
+                    scenario_id: r.id.clone(),
+                    name: r.name.clone(),
+                    status: r.status.to_uppercase(),
+                    target: Some(r.target.clone()),
+                    duration_ms: r.duration_ms,
+                    // Only recognized error codes; skip/scenario-load
+                    // reasons are free text and must not become codes.
+                    error_code: r
+                        .reason
+                        .as_deref()
+                        .and_then(runner::extract_error_code)
+                        .map(|s| s.to_string()),
+                    error_message: r.reason.clone(),
+                    evidence_bundle_path: r.evidence_bundle.clone(),
+                })
+                .collect();
+
+            let step_records: Vec<history::StepRecord> = results
+                .iter()
+                .zip(step_traces.iter())
+                .flat_map(|(r, (_, steps))| {
+                    let run_id = run_id.clone();
+                    steps.iter().map(move |st| history::StepRecord {
+                        id: None,
+                        run_id: run_id.clone(),
+                        scenario_id: r.id.clone(),
+                        target: Some(r.target.clone()),
+                        step_index: st.step_index,
+                        tool_name: st.tool_name.clone(),
+                        params_json: st.params_json.clone(),
+                        result_json: st.result_json.clone(),
+                        rev_before: st.rev_before,
+                        rev_after: st.rev_after,
+                        timestamp_offset_ms: st.timestamp_offset_ms,
+                    })
+                })
+                .collect();
+
+            if let Err(e) = store.record_run(&run_record, &scenario_records, &step_records) {
+                eprintln!("Warning: failed to record run history into SQLite: {e}");
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to initialize SQLite history store: {e}");
         }
     }
 
@@ -728,4 +1053,181 @@ async fn run_replay(
     }
 
     0
+}
+
+/// Render the trace HTML for one recorded run, gathering all its scenario
+/// results and steps (target-disambiguated). Shared by `--trace` and `--trend`
+/// (which writes one trace artifact per run so trend links stay accurate).
+fn build_trace_html(store: &history::HistoryStore, run_id: &str) -> Result<String, String> {
+    let (run, scenarios) = store
+        .get_run(run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Run '{run_id}' not found in history DB"))?;
+
+    let mut steps = Vec::new();
+    for s in &scenarios {
+        steps.extend(
+            store
+                .get_scenario_steps(run_id, &s.scenario_id, s.target.as_deref())
+                .map_err(|e| e.to_string())?,
+        );
+    }
+
+    Ok(trace::render_trace_html(&run, &scenarios, &steps))
+}
+
+/// `--trace <run-id|db-path>`: render the self-contained HTML trace viewer for
+/// one recorded run. A filesystem path is treated as a history DB and renders
+/// its newest run; anything else is a run ID resolved against the default (or
+/// --history_db) database.
+fn run_trace_command(trace_arg: &str, args: &Args) -> Result<(), String> {
+    let arg_path = PathBuf::from(trace_arg);
+    // Any existing file is accepted as a history DB path, regardless of
+    // extension; opening it validates its contents. Only nonexistent paths
+    // are treated as run IDs.
+    let is_db_file = arg_path.is_file();
+
+    let (db_path, run_id) = if is_db_file {
+        (arg_path, None) // newest run in the given DB
+    } else {
+        (
+            args.history_db
+                .clone()
+                .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH)),
+            Some(trace_arg.to_string()),
+        )
+    };
+
+    let store = history::HistoryStore::open_at(db_path).map_err(|e| e.to_string())?;
+
+    let run_id = match run_id {
+        Some(id) => id,
+        None => store
+            .list_runs(1)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .next()
+            .map(|r| r.run_id)
+            .ok_or_else(|| "History DB contains no runs".to_string())?,
+    };
+
+    let html = build_trace_html(&store, &run_id)?;
+    write_html_output(html, args.out.as_deref(), "trace.html")
+}
+
+/// `--trend`: render the regression trend HTML dashboard from the history DB.
+fn run_trend_command(args: &Args) -> Result<(), String> {
+    let db_path = args
+        .history_db
+        .clone()
+        .unwrap_or_else(|| args.root.join(history::HistoryStore::DEFAULT_DB_PATH));
+    let store = history::HistoryStore::open_at(db_path).map_err(|e| e.to_string())?;
+
+    let runs = store.list_runs(args.limit).map_err(|e| e.to_string())?;
+    let stats = store
+        .get_scenario_stats(args.limit)
+        .map_err(|e| e.to_string())?;
+
+    // Every trend row links to that run's own trace artifact, written next
+    // to the trend output; trace.html embeds exactly one run, so a shared
+    // link would open the wrong run for all but one row.
+    let out_path = args
+        .out
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("trend.html"));
+    let out_dir = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if let Some(parent) = out_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+    let mut trace_files: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for r in &runs {
+        let file = format!("trace-{}.html", r.run_id);
+        let html = build_trace_html(&store, &r.run_id)?;
+        fs::write(out_dir.join(&file), html)
+            .map_err(|e| format!("failed to write {}: {e}", out_dir.join(&file).display()))?;
+        trace_files.insert(r.run_id.clone(), file);
+    }
+
+    let html = trace::render_trend_html(&runs, &stats, &|run_id: &str| {
+        trace_files.get(run_id).cloned().unwrap_or_default()
+    });
+    write_html_output(html, Some(&out_path), "trend.html")
+}
+
+fn write_html_output(html: String, out: Option<&Path>, default_name: &str) -> Result<(), String> {
+    let path = out
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(default_name));
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+    fs::write(&path, html).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    println!("HTML written to: {}", path.display());
+    Ok(())
+}
+
+pub(crate) fn is_feature_absent(reason: Option<&str>) -> bool {
+    reason.is_some_and(|r| {
+        r.starts_with("Unsupported action in")
+            || r.contains("FEATURE_ABSENT")
+            || r.contains("not yet implemented")
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_scenario_files_exist() {
+        let tests = get_all_tests();
+        let scenarios_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("tests/blackbox/scenarios");
+        for t in tests {
+            let p = if t.scenario_file.ends_with(".json") {
+                scenarios_dir.join(&t.scenario_file)
+            } else {
+                scenarios_dir.join(format!("{}.json", t.scenario_file))
+            };
+            assert!(
+                p.exists(),
+                "Registered test {} references non-existent scenario file: {:?}",
+                t.id,
+                p
+            );
+        }
+    }
+
+    #[test]
+    fn test_write_first_xfail_predicate() {
+        // Unsupported action on fake or real runner -> converted to xfail
+        assert!(is_feature_absent(Some(
+            "Unsupported action in MCP test: tunnel_connect"
+        )));
+        assert!(is_feature_absent(Some(
+            "Unsupported action in mcp-real test: tunnel_connect"
+        )));
+        assert!(is_feature_absent(Some(
+            "feature is FEATURE_ABSENT in this build"
+        )));
+
+        // IO / load / parse errors -> NOT converted, remain real fails
+        assert!(!is_feature_absent(Some(
+            "Failed to load scenario: IO error reading scenario: No such file or directory"
+        )));
+        assert!(!is_feature_absent(Some("JSON parse error at line 12")));
+        assert!(!is_feature_absent(None));
+    }
 }

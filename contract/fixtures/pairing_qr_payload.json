@@ -8,6 +8,8 @@
     "port": 443,
     "path": "/tunnel",
     "token": "<pairing-token>",
+    "token_present": true,
+    "state": "UNPAIRED",
     "app": "texure"
   },
   "invalid_payloads": [

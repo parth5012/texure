@@ -417,7 +417,7 @@ impl HistoryStore {
             "SELECT sr.scenario_id, MAX(sr.name) AS name, sr.target, COUNT(*) AS runs,
                     SUM(CASE WHEN sr.status = 'PASS' THEN 1 ELSE 0 END) AS passes,
                     SUM(CASE WHEN sr.status = 'FAIL' THEN 1 ELSE 0 END) AS fails,
-                    SUM(CASE WHEN sr.status IN ('SKIP', 'DEVICE-SKIP') THEN 1 ELSE 0 END) AS skips
+                    SUM(CASE WHEN sr.status IN ('SKIP', 'DEVICE-SKIP', 'XFAIL') THEN 1 ELSE 0 END) AS skips
              FROM scenario_results AS sr
              WHERE sr.run_id IN (
                  SELECT run_id FROM runs ORDER BY timestamp DESC, run_id DESC LIMIT ?1
