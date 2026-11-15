@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCompanion } from '../context/CompanionContext';
 import {
   ShieldCheck,
@@ -21,146 +21,199 @@ import {
 } from 'lucide-react';
 import { ShizukuStatus, TunnelState, AppStatus, NetworkType } from '../types';
 
+const BATTERY_LOW_THRESHOLD = 20;
+const BATTERY_MEDIUM_THRESHOLD = 50;
+const BATTERY_HIGH_THRESHOLD = 90;
+
+const sanitizeDisplayUrl = (url?: string): string => {
+  if (!url) return 'wss://desktop.lan/tunnel';
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') {
+      return parsed.toString();
+    }
+  } catch {
+    // ignore invalid URL
+  }
+  return 'wss://desktop.lan/tunnel';
+};
+
+const sanitizeDisplayHost = (host?: string): string => {
+  if (!host) return 'desktop.lan';
+  return host.replace(/[^\w.-]/g, '');
+};
+
+// Pure badge sub-components to prevent recreation on re-render
+const ShizukuBadge: React.FC<{ status: ShizukuStatus }> = ({ status }) => {
+  switch (status) {
+    case 'AUTHORIZED':
+      return (
+        <span
+          data-testid="shizuku-badge-authorized"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 transition-all duration-300"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>AUTHORIZED</span>
+        </span>
+      );
+    case 'UNAUTHORIZED':
+      return (
+        <span
+          data-testid="shizuku-badge-unauthorized"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 transition-all duration-300"
+        >
+          <ShieldAlert className="w-3.5 h-3.5" />
+          <span>UNAUTHORIZED</span>
+        </span>
+      );
+    case 'SERVICE_DEAD':
+    default:
+      return (
+        <span
+          data-testid="shizuku-badge-dead"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 transition-all duration-300"
+        >
+          <ShieldX className="w-3.5 h-3.5" />
+          <span>SERVICE DEAD</span>
+        </span>
+      );
+  }
+};
+
+const TunnelBadge: React.FC<{ tunnelState: TunnelState }> = ({ tunnelState }) => {
+  switch (tunnelState) {
+    case 'CONNECTED':
+      return (
+        <span
+          data-testid="tunnel-badge-connected"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 transition-all duration-300"
+        >
+          <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+          <span>CONNECTED</span>
+        </span>
+      );
+    case 'CONNECTING':
+      return (
+        <span
+          data-testid="tunnel-badge-connecting"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 transition-all duration-300"
+        >
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+          <span>CONNECTING</span>
+        </span>
+      );
+    case 'ERROR':
+      return (
+        <span
+          data-testid="tunnel-badge-error"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 transition-all duration-300"
+        >
+          <WifiOff className="w-3.5 h-3.5" />
+          <span>TUNNEL ERROR</span>
+        </span>
+      );
+    case 'DISCONNECTED':
+    default:
+      return (
+        <span
+          data-testid="tunnel-badge-disconnected"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-700 transition-all duration-300"
+        >
+          <WifiOff className="w-3.5 h-3.5" />
+          <span>DISCONNECTED</span>
+        </span>
+      );
+  }
+};
+
+const AppStatusBadge: React.FC<{ appStatus: AppStatus }> = ({ appStatus }) => {
+  switch (appStatus) {
+    case 'FOREGROUND':
+      return (
+        <span
+          data-testid="app-badge-foreground"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 transition-all duration-300"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>FOREGROUND</span>
+        </span>
+      );
+    case 'BACKGROUND':
+      return (
+        <span
+          data-testid="app-badge-background"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 transition-all duration-300"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>BACKGROUND</span>
+        </span>
+      );
+    case 'STOPPED':
+    default:
+      return (
+        <span
+          data-testid="app-badge-stopped"
+          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-700 transition-all duration-300"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>STOPPED</span>
+        </span>
+      );
+  }
+};
+
+const BatteryIcon: React.FC<{ percent: number }> = ({ percent }) => {
+  if (percent <= BATTERY_LOW_THRESHOLD) return <BatteryWarning className="w-4 h-4 text-rose-400" />;
+  if (percent >= BATTERY_HIGH_THRESHOLD) return <BatteryCharging className="w-4 h-4 text-emerald-400" />;
+  return <Battery className="w-4 h-4 text-indigo-400" />;
+};
+
+const NetworkIcon: React.FC<{ type: NetworkType }> = ({ type }) => {
+  if (type === 'WIFI') return <Wifi className="w-4 h-4 text-indigo-400" />;
+  if (type === 'CELLULAR') return <Zap className="w-4 h-4 text-amber-400" />;
+  return <WifiOff className="w-4 h-4 text-slate-500" />;
+};
+
 export const StatusDashboard: React.FC = () => {
   const { state, refreshState, reconnectTunnel } = useCompanion();
   const [refreshing, setRefreshing] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refreshState();
-    setTimeout(() => setRefreshing(false), 400);
-  };
-
-  // Badge renderers with semantic colors and icons
-  const renderShizukuBadge = (status: ShizukuStatus) => {
-    switch (status) {
-      case 'AUTHORIZED':
-        return (
-          <span
-            data-testid="shizuku-badge-authorized"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 transition-all duration-300"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>AUTHORIZED</span>
-          </span>
-        );
-      case 'UNAUTHORIZED':
-        return (
-          <span
-            data-testid="shizuku-badge-unauthorized"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 transition-all duration-300"
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            <span>UNAUTHORIZED</span>
-          </span>
-        );
-      case 'SERVICE_DEAD':
-      default:
-        return (
-          <span
-            data-testid="shizuku-badge-dead"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 transition-all duration-300"
-          >
-            <ShieldX className="w-3.5 h-3.5" />
-            <span>SERVICE DEAD</span>
-          </span>
-        );
+    try {
+      await refreshState();
+    } catch (err) {
+      console.error('Failed to refresh device state:', err);
+    } finally {
+      timeoutRef.current = setTimeout(() => {
+        setRefreshing(false);
+      }, 400);
     }
   };
 
-  const renderTunnelBadge = (tunnelState: TunnelState) => {
-    switch (tunnelState) {
-      case 'CONNECTED':
-        return (
-          <span
-            data-testid="tunnel-badge-connected"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 transition-all duration-300"
-          >
-            <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-            <span>CONNECTED</span>
-          </span>
-        );
-      case 'CONNECTING':
-        return (
-          <span
-            data-testid="tunnel-badge-connecting"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 transition-all duration-300"
-          >
-            <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-            <span>CONNECTING</span>
-          </span>
-        );
-      case 'ERROR':
-        return (
-          <span
-            data-testid="tunnel-badge-error"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 transition-all duration-300"
-          >
-            <WifiOff className="w-3.5 h-3.5" />
-            <span>TUNNEL ERROR</span>
-          </span>
-        );
-      case 'DISCONNECTED':
-      default:
-        return (
-          <span
-            data-testid="tunnel-badge-disconnected"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-700 transition-all duration-300"
-          >
-            <WifiOff className="w-3.5 h-3.5" />
-            <span>DISCONNECTED</span>
-          </span>
-        );
-    }
+  // Safe vitals extraction with fallback defaults
+  const vitals = state.vitals ?? {
+    batteryPercent: 100,
+    screenOn: true,
+    networkType: 'WIFI',
+    latencyMs: 0,
   };
+  const batteryPercent = vitals.batteryPercent ?? 0;
+  const screenOn = vitals.screenOn ?? false;
+  const networkType = vitals.networkType ?? 'NONE';
+  const latencyMs = vitals.latencyMs ?? 0;
 
-  const renderAppStatusBadge = (appStatus: AppStatus) => {
-    switch (appStatus) {
-      case 'FOREGROUND':
-        return (
-          <span
-            data-testid="app-badge-foreground"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 transition-all duration-300"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>FOREGROUND</span>
-          </span>
-        );
-      case 'BACKGROUND':
-        return (
-          <span
-            data-testid="app-badge-background"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 transition-all duration-300"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>BACKGROUND</span>
-          </span>
-        );
-      case 'STOPPED':
-      default:
-        return (
-          <span
-            data-testid="app-badge-stopped"
-            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-700 transition-all duration-300"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>STOPPED</span>
-          </span>
-        );
-    }
-  };
-
-  const renderBatteryIcon = (percent: number) => {
-    if (percent <= 20) return <BatteryWarning className="w-4 h-4 text-rose-400" />;
-    if (percent >= 90) return <BatteryCharging className="w-4 h-4 text-emerald-400" />;
-    return <Battery className="w-4 h-4 text-indigo-400" />;
-  };
-
-  const renderNetworkIcon = (type: NetworkType) => {
-    if (type === 'WIFI') return <Wifi className="w-4 h-4 text-indigo-400" />;
-    if (type === 'CELLULAR') return <Zap className="w-4 h-4 text-amber-400" />;
-    return <WifiOff className="w-4 h-4 text-slate-500" />;
-  };
+  const displayUrl = sanitizeDisplayUrl(state.pairing?.url);
+  const displayHost = sanitizeDisplayHost(state.pairing?.host);
 
   return (
     <div className="space-y-6">
@@ -194,7 +247,7 @@ export const StatusDashboard: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-medium text-slate-400">Shizuku Gateway</span>
-              {renderShizukuBadge(state.shizukuStatus)}
+              <ShizukuBadge status={state.shizukuStatus} />
             </div>
             <div className="space-y-2 mt-4 text-xs text-slate-300">
               <div className="flex justify-between py-1 border-b border-slate-800/60">
@@ -221,19 +274,19 @@ export const StatusDashboard: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-medium text-slate-400">Reverse WS Tunnel</span>
-              {renderTunnelBadge(state.tunnelState)}
+              <TunnelBadge tunnelState={state.tunnelState} />
             </div>
             <div className="space-y-2 mt-4 text-xs text-slate-300">
               <div className="flex justify-between py-1 border-b border-slate-800/60">
                 <span className="text-slate-500">Endpoint</span>
-                <span className="font-mono text-slate-300 truncate max-w-[140px]" title={state.pairing?.url || 'wss://desktop.lan/tunnel'}>
-                  {state.pairing?.host || 'desktop.lan'}
+                <span className="font-mono text-slate-300 truncate max-w-[140px]" title={displayUrl}>
+                  {displayHost}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-800/60">
                 <span className="text-slate-500">Round-trip Ping</span>
                 <span className="font-mono text-emerald-400">
-                  {state.tunnelState === 'CONNECTED' ? `${state.vitals.latencyMs} ms` : '—'}
+                  {state.tunnelState === 'CONNECTED' ? `${latencyMs} ms` : '—'}
                 </span>
               </div>
               <div className="flex justify-between py-1">
@@ -260,7 +313,7 @@ export const StatusDashboard: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-medium text-slate-400">Target Application</span>
-              {renderAppStatusBadge(state.appStatus)}
+              <AppStatusBadge appStatus={state.appStatus} />
             </div>
             <div className="space-y-2 mt-4 text-xs text-slate-300">
               <div className="flex justify-between py-1 border-b border-slate-800/60">
@@ -299,29 +352,29 @@ export const StatusDashboard: React.FC = () => {
             <div className="space-y-2 mt-4 text-xs text-slate-300">
               <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-500 flex items-center space-x-1.5">
-                  {renderBatteryIcon(state.vitals.batteryPercent)}
+                  <BatteryIcon percent={batteryPercent} />
                   <span>Battery</span>
                 </span>
                 <div className="flex items-center space-x-2">
                   <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        state.vitals.batteryPercent <= 20
+                        batteryPercent <= BATTERY_LOW_THRESHOLD
                           ? 'bg-rose-500'
-                          : state.vitals.batteryPercent <= 50
+                          : batteryPercent <= BATTERY_MEDIUM_THRESHOLD
                           ? 'bg-amber-500'
                           : 'bg-emerald-500'
                       }`}
-                      style={{ width: `${state.vitals.batteryPercent}%` }}
+                      style={{ width: `${batteryPercent}%` }}
                     />
                   </div>
-                  <span className="font-mono text-slate-200">{state.vitals.batteryPercent}%</span>
+                  <span className="font-mono text-slate-200">{batteryPercent}%</span>
                 </div>
               </div>
 
               <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-500 flex items-center space-x-1.5">
-                  {state.vitals.screenOn ? (
+                  {screenOn ? (
                     <Eye className="w-4 h-4 text-emerald-400" />
                   ) : (
                     <EyeOff className="w-4 h-4 text-rose-400" />
@@ -331,19 +384,19 @@ export const StatusDashboard: React.FC = () => {
                 <span
                   data-testid="screen-state-indicator"
                   className={`font-semibold font-mono text-xs ${
-                    state.vitals.screenOn ? 'text-emerald-400' : 'text-rose-400'
+                    screenOn ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
-                  {state.vitals.screenOn ? 'ON' : 'OFF'}
+                  {screenOn ? 'ON' : 'OFF'}
                 </span>
               </div>
 
               <div className="flex justify-between items-center py-1">
                 <span className="text-slate-500 flex items-center space-x-1.5">
-                  {renderNetworkIcon(state.vitals.networkType)}
+                  <NetworkIcon type={networkType} />
                   <span>Transport</span>
                 </span>
-                <span className="font-mono text-slate-300">{state.vitals.networkType}</span>
+                <span className="font-mono text-slate-300">{networkType}</span>
               </div>
             </div>
           </div>
