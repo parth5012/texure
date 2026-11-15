@@ -12,6 +12,7 @@ import {
   PauseCircle,
   Filter,
   X,
+  AlertCircle,
 } from 'lucide-react';
 
 type FilterLevel = LogLevel | 'ALL';
@@ -26,8 +27,6 @@ const getLevelBadgeStyles = (level: LogLevel): string => {
       return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
     case 'DEBUG':
       return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
-    default:
-      return 'bg-slate-500/10 text-slate-400 border-slate-700';
   }
 };
 
@@ -43,6 +42,7 @@ export const LogViewer: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<FilterLevel>('ALL');
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +74,12 @@ export const LogViewer: React.FC = () => {
 
   // Auto-scroll when new logs arrive if enabled
   useEffect(() => {
-    if (autoScroll && endRef.current && typeof endRef.current.scrollIntoView === 'function') {
+    if (
+      autoScroll &&
+      containerRef.current &&
+      endRef.current &&
+      typeof endRef.current.scrollIntoView === 'function'
+    ) {
       endRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [filteredLogs, autoScroll]);
@@ -91,14 +96,20 @@ export const LogViewer: React.FC = () => {
     }
   }, [autoScroll]);
 
-  const copyToClipboard = useCallback(async (text: string) => {
+  const copyToClipboard = useCallback(async (text: string): Promise<boolean> => {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
+        setCopyError(null);
+        return true;
       }
-      return true;
+      throw new Error('Clipboard API not available');
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Clipboard operation failed';
       console.warn('Clipboard write failed:', err);
+      setCopyError(msg);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopyError(null), 3000);
       return false;
     }
   }, []);
@@ -215,6 +226,13 @@ export const LogViewer: React.FC = () => {
 
         {/* Right: Actions */}
         <div className="flex items-center space-x-2">
+          {copyError && (
+            <span className="text-[11px] text-rose-400 flex items-center space-x-1">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>{copyError}</span>
+            </span>
+          )}
+
           {/* Auto Scroll Toggle */}
           <button
             onClick={() => setAutoScroll((prev) => !prev)}
