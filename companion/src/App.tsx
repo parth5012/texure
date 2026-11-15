@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CompanionProvider, useCompanion } from './context/CompanionContext';
 import { MockToolbar } from './components/MockToolbar';
+import { QrScanner } from './components/QrScanner';
 import { Smartphone, QrCode, Sliders, Terminal, Activity, Moon, Sun } from 'lucide-react';
 
 const DashboardShell: React.FC = () => {
@@ -128,9 +129,8 @@ const DashboardShell: React.FC = () => {
           )}
 
           {activeTab === 'scanner' && (
-            <div data-testid="scanner-view" className="p-6 bg-slate-900/60 rounded-xl border border-slate-800">
-              <h2 className="text-lg font-semibold text-slate-100 mb-2">QR Scanner</h2>
-              <p className="text-sm text-slate-400">Camera and upload scanner for desktop tunnel pairing.</p>
+            <div data-testid="scanner-view">
+              <QrScanner />
             </div>
           )}
 
