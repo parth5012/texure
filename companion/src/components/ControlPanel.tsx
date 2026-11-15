@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCompanion } from '../context/CompanionContext';
 import {
   Sun,
@@ -23,8 +23,29 @@ interface Toast {
   message: string;
 }
 
-const DEFAULT_PACKAGE_NAME = 'com.example.target';
+// Configurable default target app package
+const DEFAULT_PACKAGE_NAME = (import.meta as { env?: Record<string, string> }).env?.VITE_DEFAULT_TARGET_PACKAGE || 'com.example.target';
+
+// 4-second display duration provides ample reading time for status messages without obstructing viewport permanently
 const TOAST_DURATION_MS = 4000;
+
+// Sanitize string content for safe display
+const sanitizeToastText = (raw: string): string => {
+  return raw.replace(/<[^>]*>?/gm, '').slice(0, 300);
+};
+
+// Pure styling helper for toast notifications
+const getToastStyles = (type: 'success' | 'error' | 'info'): string => {
+  switch (type) {
+    case 'success':
+      return 'bg-slate-900 border-emerald-500/40 text-emerald-300';
+    case 'error':
+      return 'bg-slate-900 border-rose-500/40 text-rose-300';
+    case 'info':
+    default:
+      return 'bg-slate-900 border-indigo-500/40 text-indigo-300';
+  }
+};
 
 export const ControlPanel: React.FC = () => {
   const {
@@ -49,9 +70,20 @@ export const ControlPanel: React.FC = () => {
     };
   }, []);
 
-  const addToast = (type: 'success' | 'error' | 'info', title: string, message: string) => {
+  const dismissToast = useCallback((id: string) => {
+    const existing = toastTimeoutsRef.current.get(id);
+    if (existing) {
+      clearTimeout(existing);
+      toastTimeoutsRef.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const addToast = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const newToast: Toast = { id, type, title, message };
+    const sanitizedTitle = sanitizeToastText(title);
+    const sanitizedMsg = sanitizeToastText(message);
+    const newToast: Toast = { id, type, title: sanitizedTitle, message: sanitizedMsg };
 
     setToasts((prev) => [...prev, newToast]);
 
@@ -60,16 +92,7 @@ export const ControlPanel: React.FC = () => {
     }, TOAST_DURATION_MS);
 
     toastTimeoutsRef.current.set(id, timeout);
-  };
-
-  const dismissToast = (id: string) => {
-    const existing = toastTimeoutsRef.current.get(id);
-    if (existing) {
-      clearTimeout(existing);
-      toastTimeoutsRef.current.delete(id);
-    }
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  }, [dismissToast]);
 
   const handleAction = async (actionId: string, fn: () => Promise<unknown>, successMsg: string) => {
     if (loadingAction) return;
@@ -87,6 +110,7 @@ export const ControlPanel: React.FC = () => {
   };
 
   const isExecuting = loadingAction !== null;
+  const effectivePackage = (packageName || DEFAULT_PACKAGE_NAME).trim();
 
   return (
     <div data-testid="control-panel" className="space-y-6">
@@ -96,13 +120,9 @@ export const ControlPanel: React.FC = () => {
           <div
             key={toast.id}
             data-testid="toast-notification"
-            className={`pointer-events-auto p-4 rounded-xl border shadow-xl flex items-start space-x-3 transition-all transform animate-in slide-in-from-top duration-200 ${
-              toast.type === 'success'
-                ? 'bg-slate-900 border-emerald-500/40 text-emerald-300'
-                : toast.type === 'error'
-                ? 'bg-slate-900 border-rose-500/40 text-rose-300'
-                : 'bg-slate-900 border-indigo-500/40 text-indigo-300'
-            }`}
+            className={`pointer-events-auto p-4 rounded-xl border shadow-xl flex items-start space-x-3 transition-all transform animate-in slide-in-from-top duration-200 ${getToastStyles(
+              toast.type
+            )}`}
           >
             {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />}
             {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />}
@@ -241,9 +261,8 @@ export const ControlPanel: React.FC = () => {
                 type="text"
                 value={packageName}
                 onChange={(e) => setPackageName(e.target.value.trim())}
-                disabled={isExecuting}
                 data-testid="input-package-name"
-                className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500 transition disabled:opacity-50"
+                className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500 transition"
                 placeholder="com.example.target"
               />
             </div>
@@ -255,8 +274,8 @@ export const ControlPanel: React.FC = () => {
                 onClick={() =>
                   handleAction(
                     'cold_start',
-                    () => coldStartApp(packageName || DEFAULT_PACKAGE_NAME),
-                    `Target app ${packageName || DEFAULT_PACKAGE_NAME} launched via am start`
+                    () => coldStartApp(effectivePackage),
+                    `Target app ${effectivePackage} launched via am start`
                   )
                 }
                 disabled={isExecuting}
@@ -280,8 +299,8 @@ export const ControlPanel: React.FC = () => {
                 onClick={() =>
                   handleAction(
                     'force_stop',
-                    () => forceStopApp(packageName || DEFAULT_PACKAGE_NAME),
-                    `Target app ${packageName || DEFAULT_PACKAGE_NAME} killed via am force-stop`
+                    () => forceStopApp(effectivePackage),
+                    `Target app ${effectivePackage} killed via am force-stop`
                   )
                 }
                 disabled={isExecuting}
