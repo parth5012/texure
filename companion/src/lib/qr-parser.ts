@@ -1,9 +1,34 @@
 import { PairingConfig } from '../types';
 
+export const DEFAULT_PORT = 443;
+export const DEFAULT_PATH = '/tunnel';
+export const DEFAULT_APP = 'texure';
+
 export interface ParseResult {
   valid: boolean;
   config?: PairingConfig;
   error?: string;
+}
+
+function normalizePath(rawPath?: string): string {
+  if (!rawPath || rawPath.trim() === '') {
+    return DEFAULT_PATH;
+  }
+  return rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+}
+
+function isValidPort(port: number): boolean {
+  return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+function cleanHost(rawHost: string): { host: string; port?: number } {
+  const trimmed = rawHost.trim();
+  if (trimmed.includes(':') && !trimmed.startsWith('[')) {
+    const parts = trimmed.split(':');
+    const port = Number(parts[1]);
+    return { host: parts[0], port: isValidPort(port) ? port : undefined };
+  }
+  return { host: trimmed };
 }
 
 /**
@@ -17,7 +42,6 @@ export function parsePairingPayload(raw: string): ParseResult {
   }
 
   try {
-    // Attempt parsing as JSON
     const data = JSON.parse(trimmed);
 
     // Format 1: Direct JSON schema per contract/fixtures/pairing_qr_payload.json
@@ -33,19 +57,25 @@ export function parsePairingPayload(raw: string): ParseResult {
         return { valid: false, error: 'Missing host' };
       }
 
-      const port = Number(data.port) || 443;
-      const path = data.path ? (data.path.startsWith('/') ? data.path : `/${data.path}`) : '/tunnel';
-      const url = `wss://${data.host}:${port}${path}`;
+      const { host, port: embeddedPort } = cleanHost(data.host);
+      let port = Number(data.port) || embeddedPort || DEFAULT_PORT;
+      if (!isValidPort(port)) {
+        return { valid: false, error: `Invalid port number: ${data.port}` };
+      }
+
+      const path = normalizePath(data.path);
+      const app = data.app && typeof data.app === 'string' ? data.app : DEFAULT_APP;
+      const url = `wss://${host}:${port}${path}`;
 
       return {
         valid: true,
         config: {
           scheme: 'wss',
-          host: data.host,
+          host,
           port,
           path,
           token: data.token,
-          app: data.app || 'texure',
+          app,
           url,
         },
       };
@@ -59,20 +89,27 @@ export function parsePairingPayload(raw: string): ParseResult {
         return { valid: false, error: 'Endpoint must use wss:// scheme' };
       }
       const token = data.token || parsedUrl.searchParams.get('token');
-      if (!token || typeof token !== 'string' || token.trim() === '') {
+      if (!token || typeof token !== 'string' || data.token.trim() === '') {
         return { valid: false, error: 'Missing pairing token' };
       }
 
-      const port = parsedUrl.port ? Number(parsedUrl.port) : 443;
+      const port = parsedUrl.port ? Number(parsedUrl.port) : DEFAULT_PORT;
+      if (!isValidPort(port)) {
+        return { valid: false, error: `Invalid URL port: ${parsedUrl.port}` };
+      }
+
+      const app = data.app || parsedUrl.searchParams.get('app') || DEFAULT_APP;
+      const path = normalizePath(parsedUrl.pathname);
+
       return {
         valid: true,
         config: {
           scheme: 'wss',
           host: parsedUrl.hostname,
           port,
-          path: parsedUrl.pathname || '/tunnel',
+          path,
           token,
-          app: data.app || 'texure',
+          app,
           url: data.url,
         },
       };
@@ -91,16 +128,23 @@ export function parsePairingPayload(raw: string): ParseResult {
         return { valid: false, error: 'Missing pairing token parameter' };
       }
 
-      const port = parsedUrl.port ? Number(parsedUrl.port) : 443;
+      const port = parsedUrl.port ? Number(parsedUrl.port) : DEFAULT_PORT;
+      if (!isValidPort(port)) {
+        return { valid: false, error: `Invalid port in URL: ${parsedUrl.port}` };
+      }
+
+      const app = parsedUrl.searchParams.get('app') || DEFAULT_APP;
+      const path = normalizePath(parsedUrl.pathname);
+
       return {
         valid: true,
         config: {
           scheme: 'wss',
           host: parsedUrl.hostname,
           port,
-          path: parsedUrl.pathname || '/tunnel',
+          path,
           token,
-          app: 'texure',
+          app,
           url: trimmed,
         },
       };
