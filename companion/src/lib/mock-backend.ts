@@ -182,11 +182,8 @@ class MockBackend {
       case 'set_mock_state': {
         const patch = args?.patch as Partial<DeviceState>;
         if (patch) {
-          if (patch.vitals) {
-            this.state.vitals = { ...this.state.vitals, ...patch.vitals };
-            delete patch.vitals;
-          }
-          this.state = { ...this.state, ...patch };
+          const newVitals = patch.vitals ? { ...this.state.vitals, ...patch.vitals } : this.state.vitals;
+          this.state = { ...this.state, ...patch, vitals: newVitals };
           this.emit('device_state_changed', { ...this.state });
         }
         return { ...this.state } as unknown as T;
