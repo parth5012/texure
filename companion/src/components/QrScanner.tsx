@@ -1,8 +1,34 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, Upload, AlertCircle, CheckCircle2, RefreshCw, X, ShieldCheck } from 'lucide-react';
 import { PairingConfig } from '../types';
-import { parsePairingPayload } from '../lib/qr-parser';
+import { parsePairingPayload, DEFAULT_APP, DEFAULT_PATH, DEFAULT_PORT } from '../lib/qr-parser';
 import { useCompanion } from '../context/CompanionContext';
+
+interface DetectedBarcode {
+  rawValue: string;
+  format?: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect(source: HTMLVideoElement | ImageBitmap): Promise<DetectedBarcode[]>;
+}
+
+declare global {
+  interface Window {
+    BarcodeDetector?: {
+      new (options?: { formats: string[] }): BarcodeDetectorInstance;
+    };
+  }
+}
+
+export const BB_R11_TEST_PAYLOAD = JSON.stringify({
+  scheme: 'wss',
+  host: 'desktop.example',
+  port: DEFAULT_PORT,
+  path: DEFAULT_PATH,
+  token: 'mock-bearer-token-bb-r11',
+  app: DEFAULT_APP,
+});
 
 interface QrScannerProps {
   onPairSuccess?: (config: PairingConfig) => void;
@@ -77,9 +103,9 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
     const video = videoRef.current;
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
       // 1. Check BarcodeDetector API
-      if ('BarcodeDetector' in window) {
+      if (typeof window.BarcodeDetector !== 'undefined') {
         try {
-          const barcodeDetector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+          const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
           const barcodes = await barcodeDetector.detect(video);
           if (barcodes.length > 0 && barcodes[0].rawValue) {
             handlePayloadResult(barcodes[0].rawValue);
@@ -103,7 +129,7 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera device access is not supported in this environment');
+        throw new Error('Camera access not supported in this environment. Please use file upload.');
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -118,7 +144,12 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
       }
     } catch (err: any) {
       console.warn('Camera start error:', err);
-      setCameraError(err.message || 'Unable to access camera. Please use file upload fallback.');
+      const isDenied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
+      setCameraError(
+        isDenied
+          ? 'Camera access was denied. Please check your browser permissions or use the file upload fallback below.'
+          : err.message || 'Unable to access camera. Please use file upload fallback.'
+      );
       setScanning(false);
     }
   }, [stopCamera]);
@@ -138,18 +169,29 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
     setParseError(null);
 
     try {
-      // Check for BarcodeDetector on ImageBitmap
-      if ('BarcodeDetector' in window) {
-        const imageBitmap = await createImageBitmap(file);
-        const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
-        const barcodes = await detector.detect(imageBitmap);
-        if (barcodes.length > 0 && barcodes[0].rawValue) {
-          await handlePayloadResult(barcodes[0].rawValue);
-          return;
+      // 1. If JSON or text file (for raw JSON fixtures), prioritize directly
+      if (file.type === 'application/json' || file.name.endsWith('.json') || file.type.startsWith('text/')) {
+        const text = await readFileAsText(file);
+        await handlePayloadResult(text);
+        return;
+      }
+
+      // 2. Check for BarcodeDetector on ImageBitmap
+      if (typeof window.BarcodeDetector !== 'undefined') {
+        try {
+          const imageBitmap = await createImageBitmap(file);
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          const barcodes = await detector.detect(imageBitmap);
+          if (barcodes.length > 0 && barcodes[0].rawValue) {
+            await handlePayloadResult(barcodes[0].rawValue);
+            return;
+          }
+        } catch (bitmapErr) {
+          console.debug('BarcodeDetector bitmap decode error:', bitmapErr);
         }
       }
 
-      // Fallback: Read using ZXing
+      // 3. Fallback: Read using ZXing
       try {
         const { BrowserQRCodeReader } = await import('@zxing/browser');
         const codeReader = new BrowserQRCodeReader();
@@ -165,16 +207,9 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
         console.debug('ZXing decoding failed:', zxingErr);
       }
 
-      // If text file (for raw JSON fixtures)
-      if (file.type === 'application/json' || file.name.endsWith('.json') || file.type.startsWith('text/')) {
-        const text = await readFileAsText(file);
-        await handlePayloadResult(text);
-        return;
-      }
-
-      setParseError('No QR code detected in the selected image. Please try another file.');
+      setParseError('QR code is unreadable or damaged. Please try another image or upload a pairing JSON fixture.');
     } catch (err: any) {
-      setParseError(`Failed to process image: ${err.message || err}`);
+      setParseError(`Failed to process file: ${err.message || err}`);
     } finally {
       setIsProcessing(false);
     }
@@ -342,18 +377,7 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
                 <span className="text-slate-500 text-[11px]">Desktop & Mock Test Aid:</span>
                 <button
                   data-testid="load-fixture-qr-btn"
-                  onClick={() =>
-                    handlePayloadResult(
-                      JSON.stringify({
-                        scheme: 'wss',
-                        host: 'desktop.example',
-                        port: 443,
-                        path: '/tunnel',
-                        token: 'mock-bearer-token-bb-r11',
-                        app: 'texure',
-                      })
-                    )
-                  }
+                  onClick={() => handlePayloadResult(BB_R11_TEST_PAYLOAD)}
                   className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px]"
                 >
                   Load Golden Pairing Payload (BB-R11)
