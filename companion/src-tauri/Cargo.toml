@@ -13,13 +13,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 texure-contract = { path = "../../crates/texure-contract" }
 tokio = { version = "1.40", features = ["full"] }
-tokio-tungstenite = { version = "0.24", features = ["rustls-pki-types"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
 tracing = "0.1"
 futures-util = "0.3"
+url = "2.5"
 tauri = { version = "2", optional = true }
 
 [build-dependencies]

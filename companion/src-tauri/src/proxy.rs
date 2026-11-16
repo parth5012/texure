@@ -93,15 +93,53 @@ impl ProxyRouter {
 
     /// Route incoming message string (from reverse tunnel) and return response string.
     pub async fn handle_message(&self, msg: &str) -> Option<String> {
-        let parsed: Result<GatewayRequest, _> = serde_json::from_str(msg);
-        let Ok(req) = parsed else {
+        let trimmed = msg.trim();
+        if trimmed.is_empty() {
             return None;
+        }
+
+        let parsed: Result<GatewayRequest, _> = serde_json::from_str(trimmed);
+        let req = match parsed {
+            Ok(r) => r,
+            Err(_) => {
+                // If it looks like JSON-RPC, reply with standard parse error
+                if trimmed.contains("jsonrpc") {
+                    let err_reply = json!({
+                        "jsonrpc": "2.0",
+                        "id": Value::Null,
+                        "error": {
+                            "code": -32700,
+                            "message": "Parse error"
+                        }
+                    });
+                    return Some(serde_json::to_string(&err_reply).unwrap_or_default());
+                } else {
+                    let err_reply = json!({
+                        "v": 1,
+                        "seq": 0,
+                        "payload": {
+                            "error": {
+                                "code": ErrorCode::InjectFailed.as_str(),
+                                "message": "Failed to parse request envelope",
+                                "relayed": false
+                            }
+                        }
+                    });
+                    return Some(serde_json::to_string(&err_reply).unwrap_or_default());
+                }
+            }
         };
 
         // Determine if this is a Gateway RPC envelope or JSON-RPC 2.0
         if let Some(ref payload) = req.payload {
             let rpc = &payload.rpc;
-            let args = payload.args.clone().unwrap_or_else(|| json!({}));
+            let mut args = payload.args.clone().unwrap_or_else(|| json!({}));
+            if payload.verify_at_execute == Some(true) {
+                if let Some(map) = args.as_object_mut() {
+                    map.entry("verify_at_execute")
+                        .or_insert_with(|| json!(true));
+                }
+            }
             let seq = req.seq.unwrap_or(0);
 
             let result = self.dispatch_tool_call(rpc, args).await;
@@ -136,6 +174,8 @@ impl ProxyRouter {
                 Err(err_payload) => {
                     let code = if err_payload["code"] == "OFFLINE" {
                         -32001
+                    } else if err_payload["code"] == "NODE_OUTDATED" {
+                        -32002
                     } else {
                         -32603
                     };
@@ -153,7 +193,19 @@ impl ProxyRouter {
             return Some(serde_json::to_string(&reply).unwrap_or_default());
         }
 
-        None
+        // Neither payload nor method specified
+        let err_reply = json!({
+            "v": req.v,
+            "seq": req.seq.unwrap_or(0),
+            "payload": {
+                "error": {
+                    "code": ErrorCode::InjectFailed.as_str(),
+                    "message": "Malformed request: missing payload or method",
+                    "relayed": false
+                }
+            }
+        });
+        Some(serde_json::to_string(&err_reply).unwrap_or_default())
     }
 
     /// Dispatch tool call to local HTTP bridge.
@@ -164,11 +216,22 @@ impl ProxyRouter {
             "type" | "/type" => ("/type".to_string(), true),
             "screenshot" | "/screenshot" => ("/screenshot".to_string(), false),
             other => {
-                let path = if other.starts_with('/') {
-                    other.to_string()
-                } else {
-                    format!("/{}", other)
-                };
+                let clean = other.trim_start_matches('/');
+                if clean.contains("..")
+                    || clean.contains('?')
+                    || clean.contains('#')
+                    || !clean
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '/')
+                {
+                    return Err(json!({
+                        "code": ErrorCode::InjectFailed.as_str(),
+                        "message": format!("Invalid RPC endpoint: {}", other),
+                        "hint": "endpoint contains invalid characters or path traversal",
+                        "relayed": false,
+                    }));
+                }
+                let path = format!("/{}", clean);
                 let has_args = !args.is_null() && args != json!({});
                 (path, has_args)
             }
@@ -362,7 +425,10 @@ mod tests {
     #[tokio::test]
     async fn test_proxy_error_propagation_and_offline() {
         // Test OFFLINE detection when target port is closed
-        let closed_port_url = "http://127.0.0.1:49151";
+        let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_port = closed_listener.local_addr().unwrap().port();
+        drop(closed_listener);
+        let closed_port_url = format!("http://127.0.0.1:{}", closed_port);
         let proxy = ProxyRouter::new(closed_port_url);
 
         let req = json!({
@@ -385,5 +451,41 @@ mod tests {
         assert_eq!(val["payload"]["error"]["relayed"], false);
 
         assert!(!proxy.check_target_status().await);
+    }
+
+    #[tokio::test]
+    async fn test_proxy_input_sanitization_and_malformed() {
+        let proxy = ProxyRouter::default();
+
+        // 1. Path traversal rejected
+        let traversal_req = json!({
+            "v": 1,
+            "seq": 301,
+            "payload": {
+                "type": "rpc",
+                "rpc": "../../etc/passwd",
+                "args": {}
+            }
+        });
+        let res = proxy
+            .handle_message(&traversal_req.to_string())
+            .await
+            .unwrap();
+        let val: Value = serde_json::from_str(&res).unwrap();
+        assert_eq!(val["payload"]["error"]["code"], "INJECT_FAILED");
+        assert!(val["payload"]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid RPC endpoint"));
+
+        // 2. Malformed JSON-RPC returns parse error
+        let bad_jsonrpc = r#"{"jsonrpc": "2.0", "invalid..."#;
+        let res2 = proxy.handle_message(bad_jsonrpc).await.unwrap();
+        let val2: Value = serde_json::from_str(&res2).unwrap();
+        assert_eq!(val2["jsonrpc"], "2.0");
+        assert_eq!(val2["error"]["code"], -32700);
+
+        // 3. Empty string returns None
+        assert!(proxy.handle_message("   ").await.is_none());
     }
 }
