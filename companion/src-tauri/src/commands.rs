@@ -80,7 +80,7 @@ pub type EventSink = Arc<dyn Fn(&str, Value) + Send + Sync>;
 /// Shared backend application state.
 pub struct AppState {
     pub tunnel_handle: Mutex<Option<TunnelHandle>>,
-    pub proxy_router: Arc<ProxyRouter>,
+    pub proxy_router: Mutex<Arc<ProxyRouter>>,
     pub started_at: Mutex<Option<Instant>>,
     pub last_pairing: Mutex<Option<PairingConfig>>,
     pub event_sink: Arc<std::sync::Mutex<Option<EventSink>>>,
@@ -96,7 +96,7 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             tunnel_handle: Mutex::new(None),
-            proxy_router: Arc::new(ProxyRouter::default()),
+            proxy_router: Mutex::new(Arc::new(ProxyRouter::default())),
             started_at: Mutex::new(None),
             last_pairing: Mutex::new(None),
             event_sink: Arc::new(std::sync::Mutex::new(None)),
@@ -106,7 +106,7 @@ impl AppState {
     pub fn with_proxy_router(proxy_router: ProxyRouter) -> Self {
         Self {
             tunnel_handle: Mutex::new(None),
-            proxy_router: Arc::new(proxy_router),
+            proxy_router: Mutex::new(Arc::new(proxy_router)),
             started_at: Mutex::new(None),
             last_pairing: Mutex::new(None),
             event_sink: Arc::new(std::sync::Mutex::new(None)),
@@ -150,13 +150,12 @@ pub async fn start_tunnel_impl(
         backoff_delays_secs: vec![1, 3, 10],
     };
 
-    let router = Arc::new(
-        state
-            .proxy_router
-            .as_ref()
-            .clone()
-            .with_auth_token(&config.token),
-    );
+    let router = {
+        let mut r_guard = state.proxy_router.lock().await;
+        let auth_router = Arc::new(r_guard.as_ref().clone().with_auth_token(&config.token));
+        *r_guard = auth_router.clone();
+        auth_router
+    };
     let sink_holder = state.event_sink.clone();
     let url_clone = ws_url.clone();
 
@@ -266,13 +265,12 @@ pub async fn get_tunnel_status_impl(state: &AppState) -> Result<TunnelStatusResp
     })
 }
 
-/// Command: check target bridge status at 127.0.0.1:8765.
+/// Command: check target bridge status at configured bridge URL.
 pub async fn get_target_status_impl(state: &AppState) -> Result<TargetStatusResponse, String> {
-    let responsive = state.proxy_router.check_target_status().await;
-    Ok(TargetStatusResponse {
-        responsive,
-        url: "http://127.0.0.1:8765".to_string(),
-    })
+    let router = state.proxy_router.lock().await.clone();
+    let responsive = router.check_target_status().await;
+    let url = router.target_base_url().to_string();
+    Ok(TargetStatusResponse { responsive, url })
 }
 
 // -----------------------------------------------------------------------------
@@ -383,10 +381,13 @@ mod tests {
         assert_eq!(status.state, TunnelState::Connected);
         assert!(status.connected);
 
-        // 3. get_target_status (target bridge is not running on 8765 in test)
+        // 3. get_target_status
         let target_status = get_target_status_impl(&state).await.expect("target status");
         assert!(!target_status.responsive);
-        assert_eq!(target_status.url, "http://127.0.0.1:8765");
+        assert_eq!(
+            target_status.url,
+            format!("http://127.0.0.1:{}", closed_port)
+        );
 
         // 4. stop_tunnel
         let stop_res = stop_tunnel_impl(&state).await.expect("stop tunnel");

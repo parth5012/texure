@@ -88,12 +88,17 @@ pub struct TunnelHandle {
 }
 
 impl TunnelHandle {
-    /// Request graceful shutdown of the tunnel and await task completion.
+    /// Request graceful shutdown of the tunnel and await task completion (with bounded timeout).
     pub async fn stop(&self) {
         let _ = self.stop_tx.send(true);
         let mut guard = self.join_handle.lock().await;
-        if let Some(handle) = guard.take() {
-            let _ = handle.await;
+        if let Some(mut handle) = guard.take() {
+            if tokio::time::timeout(Duration::from_secs(5), &mut handle)
+                .await
+                .is_err()
+            {
+                handle.abort();
+            }
         }
     }
 
@@ -204,8 +209,13 @@ impl ReverseTunnel {
                         }
                     };
                     if !self.config.token.is_empty() {
-                        if let Ok(val) = format!("Bearer {}", self.config.token).parse() {
-                            request.headers_mut().insert("Authorization", val);
+                        match format!("Bearer {}", self.config.token).parse() {
+                            Ok(val) => {
+                                request.headers_mut().insert("Authorization", val);
+                            }
+                            Err(e) => {
+                                warn!(error = %e, "Failed to construct Authorization header for tunnel dial");
+                            }
                         }
                     }
                     tokio_tungstenite::connect_async(request).await
@@ -214,8 +224,8 @@ impl ReverseTunnel {
                 let connect_timed = tokio::time::timeout(Duration::from_secs(10), connect_fut);
 
                 let connect_result = tokio::select! {
-                    _ = stop_rx.changed() => {
-                        if *stop_rx.borrow() {
+                    res = stop_rx.changed() => {
+                        if res.is_err() || *stop_rx.borrow() {
                             break;
                         }
                         continue;
@@ -248,7 +258,7 @@ impl ReverseTunnel {
                             ));
                             ping_interval.tick().await; // Initial tick
                             let mut last_pong = std::time::Instant::now();
-                            let mut last_ping_sent = std::time::Instant::now();
+                            let mut last_ping_sent: Option<std::time::Instant> = None;
                             let pong_timeout =
                                 Duration::from_secs(self.config.heartbeat_interval_secs.max(1) * 2)
                                     .max(Duration::from_secs(10));
@@ -257,8 +267,8 @@ impl ReverseTunnel {
 
                             while session_active && !*stop_rx.borrow() {
                                 tokio::select! {
-                                    _ = stop_rx.changed() => {
-                                        if *stop_rx.borrow() {
+                                    res = stop_rx.changed() => {
+                                        if res.is_err() || *stop_rx.borrow() {
                                             info!("Stop signal received, closing WebSocket tunnel");
                                             let _ = write.send(Message::Close(None)).await;
                                             session_active = false;
@@ -276,7 +286,7 @@ impl ReverseTunnel {
                                             session_active = false;
                                         } else {
                                             debug!("Sending heartbeat ping");
-                                            last_ping_sent = std::time::Instant::now();
+                                            last_ping_sent = Some(std::time::Instant::now());
                                             if let Err(e) = write.send(Message::Ping(vec![])).await {
                                                 warn!(error = %e, "Failed to send ping heartbeat");
                                                 session_active = false;
@@ -287,15 +297,17 @@ impl ReverseTunnel {
                                         match msg {
                                             Some(Ok(Message::Text(txt))) => {
                                                 let trimmed = txt.trim();
-                                                if trimmed == "tunnel.ping" || trimmed.contains("\"tunnel.ping\"") {
+                                                if trimmed == "tunnel.ping" {
                                                     debug!("Received text-framed heartbeat ping; replying with tunnel.pong");
                                                     last_pong = std::time::Instant::now();
                                                     let _ = outbound_tx.send(Message::Text("tunnel.pong".to_string())).await;
-                                                } else if trimmed == "tunnel.pong" || trimmed.contains("\"tunnel.pong\"") {
+                                                } else if trimmed == "tunnel.pong" {
                                                     debug!("Received text-framed heartbeat pong ACK");
                                                     last_pong = std::time::Instant::now();
-                                                    let rtt = last_ping_sent.elapsed().as_millis() as u32;
-                                                    latency_clone.store(rtt, Ordering::Relaxed);
+                                                    if let Some(sent) = last_ping_sent.take() {
+                                                        let rtt = sent.elapsed().as_millis() as u32;
+                                                        latency_clone.store(rtt, Ordering::Relaxed);
+                                                    }
                                                 } else {
                                                     debug!(len = txt.len(), "Received RPC message over tunnel");
                                                     let router = self.proxy_router.clone();
@@ -321,8 +333,10 @@ impl ReverseTunnel {
                                             Some(Ok(Message::Pong(_))) => {
                                                 debug!("Received pong heartbeat ACK");
                                                 last_pong = std::time::Instant::now();
-                                                let rtt = last_ping_sent.elapsed().as_millis() as u32;
-                                                latency_clone.store(rtt, Ordering::Relaxed);
+                                                if let Some(sent) = last_ping_sent.take() {
+                                                    let rtt = sent.elapsed().as_millis() as u32;
+                                                    latency_clone.store(rtt, Ordering::Relaxed);
+                                                }
                                             }
                                             Some(Ok(Message::Close(reason))) => {
                                                 info!(?reason, "Server closed WebSocket connection");
@@ -372,8 +386,8 @@ impl ReverseTunnel {
 
                 info!(delay_secs, "Backing off before reconnect attempt");
                 tokio::select! {
-                    _ = stop_rx.changed() => {
-                        if *stop_rx.borrow() {
+                    res = stop_rx.changed() => {
+                        if res.is_err() || *stop_rx.borrow() {
                             break;
                         }
                     }
@@ -541,5 +555,33 @@ mod tests {
         }
         assert_eq!(handle.current_state(), TunnelState::Disconnected);
         assert!(!handle.is_running());
+    }
+
+    #[tokio::test]
+    async fn test_drop_handle_terminates_supervisor() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let config = TunnelConfig {
+            url: format!("ws://127.0.0.1:{}", port),
+            token: "tok".to_string(),
+            heartbeat_interval_secs: 5,
+            backoff_delays_secs: vec![1, 2],
+        };
+
+        let tunnel = ReverseTunnel::new(config);
+        let handle = tunnel.start();
+        let running_clone = handle.running.clone();
+        assert!(running_clone.load(Ordering::SeqCst));
+
+        // Dropping the handle drops stop_tx, which must terminate the supervisor
+        drop(handle);
+
+        let start = std::time::Instant::now();
+        while running_clone.load(Ordering::SeqCst) && start.elapsed() < Duration::from_secs(5) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(!running_clone.load(Ordering::SeqCst));
     }
 }
