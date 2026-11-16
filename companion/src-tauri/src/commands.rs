@@ -325,7 +325,14 @@ mod tests {
             .expect("start tunnel");
         assert!(!start_res.connected); // initial state connecting
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            let st = get_tunnel_status_impl(&state).await.expect("tunnel status");
+            if st.connected {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
 
         // 2. get_tunnel_status
         let status = get_tunnel_status_impl(&state).await.expect("tunnel status");
