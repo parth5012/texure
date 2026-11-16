@@ -177,8 +177,23 @@ impl ReverseTunnel {
                 self.notify_state(TunnelState::Connecting);
                 info!(url = %self.config.url, "Attempting reverse WebSocket connection");
 
-                match tokio_tungstenite::connect_async(&self.config.url).await {
-                    Ok((ws_stream, _response)) => {
+                let connect_fut = tokio::time::timeout(
+                    Duration::from_secs(10),
+                    tokio_tungstenite::connect_async(&self.config.url),
+                );
+
+                let connect_result = tokio::select! {
+                    _ = stop_rx.changed() => {
+                        if *stop_rx.borrow() {
+                            break;
+                        }
+                        continue;
+                    }
+                    res = connect_fut => res,
+                };
+
+                match connect_result {
+                    Ok(Ok((ws_stream, _response))) => {
                         info!("Reverse WebSocket connection established, sending handshake");
                         self.notify_state(TunnelState::Connected);
                         backoff_idx = 0; // Reset backoff on successful connect
@@ -194,11 +209,15 @@ impl ReverseTunnel {
                             error!(error = %e, "Failed to send register handshake");
                             self.notify_state(TunnelState::Error);
                         } else {
-                            // 2. Run session loop with heartbeat ping/pong
+                            // 2. Run session loop with heartbeat ping/pong & pong deadline
                             let mut ping_interval = tokio::time::interval(Duration::from_secs(
                                 self.config.heartbeat_interval_secs.max(1),
                             ));
                             ping_interval.tick().await; // Initial tick
+                            let mut last_pong = std::time::Instant::now();
+                            let pong_timeout =
+                                Duration::from_secs(self.config.heartbeat_interval_secs.max(1) * 2)
+                                    .max(Duration::from_secs(10));
 
                             let mut session_active = true;
 
@@ -212,10 +231,15 @@ impl ReverseTunnel {
                                         }
                                     }
                                     _ = ping_interval.tick() => {
-                                        debug!("Sending heartbeat ping");
-                                        if let Err(e) = write.send(Message::Ping(vec![])).await {
-                                            warn!(error = %e, "Failed to send ping heartbeat");
+                                        if last_pong.elapsed() > pong_timeout {
+                                            warn!("Heartbeat pong timeout exceeded; terminating tunnel to reconnect");
                                             session_active = false;
+                                        } else {
+                                            debug!("Sending heartbeat ping");
+                                            if let Err(e) = write.send(Message::Ping(vec![])).await {
+                                                warn!(error = %e, "Failed to send ping heartbeat");
+                                                session_active = false;
+                                            }
                                         }
                                     }
                                     msg = read.next() => {
@@ -244,6 +268,7 @@ impl ReverseTunnel {
                                             }
                                             Some(Ok(Message::Pong(_))) => {
                                                 debug!("Received pong heartbeat ACK");
+                                                last_pong = std::time::Instant::now();
                                             }
                                             Some(Ok(Message::Close(reason))) => {
                                                 info!(?reason, "Server closed WebSocket connection");
@@ -264,8 +289,12 @@ impl ReverseTunnel {
                             }
                         }
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         warn!(error = %e, "Failed to connect reverse WebSocket tunnel");
+                        self.notify_state(TunnelState::Error);
+                    }
+                    Err(_) => {
+                        warn!("Reverse WebSocket connection attempt timed out");
                         self.notify_state(TunnelState::Error);
                     }
                 }
