@@ -323,7 +323,7 @@ mod tests {
         let start_res = start_tunnel_impl(&state, config)
             .await
             .expect("start tunnel");
-        assert_eq!(start_res.connected, false); // initial state connecting
+        assert!(!start_res.connected); // initial state connecting
 
         tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -334,7 +334,7 @@ mod tests {
 
         // 3. get_target_status (target bridge is not running on 8765 in test)
         let target_status = get_target_status_impl(&state).await.expect("target status");
-        assert_eq!(target_status.responsive, false);
+        assert!(!target_status.responsive);
         assert_eq!(target_status.url, "http://127.0.0.1:8765");
 
         // 4. stop_tunnel
