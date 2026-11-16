@@ -1,5 +1,15 @@
 # Log
 
+## 2026-11-15 (session) — Wayfinder map 11 (#52): Tauri Rust backend & reverse WebSocket tunnel engine
+- Full-cycle execution of Map #52 in Single-PR mode (4 AFK tickets #48–#51).
+- Ticket #48: Tauri Rust workspace setup in `companion/src-tauri`, path dependency to `crates/texure-contract`, core wire type integration and test. Issue #48 closed.
+- Ticket #49: Outbound reverse WebSocket client with exponential reconnect backoff (1s -> 3s -> 10s), 15s heartbeat ping/pong, and initial registration handshake (`{"action":"register","token":"..."}`). Mock server unit tests passing. Issue #49 closed.
+- Ticket #50: Local loopback HTTP proxy client (`ProxyRouter`) forwarding reverse tunnel tool execution requests (`device_tree`, `tap`, `type`, `screenshot`) to target bridge on `127.0.0.1:8765`, with NODE_OUTDATED error envelope relay and clean OFFLINE status detection when target bridge is unreachable. Integration tests against mock HTTP server passing. Issue #50 closed.
+- Ticket #51: Tauri IPC commands and state management (`start_tunnel`, `stop_tunnel`, `get_tunnel_status`, `get_target_status`) and streaming event dispatch to frontend. Unit tests verifying complete command lifecycle passing. Issue #51 closed.
+- Verification: L0 texure-lint 0 findings, cargo clippy clean (0 warnings) · L1 6/6 Rust companion unit tests passing, 37/37 companion Vitest frontend tests passing · Workspace cargo check clean.
+- Status: Map #52 tickets completed. All child issues #48-#51 resolved.
+
+
 ## 2026-11-15 (session) — Wayfinder map 10 (#47): Companion Web UI & browser-testable shell
 - Full-cycle execution of Map #47 in stacked-PR mode (5 AFK tickets #42–#46).
 - Ticket #42 (`wf/47-42-companion-scaffold`): Tauri v2 + React/Vite app scaffolding, Tailwind CSS, TypeScript strict setup, CompanionContext with browser mock backend provider. PR #107 filed into `main`. Linked via `link_pull_request`. All checks green. Issue #42 closed.
