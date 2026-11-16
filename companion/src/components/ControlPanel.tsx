@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useCompanion } from '../context/CompanionContext';
 import {
   Sun,
@@ -47,6 +47,8 @@ const getToastStyles = (type: 'success' | 'error' | 'info'): string => {
   }
 };
 
+export const ANDROID_PACKAGE_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+
 export const ControlPanel: React.FC = () => {
   const {
     state,
@@ -61,6 +63,7 @@ export const ControlPanel: React.FC = () => {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const dispatchingRef = useRef(false);
 
   // Clean up all toast timeouts on unmount
   useEffect(() => {
@@ -95,7 +98,8 @@ export const ControlPanel: React.FC = () => {
   }, [dismissToast]);
 
   const handleAction = async (actionId: string, fn: () => Promise<unknown>, successMsg: string) => {
-    if (loadingAction) return;
+    if (dispatchingRef.current || loadingAction) return;
+    dispatchingRef.current = true;
     setLoadingAction(actionId);
 
     try {
@@ -105,12 +109,16 @@ export const ControlPanel: React.FC = () => {
       const errorMsg = err instanceof Error ? err.message : String(err);
       addToast('error', 'Action Failed', errorMsg);
     } finally {
+      dispatchingRef.current = false;
       setLoadingAction(null);
     }
   };
 
   const isExecuting = loadingAction !== null;
-  const effectivePackage = (packageName || DEFAULT_PACKAGE_NAME).trim();
+  const effectivePackage = packageName.trim() || DEFAULT_PACKAGE_NAME;
+  const isPackageValid = useMemo(() => {
+    return ANDROID_PACKAGE_REGEX.test(effectivePackage) && effectivePackage.length <= 255;
+  }, [effectivePackage]);
 
   return (
     <div data-testid="control-panel" className="space-y-6">
@@ -262,9 +270,16 @@ export const ControlPanel: React.FC = () => {
                 value={packageName}
                 onChange={(e) => setPackageName(e.target.value.trim())}
                 data-testid="input-package-name"
-                className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500 transition"
+                className={`w-full px-3 py-1.5 bg-slate-950 border rounded-lg text-xs font-mono text-slate-200 focus:outline-none transition ${
+                  isPackageValid ? 'border-slate-800 focus:border-indigo-500' : 'border-rose-500/60 focus:border-rose-500'
+                }`}
                 placeholder="com.example.target"
               />
+              {!isPackageValid && (
+                <p data-testid="package-validation-error" className="text-[10px] text-rose-400 mt-1">
+                  Invalid package name. Must be a valid Java/Android package (e.g. com.example.app).
+                </p>
+              )}
             </div>
 
             <div className="space-y-3">
@@ -278,7 +293,7 @@ export const ControlPanel: React.FC = () => {
                     `Target app ${effectivePackage} launched via am start`
                   )
                 }
-                disabled={isExecuting}
+                disabled={isExecuting || !isPackageValid}
                 data-testid="btn-cold-start"
                 className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-medium transition shadow-md"
               >
@@ -303,7 +318,7 @@ export const ControlPanel: React.FC = () => {
                     `Target app ${effectivePackage} killed via am force-stop`
                   )
                 }
-                disabled={isExecuting}
+                disabled={isExecuting || !isPackageValid}
                 data-testid="btn-force-stop"
                 className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 disabled:bg-slate-800/50 disabled:text-slate-600 text-rose-300 text-xs font-medium transition border border-rose-500/30"
               >

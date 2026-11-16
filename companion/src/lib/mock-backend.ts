@@ -52,11 +52,12 @@ class MockBackend {
   private tickerId: any = null;
 
   constructor() {
-    this.startMockTicker();
+    // Lazy ticker: started on first interaction when not in Tauri environment
   }
 
-  private startMockTicker() {
-    if (typeof window === 'undefined') return;
+  public startMockTicker() {
+    if (typeof window === 'undefined' || this.tickerId) return;
+    if (typeof window.__TAURI_INTERNALS__ !== 'undefined') return;
     this.tickerId = setInterval(() => {
       // Simulate slight latency fluctuation
       if (this.state.tunnelState === 'CONNECTED') {
@@ -88,6 +89,7 @@ class MockBackend {
   }
 
   public listen<T>(event: string, handler: Listener<T>): () => void {
+    this.startMockTicker();
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
@@ -190,7 +192,7 @@ class MockBackend {
       }
       default:
         console.warn(`[MockBackend] Unhandled command: ${cmd}`, args);
-        return { ok: true } as unknown as T;
+        throw new Error(`[MockBackend] Unknown or unhandled command: "${cmd}"`);
     }
   }
 

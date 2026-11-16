@@ -136,4 +136,34 @@ describe('ControlPanel Component', () => {
       expect(screen.getByTestId('toast-message')).toHaveTextContent(/Shizuku IPC failure/i);
     });
   });
+
+  it('validates package name and disables lifecycle buttons for invalid syntax', async () => {
+    renderControlPanel();
+
+    const input = screen.getByTestId('input-package-name');
+    const coldStartBtn = screen.getByTestId('btn-cold-start');
+    const forceStopBtn = screen.getByTestId('btn-force-stop');
+
+    // Initially valid
+    expect(coldStartBtn).not.toBeDisabled();
+    expect(forceStopBtn).not.toBeDisabled();
+
+    // Type invalid package name
+    fireEvent.change(input, { target: { value: 'invalid-package-name!' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('package-validation-error')).toBeInTheDocument();
+      expect(coldStartBtn).toBeDisabled();
+      expect(forceStopBtn).toBeDisabled();
+    });
+
+    // Fix package name
+    fireEvent.change(input, { target: { value: 'com.valid.app_one' } });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('package-validation-error')).not.toBeInTheDocument();
+      expect(coldStartBtn).not.toBeDisabled();
+      expect(forceStopBtn).not.toBeDisabled();
+    });
+  });
 });

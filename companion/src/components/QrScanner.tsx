@@ -61,6 +61,23 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
 
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  const detectorRef = useRef<any>(null);
+
+  const stopCamera = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setScanning(false);
+  }, []);
 
   const handlePayloadResult = useCallback(
     async (rawText: string) => {
@@ -74,39 +91,35 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
         return;
       }
 
+      const paired = await pairDevice(res.config);
+      if (!paired) {
+        setParseError('Failed to establish connection with device gateway');
+        setIsProcessing(false);
+        return;
+      }
+
       setSuccessConfig(res.config);
-      await pairDevice(res.config);
       if (onPairSuccess) {
         onPairSuccess(res.config);
       }
       setIsProcessing(false);
       stopCamera();
     },
-    [pairDevice, onPairSuccess]
+    [pairDevice, onPairSuccess, stopCamera]
   );
-
-  const stopCamera = useCallback(() => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setScanning(false);
-  }, []);
 
   const scanFrame = useCallback(async () => {
     if (!videoRef.current || !scanning || successConfig) return;
 
     const video = videoRef.current;
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      // 1. Check BarcodeDetector API
+      // 1. Check BarcodeDetector API (cached detector instance)
       if (typeof window.BarcodeDetector !== 'undefined') {
         try {
-          const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
-          const barcodes = await barcodeDetector.detect(video);
+          if (!detectorRef.current) {
+            detectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
+          }
+          const barcodes = await detectorRef.current.detect(video);
           if (barcodes.length > 0 && barcodes[0].rawValue) {
             handlePayloadResult(barcodes[0].rawValue);
             return;
@@ -136,12 +149,21 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
         video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
       });
 
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setScanning(true);
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('Video play error:', playErr);
+        }
       }
+      setScanning(true);
     } catch (err: any) {
       console.warn('Camera start error:', err);
       const isDenied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
@@ -154,14 +176,27 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
     }
   }, [stopCamera]);
 
+  // Manage component lifecycle / unmount teardown
   useEffect(() => {
-    if (scanning) {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stopCamera();
+    };
+  }, [stopCamera]);
+
+  // Manage rAF scan loop separately from camera teardown
+  useEffect(() => {
+    if (scanning && !successConfig) {
       animFrameRef.current = requestAnimationFrame(scanFrame);
     }
     return () => {
-      stopCamera();
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
     };
-  }, [scanning, scanFrame, stopCamera]);
+  }, [scanning, successConfig, scanFrame]);
 
   // Handle uploaded image file
   const processImageFile = async (file: File) => {
@@ -192,12 +227,12 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
       }
 
       // 3. Fallback: Read using ZXing
+      let imgUrl: string | null = null;
       try {
         const { BrowserQRCodeReader } = await import('@zxing/browser');
         const codeReader = new BrowserQRCodeReader();
-        const imgUrl = URL.createObjectURL(file);
+        imgUrl = URL.createObjectURL(file);
         const result = await codeReader.decodeFromImageUrl(imgUrl);
-        URL.revokeObjectURL(imgUrl);
 
         if (result && result.getText()) {
           await handlePayloadResult(result.getText());
@@ -205,6 +240,10 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
         }
       } catch (zxingErr) {
         console.debug('ZXing decoding failed:', zxingErr);
+      } finally {
+        if (imgUrl) {
+          URL.revokeObjectURL(imgUrl);
+        }
       }
 
       setParseError('QR code is unreadable or damaged. Please try another image or upload a pairing JSON fixture.');
@@ -271,14 +310,14 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
           <>
             {/* Viewfinder or Camera Feed */}
             <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex flex-col items-center justify-center">
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className={`w-full h-full object-cover ${scanning ? 'block' : 'hidden'}`}
+              />
               {scanning ? (
                 <>
-                  <video
-                    ref={videoRef}
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
                   {/* Viewfinder overlay */}
                   <div className="absolute inset-0 border-2 border-indigo-500/40 pointer-events-none flex items-center justify-center">
                     <div className="w-48 h-48 border-2 border-indigo-400/80 rounded-lg relative">
@@ -357,6 +396,7 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
                 onChange={(e) => {
                   if (e.target.files && e.target.files.length > 0) {
                     processImageFile(e.target.files[0]);
+                    e.target.value = '';
                   }
                 }}
               />

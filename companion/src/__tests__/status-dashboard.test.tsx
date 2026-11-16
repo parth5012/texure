@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { StatusDashboard } from '../components/StatusDashboard';
 import { CompanionProvider } from '../context/CompanionContext';
@@ -74,6 +74,28 @@ describe('StatusDashboard Component', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('tunnel-badge-connecting')).toBeInTheDocument();
+    });
+  });
+
+  it('copies endpoint URL to clipboard', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    render(
+      <CompanionProvider>
+        <StatusDashboard />
+      </CompanionProvider>
+    );
+
+    const copyBtn = screen.getByTestId('btn-copy-endpoint');
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith('wss://desktop.lan/tunnel');
     });
   });
 });

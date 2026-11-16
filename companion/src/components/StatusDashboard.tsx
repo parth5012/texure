@@ -18,6 +18,8 @@ import {
   Activity,
   Server,
   Zap,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ShizukuStatus, TunnelState, AppStatus, NetworkType } from '../types';
 
@@ -30,6 +32,7 @@ const sanitizeDisplayUrl = (url?: string): string => {
   try {
     const parsed = new URL(url);
     if (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') {
+      parsed.searchParams.delete('token');
       return parsed.toString();
     }
   } catch {
@@ -177,15 +180,29 @@ const NetworkIcon: React.FC<{ type: NetworkType }> = ({ type }) => {
 export const StatusDashboard: React.FC = () => {
   const { state, refreshState, reconnectTunnel } = useCompanion();
   const [refreshing, setRefreshing] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     };
   }, []);
+
+  const handleCopyEndpoint = async (url: string) => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        setCopiedUrl(true);
+        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = setTimeout(() => setCopiedUrl(false), 2000);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -277,11 +294,25 @@ export const StatusDashboard: React.FC = () => {
               <TunnelBadge tunnelState={state.tunnelState} />
             </div>
             <div className="space-y-2 mt-4 text-xs text-slate-300">
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-500">Endpoint</span>
-                <span className="font-mono text-slate-300 truncate max-w-[140px]" title={displayUrl}>
-                  {displayHost}
-                </span>
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-mono text-slate-300 truncate max-w-[120px]" title={displayUrl}>
+                    {displayHost}
+                  </span>
+                  <button
+                    onClick={() => handleCopyEndpoint(displayUrl)}
+                    title="Copy Full Endpoint URL"
+                    data-testid="btn-copy-endpoint"
+                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+                  >
+                    {copiedUrl ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-800/60">
                 <span className="text-slate-500">Round-trip Ping</span>
