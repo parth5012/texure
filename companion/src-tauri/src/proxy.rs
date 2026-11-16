@@ -78,6 +78,11 @@ impl ProxyRouter {
         self
     }
 
+    /// Configured base URL for target bridge.
+    pub fn target_base_url(&self) -> &str {
+        &self.target_base_url
+    }
+
     /// Check whether local bridge is responsive (GET /ui-tree or health).
     pub async fn check_target_status(&self) -> bool {
         let url = format!("{}/ui-tree", self.target_base_url);
@@ -86,7 +91,9 @@ impl ProxyRouter {
             req = req.bearer_auth(tok);
         }
         match req.send().await {
-            Ok(resp) => resp.status().is_success(),
+            Ok(resp) => {
+                resp.status().is_success() || resp.status() == reqwest::StatusCode::UNAUTHORIZED
+            }
             Err(_) => false,
         }
     }
