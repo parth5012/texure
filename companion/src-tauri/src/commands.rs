@@ -118,7 +118,10 @@ impl AppState {
 }
 
 /// Command: start reverse WebSocket tunnel with pairing config.
-pub async fn start_tunnel_impl(state: &AppState, config: PairingConfig) -> Result<TunnelStatusResponse, String> {
+pub async fn start_tunnel_impl(
+    state: &AppState,
+    config: PairingConfig,
+) -> Result<TunnelStatusResponse, String> {
     info!(host = %config.host, port = config.port, "Starting reverse tunnel from IPC command");
     let ws_url = config.to_ws_url();
 
@@ -149,10 +152,15 @@ pub async fn start_tunnel_impl(state: &AppState, config: PairingConfig) -> Resul
     *pairing_guard = Some(config);
 
     // Emit event to frontend
-    state.emit_event("tunnel_state_changed", json!({
-        "state": initial_state.to_string(),
-        "url": ws_url
-    })).await;
+    state
+        .emit_event(
+            "tunnel_state_changed",
+            json!({
+                "state": initial_state.to_string(),
+                "url": ws_url
+            }),
+        )
+        .await;
 
     Ok(TunnelStatusResponse {
         state: initial_state,
@@ -173,9 +181,14 @@ pub async fn stop_tunnel_impl(state: &AppState) -> Result<TunnelStatusResponse, 
     let mut started_guard = state.started_at.lock().await;
     *started_guard = None;
 
-    state.emit_event("tunnel_state_changed", json!({
-        "state": TunnelState::Disconnected.to_string()
-    })).await;
+    state
+        .emit_event(
+            "tunnel_state_changed",
+            json!({
+                "state": TunnelState::Disconnected.to_string()
+            }),
+        )
+        .await;
 
     Ok(TunnelStatusResponse {
         state: TunnelState::Disconnected,
@@ -290,9 +303,11 @@ mod tests {
 
         let event_counter = Arc::new(AtomicUsize::new(0));
         let ec_clone = event_counter.clone();
-        state.set_event_sink(move |_event, _payload| {
-            ec_clone.fetch_add(1, Ordering::SeqCst);
-        }).await;
+        state
+            .set_event_sink(move |_event, _payload| {
+                ec_clone.fetch_add(1, Ordering::SeqCst);
+            })
+            .await;
 
         let config = PairingConfig {
             scheme: "ws".to_string(),
@@ -305,7 +320,9 @@ mod tests {
         };
 
         // 1. start_tunnel
-        let start_res = start_tunnel_impl(&state, config).await.expect("start tunnel");
+        let start_res = start_tunnel_impl(&state, config)
+            .await
+            .expect("start tunnel");
         assert_eq!(start_res.connected, false); // initial state connecting
 
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -325,7 +342,9 @@ mod tests {
         assert_eq!(stop_res.state, TunnelState::Disconnected);
         assert!(!stop_res.connected);
 
-        let status_after_stop = get_tunnel_status_impl(&state).await.expect("tunnel status after stop");
+        let status_after_stop = get_tunnel_status_impl(&state)
+            .await
+            .expect("tunnel status after stop");
         assert_eq!(status_after_stop.state, TunnelState::Disconnected);
         assert!(!status_after_stop.connected);
 

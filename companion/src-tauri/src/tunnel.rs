@@ -130,7 +130,10 @@ impl ReverseTunnel {
         }
     }
 
-    pub fn with_state_listener(mut self, listener: impl Fn(TunnelState) + Send + Sync + 'static) -> Self {
+    pub fn with_state_listener(
+        mut self,
+        listener: impl Fn(TunnelState) + Send + Sync + 'static,
+    ) -> Self {
         self.state_listener = Some(Arc::new(listener));
         self
     }
@@ -364,8 +367,13 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(handle.current_state(), TunnelState::Connected);
 
-        let handshake_val = received_handshake.lock().await.clone().expect("handshake received");
-        let parsed: RegisterHandshake = serde_json::from_str(&handshake_val).expect("valid handshake json");
+        let handshake_val = received_handshake
+            .lock()
+            .await
+            .clone()
+            .expect("handshake received");
+        let parsed: RegisterHandshake =
+            serde_json::from_str(&handshake_val).expect("valid handshake json");
         assert_eq!(parsed.action, "register");
         assert_eq!(parsed.token, "test-auth-token-42");
 

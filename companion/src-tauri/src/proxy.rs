@@ -231,11 +231,11 @@ mod tests {
         let base_url = format!("http://127.0.0.1:{}", port);
 
         tokio::spawn(async move {
-            use hyper::service::service_fn;
-            use hyper_util::rt::TokioIo;
-            use http_body_util::Full;
             use bytes::Bytes;
+            use http_body_util::Full;
+            use hyper::service::service_fn;
             use hyper::{Request, Response, StatusCode};
+            use hyper_util::rt::TokioIo;
 
             while let Ok((stream, _)) = listener.accept().await {
                 let io = TokioIo::new(stream);
@@ -247,14 +247,18 @@ mod tests {
                                 "rev": 8,
                                 "nodes": [{ "id": 1, "text": "Home" }]
                             });
-                            Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(serde_json::to_vec(&body).unwrap()))))
+                            Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(
+                                serde_json::to_vec(&body).unwrap(),
+                            ))))
                         } else if path == "/tap" {
                             let body = json!({
                                 "ok": true,
                                 "rev": 9,
                                 "verify_at_execute": true
                             });
-                            Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(serde_json::to_vec(&body).unwrap()))))
+                            Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(
+                                serde_json::to_vec(&body).unwrap(),
+                            ))))
                         } else {
                             let mut not_found = Response::new(Full::new(Bytes::from("not found")));
                             *not_found.status_mut() = StatusCode::NOT_FOUND;
@@ -262,9 +266,11 @@ mod tests {
                         }
                     });
 
-                    let _ = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
-                        .serve_connection(io, service)
-                        .await;
+                    let _ = hyper_util::server::conn::auto::Builder::new(
+                        hyper_util::rt::TokioExecutor::new(),
+                    )
+                    .serve_connection(io, service)
+                    .await;
                 });
             }
         });
@@ -281,7 +287,10 @@ mod tests {
                 "args": {}
             }
         });
-        let tree_res = proxy.handle_message(&tree_req.to_string()).await.expect("response");
+        let tree_res = proxy
+            .handle_message(&tree_req.to_string())
+            .await
+            .expect("response");
         let tree_val: Value = serde_json::from_str(&tree_res).unwrap();
         assert_eq!(tree_val["v"], 1);
         assert_eq!(tree_val["seq"], 101);
@@ -299,7 +308,10 @@ mod tests {
                 "verify_at_execute": true
             }
         });
-        let tap_res = proxy.handle_message(&tap_req.to_string()).await.expect("response");
+        let tap_res = proxy
+            .handle_message(&tap_req.to_string())
+            .await
+            .expect("response");
         let tap_val: Value = serde_json::from_str(&tap_res).unwrap();
         assert_eq!(tap_val["v"], 1);
         assert_eq!(tap_val["seq"], 102);
@@ -323,7 +335,10 @@ mod tests {
             }
         });
 
-        let res = proxy.handle_message(&req.to_string()).await.expect("response");
+        let res = proxy
+            .handle_message(&req.to_string())
+            .await
+            .expect("response");
         let val: Value = serde_json::from_str(&res).unwrap();
         assert_eq!(val["seq"], 201);
         assert_eq!(val["payload"]["error"]["code"], "OFFLINE");
