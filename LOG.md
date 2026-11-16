@@ -6,8 +6,14 @@
 - Ticket #49: Outbound reverse WebSocket client with exponential reconnect backoff (1s -> 3s -> 10s), 15s heartbeat ping/pong, and initial registration handshake (`{"action":"register","token":"..."}`). Mock server unit tests passing. Issue #49 closed.
 - Ticket #50: Local loopback HTTP proxy client (`ProxyRouter`) forwarding reverse tunnel tool execution requests (`device_tree`, `tap`, `type`, `screenshot`) to target bridge on `127.0.0.1:8765`, with NODE_OUTDATED error envelope relay and clean OFFLINE status detection when target bridge is unreachable. Integration tests against mock HTTP server passing. Issue #50 closed.
 - Ticket #51: Tauri IPC commands and state management (`start_tunnel`, `stop_tunnel`, `get_tunnel_status`, `get_target_status`) and streaming event dispatch to frontend. Unit tests verifying complete command lifecycle passing. Issue #51 closed.
-- Verification: L0 texure-lint 0 findings, cargo clippy clean (0 warnings) · L1 6/6 Rust companion unit tests passing, 37/37 companion Vitest frontend tests passing · Workspace cargo check clean.
-- Status: Map #52 tickets completed. All child issues #48-#51 resolved.
+- Verification: L0 texure-lint 0 findings, cargo clippy clean (0 warnings) · L1 9/9 Rust companion unit tests passing, 37/37 companion Vitest frontend tests passing · Workspace cargo check clean (88/88 workspace tests passing).
+- Council Review Loop: Convened 3-member Council (Gemini 3.8 Flash, GLM 5.3 Flash, DeepSeek V4.1 Flash) across 3 review rounds:
+  - Round 1 Scores: Gemini 3.8 Flash (8/10), GLM 5.3 Flash (7/10), DeepSeek V4.1 Flash (6/10).
+  - Concrete improvements applied in commit `b90b26d`: Enabled `rustls-tls-native-roots` on `tokio-tungstenite` for `wss://` TLS support; decoupled WebSocket read/heartbeat from inbound RPC handling via outbound mpsc channel and spawned worker tasks (preventing false pong timeouts and HOL blocking); added `Authorization: Bearer <token>` to initial HTTP dial request; awaited join handle on tunnel stop to eliminate restart races; tracked real-time ping/pong RTT latency; added unknown RPC path traversal sanitization and structured error responses.
+  - Round 2 Scores: Gemini 3.8 Flash (10/10), GLM 5.3 Flash (8.5/10), DeepSeek V4.1 Flash (8/10).
+  - Concrete improvements applied in commit `a080225`: Enforced 5-second bounded grace period with abort fallback in `TunnelHandle::stop().await`; handled dropped handle/channel termination across all tokio::select loops; exposed live target bridge URL and authenticated target status probing; isolated client-initiated RTT telemetry.
+  - Round 3 Scores: Gemini 3.8 Flash (10/10 - SATISFIED), GLM 5.3 Flash (9.5/10 - SATISFIED), DeepSeek V4.1 Flash (no score - rate limited; all Round 2 blocking requests verified fixed). Verdict: SATISFIED across council.
+- Status: Map #52 tickets completed. All child issues #48-#51 resolved. PR #113 CI checks green (5/5). Ready for handoff to `merge-pr`.
 
 
 ## 2026-11-15 (session) — Wayfinder map 10 (#47): Companion Web UI & browser-testable shell
