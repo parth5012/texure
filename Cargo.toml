@@ -5,6 +5,7 @@ members = [
     "crates/texure-server",
     "crates/texure-blackbox",
     "crates/texure-lint",
+    "companion/src-tauri",
 ]
 
 [workspace.package]
