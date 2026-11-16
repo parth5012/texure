@@ -3,8 +3,13 @@
 //! Provides the outbound reverse WebSocket tunnel engine, local loopback proxy router,
 //! and Tauri IPC bridge connecting the React frontend with Android bridge infrastructure.
 
+pub mod commands;
 pub mod proxy;
 pub mod tunnel;
+
+pub use commands::AppState;
+pub use proxy::ProxyRouter;
+pub use tunnel::{ReverseTunnel, TunnelConfig, TunnelHandle, TunnelState};
 
 pub use texure_contract as contract;
 pub use texure_contract::{
@@ -16,6 +21,13 @@ pub use texure_contract::{
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(AppState::new())
+        .invoke_handler(tauri::generate_handler![
+            commands::start_tunnel,
+            commands::stop_tunnel,
+            commands::get_tunnel_status,
+            commands::get_target_status,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

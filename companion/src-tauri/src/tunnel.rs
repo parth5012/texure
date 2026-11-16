@@ -211,7 +211,7 @@ impl ReverseTunnel {
                                     }
                                     _ = ping_interval.tick() => {
                                         debug!("Sending heartbeat ping");
-                                        if let Err(e) = write.send(Message::Ping(vec![].into())).await {
+                                        if let Err(e) = write.send(Message::Ping(vec![])).await {
                                             warn!(error = %e, "Failed to send ping heartbeat");
                                             session_active = false;
                                         }
@@ -339,7 +339,7 @@ mod tests {
                             }
                             Ok(Message::Ping(_)) => {
                                 ping_count_clone.fetch_add(1, Ordering::SeqCst);
-                                let _ = ws_stream.send(Message::Pong(vec![].into())).await;
+                                let _ = ws_stream.send(Message::Pong(vec![])).await;
                             }
                             Ok(Message::Close(_)) => break,
                             _ => {}
