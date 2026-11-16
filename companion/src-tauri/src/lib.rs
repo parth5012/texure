@@ -3,6 +3,8 @@
 //! Provides the outbound reverse WebSocket tunnel engine, local loopback proxy router,
 //! and Tauri IPC bridge connecting the React frontend with Android bridge infrastructure.
 
+pub mod tunnel;
+
 pub use texure_contract as contract;
 pub use texure_contract::{
     ErrorCode, JsonRpcError, JsonRpcRequest, JsonRpcResponse, ResolvedDeviceConfig, TapRequest,
