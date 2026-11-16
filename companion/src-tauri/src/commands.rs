@@ -24,19 +24,28 @@ pub struct PairingConfig {
 impl PairingConfig {
     pub fn to_ws_url(&self) -> String {
         if let Some(ref u) = self.url {
-            return u.clone();
+            if let Ok(parsed) = url::Url::parse(u) {
+                if parsed.scheme() == "ws" || parsed.scheme() == "wss" {
+                    return u.clone();
+                }
+            }
         }
         let scheme = if self.scheme == "https" || self.scheme == "wss" {
             "wss"
         } else {
             "ws"
         };
+        let host = if self.host.contains(':') && !self.host.starts_with('[') {
+            format!("[{}]", self.host)
+        } else {
+            self.host.clone()
+        };
         let path = if self.path.starts_with('/') {
             self.path.clone()
         } else {
             format!("/{}", self.path)
         };
-        format!("{}://{}:{}{}", scheme, self.host, self.port, path)
+        format!("{}://{}:{}{}", scheme, host, self.port, path)
     }
 }
 
@@ -105,14 +114,17 @@ impl AppState {
     }
 
     pub fn emit_event(&self, event: &str, payload: Value) {
-        let guard = self.event_sink.lock().unwrap();
-        if let Some(ref emit_fn) = *guard {
+        let sink = {
+            let guard = self.event_sink.lock().unwrap_or_else(|e| e.into_inner());
+            guard.clone()
+        };
+        if let Some(ref emit_fn) = sink {
             emit_fn(event, payload);
         }
     }
 
     pub fn set_event_sink(&self, sink: impl Fn(&str, Value) + Send + Sync + 'static) {
-        let mut guard = self.event_sink.lock().unwrap();
+        let mut guard = self.event_sink.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(Arc::new(sink));
     }
 }
@@ -125,7 +137,7 @@ pub async fn start_tunnel_impl(
     info!(host = %config.host, port = config.port, "Starting reverse tunnel from IPC command");
     let ws_url = config.to_ws_url();
 
-    // Stop existing tunnel if already running
+    // Stop existing tunnel if already running (awaiting completion)
     let mut handle_guard = state.tunnel_handle.lock().await;
     if let Some(existing) = handle_guard.take() {
         existing.stop().await;
@@ -138,16 +150,25 @@ pub async fn start_tunnel_impl(
         backoff_delays_secs: vec![1, 3, 10],
     };
 
-    let router = state.proxy_router.clone();
+    let router = Arc::new(
+        state
+            .proxy_router
+            .as_ref()
+            .clone()
+            .with_auth_token(&config.token),
+    );
     let sink_holder = state.event_sink.clone();
     let url_clone = ws_url.clone();
 
     let tunnel = ReverseTunnel::new(tunnel_config)
         .with_proxy_router(router)
         .with_state_listener(move |st| {
-            let guard = sink_holder.lock().unwrap();
-            if let Some(ref sink) = *guard {
-                sink(
+            let sink = {
+                let guard = sink_holder.lock().unwrap_or_else(|e| e.into_inner());
+                guard.clone()
+            };
+            if let Some(ref emit_fn) = sink {
+                emit_fn(
                     "tunnel_state_changed",
                     json!({
                         "state": st.to_string(),
@@ -231,10 +252,16 @@ pub async fn get_tunnel_status_impl(state: &AppState) -> Result<TunnelStatusResp
         0
     };
 
+    let latency_ms = if connected {
+        handle_guard.as_ref().map(|h| h.latency_ms()).unwrap_or(0)
+    } else {
+        0
+    };
+
     Ok(TunnelStatusResponse {
         state: current_state,
         uptime_secs,
-        latency_ms: if connected { 12 } else { 0 },
+        latency_ms,
         connected,
     })
 }
@@ -311,7 +338,14 @@ mod tests {
             }
         });
 
-        let state = AppState::new();
+        let closed_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_port = closed_listener.local_addr().unwrap().port();
+        drop(closed_listener);
+
+        let state = AppState::with_proxy_router(ProxyRouter::new(format!(
+            "http://127.0.0.1:{}",
+            closed_port
+        )));
 
         let event_counter = Arc::new(AtomicUsize::new(0));
         let ec_clone = event_counter.clone();
@@ -367,5 +401,62 @@ mod tests {
 
         // Verify events were emitted
         assert!(event_counter.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[test]
+    fn test_pairing_config_url_normalization() {
+        // 1. IPv6 host gets bracketed
+        let ipv6_cfg = PairingConfig {
+            scheme: "ws".to_string(),
+            host: "::1".to_string(),
+            port: 8080,
+            path: "tunnel".to_string(),
+            token: "tok".to_string(),
+            app: None,
+            url: None,
+        };
+        assert_eq!(ipv6_cfg.to_ws_url(), "ws://[::1]:8080/tunnel");
+
+        // 2. HTTPS maps to WSS
+        let https_cfg = PairingConfig {
+            scheme: "https".to_string(),
+            host: "gateway.example.com".to_string(),
+            port: 443,
+            path: "/tunnel".to_string(),
+            token: "tok".to_string(),
+            app: None,
+            url: None,
+        };
+        assert_eq!(
+            https_cfg.to_ws_url(),
+            "wss://gateway.example.com:443/tunnel"
+        );
+
+        // 3. Valid WSS override is preserved
+        let override_cfg = PairingConfig {
+            scheme: "ws".to_string(),
+            host: "desktop.local".to_string(),
+            port: 8080,
+            path: "/tunnel".to_string(),
+            token: "tok".to_string(),
+            app: None,
+            url: Some("wss://secure.example.com:9000/custom".to_string()),
+        };
+        assert_eq!(
+            override_cfg.to_ws_url(),
+            "wss://secure.example.com:9000/custom"
+        );
+
+        // 4. Invalid scheme override is rejected and falls back to safe scheme
+        let bad_override = PairingConfig {
+            scheme: "wss".to_string(),
+            host: "desktop.local".to_string(),
+            port: 8080,
+            path: "/tunnel".to_string(),
+            token: "tok".to_string(),
+            app: None,
+            url: Some("javascript:alert(1)".to_string()),
+        };
+        assert_eq!(bad_override.to_ws_url(), "wss://desktop.local:8080/tunnel");
     }
 }
