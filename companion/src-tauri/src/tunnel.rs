@@ -87,7 +87,6 @@ pub struct TunnelHandle {
 impl TunnelHandle {
     /// Request graceful shutdown of the tunnel.
     pub async fn stop(&self) {
-        self.running.store(false, Ordering::SeqCst);
         let _ = self.stop_tx.send(true);
     }
 
@@ -364,8 +363,18 @@ mod tests {
         let handle = tunnel.start();
 
         // Wait for connect and handshake
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        let start = std::time::Instant::now();
+        while handle.current_state() != TunnelState::Connected
+            && start.elapsed() < Duration::from_secs(5)
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         assert_eq!(handle.current_state(), TunnelState::Connected);
+
+        while received_handshake.lock().await.is_none() && start.elapsed() < Duration::from_secs(5)
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
 
         let handshake_val = received_handshake
             .lock()
@@ -378,12 +387,19 @@ mod tests {
         assert_eq!(parsed.token, "test-auth-token-42");
 
         // Wait for at least one ping
-        tokio::time::sleep(Duration::from_millis(1200)).await;
+        while ping_count.load(Ordering::SeqCst) < 1 && start.elapsed() < Duration::from_secs(5) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         assert!(ping_count.load(Ordering::SeqCst) >= 1);
 
         // Stop tunnel cleanly
         handle.stop().await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        let stop_start = std::time::Instant::now();
+        while (handle.is_running() || handle.current_state() != TunnelState::Disconnected)
+            && stop_start.elapsed() < Duration::from_secs(5)
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         assert_eq!(handle.current_state(), TunnelState::Disconnected);
         assert!(!handle.is_running());
     }
@@ -412,8 +428,18 @@ mod tests {
 
         let handle = tunnel.start();
 
-        // Wait for initial failure + backoff attempt
-        tokio::time::sleep(Duration::from_millis(1500)).await;
+        // Dynamically wait for failure transitions (Connecting -> Error -> Disconnected)
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            let list = state_transitions.lock().unwrap().clone();
+            if list.contains(&TunnelState::Connecting)
+                && list.contains(&TunnelState::Error)
+                && list.contains(&TunnelState::Disconnected)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
 
         let list = state_transitions.lock().unwrap().clone();
         // Should have transitioned through Connecting -> Error -> Disconnected
@@ -422,7 +448,12 @@ mod tests {
         assert!(list.contains(&TunnelState::Disconnected));
 
         handle.stop().await;
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        let stop_start = std::time::Instant::now();
+        while (handle.is_running() || handle.current_state() != TunnelState::Disconnected)
+            && stop_start.elapsed() < Duration::from_secs(5)
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         assert_eq!(handle.current_state(), TunnelState::Disconnected);
         assert!(!handle.is_running());
     }
