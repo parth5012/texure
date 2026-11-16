@@ -114,6 +114,7 @@ pub struct ReverseTunnel {
     state_rx: watch::Receiver<TunnelState>,
     state_listener: Option<StateListener>,
     message_handler: Option<MessageHandler>,
+    proxy_router: Option<Arc<crate::proxy::ProxyRouter>>,
 }
 
 impl ReverseTunnel {
@@ -125,6 +126,7 @@ impl ReverseTunnel {
             state_rx,
             state_listener: None,
             message_handler: None,
+            proxy_router: None,
         }
     }
 
@@ -138,6 +140,11 @@ impl ReverseTunnel {
         handler: impl Fn(String) -> Option<String> + Send + Sync + 'static,
     ) -> Self {
         self.message_handler = Some(Arc::new(handler));
+        self
+    }
+
+    pub fn with_proxy_router(mut self, proxy_router: Arc<crate::proxy::ProxyRouter>) -> Self {
+        self.proxy_router = Some(proxy_router);
         self
     }
 
@@ -213,7 +220,14 @@ impl ReverseTunnel {
                                         match msg {
                                             Some(Ok(Message::Text(txt))) => {
                                                 debug!(payload = %txt, "Received text message over tunnel");
-                                                if let Some(ref handler) = self.message_handler {
+                                                if let Some(ref router) = self.proxy_router {
+                                                    if let Some(reply) = router.handle_message(&txt).await {
+                                                        if let Err(e) = write.send(Message::Text(reply)).await {
+                                                            error!(error = %e, "Failed to send tunnel reply from proxy");
+                                                            session_active = false;
+                                                        }
+                                                    }
+                                                } else if let Some(ref handler) = self.message_handler {
                                                     if let Some(reply) = handler(txt.clone()) {
                                                         if let Err(e) = write.send(Message::Text(reply)).await {
                                                             error!(error = %e, "Failed to send tunnel reply");
