@@ -66,6 +66,39 @@ describe('QR Parser (BB-R11 golden pairing spec)', () => {
     expect(res.config?.path).toBe('/custom-tunnel');
     expect(res.config?.token).toBe('auth-secret-xyz');
   });
+
+  it('parses JSON format where token is embedded in URL query param without top-level token (Format-2)', () => {
+    const payload = JSON.stringify({
+      url: 'wss://desktop.lan:443/tunnel?token=embedded-secret-token',
+    });
+
+    const res = parsePairingPayload(payload);
+    expect(res.valid).toBe(true);
+    expect(res.config?.host).toBe('desktop.lan');
+    expect(res.config?.token).toBe('embedded-secret-token');
+  });
+
+  it('parses raw URL string format', () => {
+    const raw = 'wss://host.domain.com:8443/custom/tunnel?token=raw-token-123';
+    const res = parsePairingPayload(raw);
+    expect(res.valid).toBe(true);
+    expect(res.config?.host).toBe('host.domain.com');
+    expect(res.config?.port).toBe(8443);
+    expect(res.config?.token).toBe('raw-token-123');
+  });
+
+  it('handles IPv6 host with port correctly', () => {
+    const payload = JSON.stringify({
+      scheme: 'wss',
+      host: '[::1]:443',
+      token: 'ipv6-token',
+    });
+
+    const res = parsePairingPayload(payload);
+    expect(res.valid).toBe(true);
+    expect(res.config?.host).toBe('[::1]');
+    expect(res.config?.port).toBe(443);
+  });
 });
 
 describe('QrScanner Component', () => {
@@ -127,5 +160,34 @@ describe('QrScanner Component', () => {
       expect(screen.getByTestId('parse-error-message')).toBeInTheDocument();
       expect(screen.getByText(/wss:\/\/ required/i)).toBeInTheDocument();
     });
+  });
+
+  it('displays error and does not render success state when pairDevice fails', async () => {
+    const onPairSuccess = vi.fn();
+    render(
+      <CompanionProvider>
+        <QrScanner onPairSuccess={onPairSuccess} />
+      </CompanionProvider>
+    );
+
+    const { mockBackend } = await import('../lib/mock-backend');
+    const origInvoke = mockBackend.invoke.bind(mockBackend);
+    vi.spyOn(mockBackend, 'invoke').mockImplementation(async (cmd, args) => {
+      if (cmd === 'pair_device') {
+        throw new Error('Pairing rejected by gateway');
+      }
+      return origInvoke(cmd, args);
+    });
+
+    const btn = screen.getByTestId('load-fixture-qr-btn');
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('parse-error-message')).toBeInTheDocument();
+      expect(screen.queryByTestId('pair-success-state')).not.toBeInTheDocument();
+    });
+
+    expect(onPairSuccess).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 });

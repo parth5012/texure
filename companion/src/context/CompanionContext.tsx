@@ -21,6 +21,16 @@ interface CompanionContextType {
   addLog: (level: LogLevel, message: string, source?: string) => void;
 }
 
+const normalizeState = (s: DeviceState): DeviceState => ({
+  ...s,
+  vitals: {
+    batteryPercent: s?.vitals?.batteryPercent ?? 100,
+    screenOn: s?.vitals?.screenOn ?? true,
+    networkType: s?.vitals?.networkType ?? 'WIFI',
+    latencyMs: s?.vitals?.latencyMs ?? 0,
+  },
+});
+
 const defaultState: DeviceState = {
   shizukuStatus: 'AUTHORIZED',
   tunnelState: 'CONNECTED',
@@ -45,7 +55,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refreshState = useCallback(async () => {
     try {
       const devState = await invokeCommand<DeviceState>('get_device_state');
-      setState(devState);
+      setState(normalizeState(devState));
     } catch (err) {
       console.error('Failed to get device state:', err);
     }
@@ -65,7 +75,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshLogs();
 
     const unlistenState = listenEvent<DeviceState>('device_state_changed', (updatedState) => {
-      setState(updatedState);
+      setState(normalizeState(updatedState));
     });
 
     const unlistenLog = listenEvent<LogEntry>('tauri://event/log', (entry) => {
@@ -136,26 +146,44 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     mockBackend.addLog(level, message, source);
   }, []);
 
+  const contextValue = React.useMemo<CompanionContextType>(
+    () => ({
+      state,
+      logs,
+      isBrowserMock,
+      invoke: invokeCommand,
+      refreshState,
+      pairDevice,
+      wakeScreen,
+      dismissKeyguard,
+      coldStartApp,
+      forceStopApp,
+      reconnectTunnel,
+      clearLogs,
+      exportLogs,
+      updateMockState,
+      addLog,
+    }),
+    [
+      state,
+      logs,
+      isBrowserMock,
+      refreshState,
+      pairDevice,
+      wakeScreen,
+      dismissKeyguard,
+      coldStartApp,
+      forceStopApp,
+      reconnectTunnel,
+      clearLogs,
+      exportLogs,
+      updateMockState,
+      addLog,
+    ]
+  );
+
   return (
-    <CompanionContext.Provider
-      value={{
-        state,
-        logs,
-        isBrowserMock,
-        invoke: invokeCommand,
-        refreshState,
-        pairDevice,
-        wakeScreen,
-        dismissKeyguard,
-        coldStartApp,
-        forceStopApp,
-        reconnectTunnel,
-        clearLogs,
-        exportLogs,
-        updateMockState,
-        addLog,
-      }}
-    >
+    <CompanionContext.Provider value={contextValue}>
       {children}
     </CompanionContext.Provider>
   );

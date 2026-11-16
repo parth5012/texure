@@ -27,6 +27,8 @@ const getLevelBadgeStyles = (level: LogLevel): string => {
       return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
     case 'DEBUG':
       return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+    default:
+      return 'bg-slate-700/50 text-slate-300 border-slate-600/40';
   }
 };
 
@@ -48,11 +50,16 @@ export const LogViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isProgrammaticScrollRef = useRef<boolean>(false);
 
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
+      }
+      if (rowTimeoutRef.current) {
+        clearTimeout(rowTimeoutRef.current);
       }
     };
   }, []);
@@ -74,19 +81,19 @@ export const LogViewer: React.FC = () => {
 
   // Auto-scroll when new logs arrive if enabled
   useEffect(() => {
-    if (
-      autoScroll &&
-      containerRef.current &&
-      endRef.current &&
-      typeof endRef.current.scrollIntoView === 'function'
-    ) {
-      endRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && containerRef.current) {
+      isProgrammaticScrollRef.current = true;
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      const rId = requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = false;
+      });
+      return () => cancelAnimationFrame(rId);
     }
   }, [filteredLogs, autoScroll]);
 
   // Detect user scroll up to toggle auto-scroll off
   const handleScroll = useCallback(() => {
-    if (!containerRef.current) return;
+    if (isProgrammaticScrollRef.current || !containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     const atBottom = scrollHeight - scrollTop - clientHeight < 40;
     if (!atBottom && autoScroll) {
@@ -129,7 +136,8 @@ export const LogViewer: React.FC = () => {
     const ok = await copyToClipboard(text);
     if (ok) {
       setCopiedRowId(entry.id);
-      setTimeout(() => setCopiedRowId(null), 1500);
+      if (rowTimeoutRef.current) clearTimeout(rowTimeoutRef.current);
+      rowTimeoutRef.current = setTimeout(() => setCopiedRowId(null), 1500);
     }
   }, [copyToClipboard]);
 

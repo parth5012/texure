@@ -23,7 +23,19 @@ function isValidPort(port: number): boolean {
 
 function cleanHost(rawHost: string): { host: string; port?: number } {
   const trimmed = rawHost.trim();
-  if (trimmed.includes(':') && !trimmed.startsWith('[')) {
+  if (trimmed.startsWith('[')) {
+    const endBracket = trimmed.indexOf(']');
+    if (endBracket !== -1) {
+      const host = trimmed.substring(0, endBracket + 1);
+      const after = trimmed.substring(endBracket + 1);
+      if (after.startsWith(':')) {
+        const port = Number(after.substring(1));
+        return { host, port: isValidPort(port) ? port : undefined };
+      }
+      return { host };
+    }
+  }
+  if (trimmed.includes(':')) {
     const parts = trimmed.split(':');
     const port = Number(parts[1]);
     return { host: parts[0], port: isValidPort(port) ? port : undefined };
@@ -89,7 +101,7 @@ export function parsePairingPayload(raw: string): ParseResult {
         return { valid: false, error: 'Endpoint must use wss:// scheme' };
       }
       const token = data.token || parsedUrl.searchParams.get('token');
-      if (!token || typeof token !== 'string' || data.token.trim() === '') {
+      if (!token || typeof token !== 'string' || token.trim() === '') {
         return { valid: false, error: 'Missing pairing token' };
       }
 

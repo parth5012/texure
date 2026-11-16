@@ -5,6 +5,7 @@ import { QrScanner } from './components/QrScanner';
 import { StatusDashboard } from './components/StatusDashboard';
 import { ControlPanel } from './components/ControlPanel';
 import { LogViewer } from './components/LogViewer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Smartphone, QrCode, Sliders, Terminal, Activity, Moon, Sun } from 'lucide-react';
 
 const DashboardShell: React.FC = () => {
@@ -114,31 +115,33 @@ const DashboardShell: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
-        <div id="tab-content" className="space-y-6">
-          {activeTab === 'dashboard' && (
-            <div data-testid="dashboard-view">
-              <StatusDashboard />
-            </div>
-          )}
+        <ErrorBoundary fallbackTitle={`Error rendering ${activeTab} tab`}>
+          <div id="tab-content" className="space-y-6">
+            {activeTab === 'dashboard' && (
+              <div data-testid="dashboard-view">
+                <StatusDashboard />
+              </div>
+            )}
 
-          {activeTab === 'controls' && (
-            <div data-testid="controls-view">
-              <ControlPanel />
-            </div>
-          )}
+            {activeTab === 'controls' && (
+              <div data-testid="controls-view">
+                <ControlPanel />
+              </div>
+            )}
 
-          {activeTab === 'scanner' && (
-            <div data-testid="scanner-view">
-              <QrScanner />
-            </div>
-          )}
+            {activeTab === 'scanner' && (
+              <div data-testid="scanner-view">
+                <QrScanner />
+              </div>
+            )}
 
-          {activeTab === 'logs' && (
-            <div data-testid="logs-view">
-              <LogViewer />
-            </div>
-          )}
-        </div>
+            {activeTab === 'logs' && (
+              <div data-testid="logs-view">
+                <LogViewer />
+              </div>
+            )}
+          </div>
+        </ErrorBoundary>
       </main>
 
       {/* Footer */}
