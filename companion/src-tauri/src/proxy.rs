@@ -48,6 +48,7 @@ fn default_rpc_type() -> String {
 #[derive(Clone)]
 pub struct ProxyRouter {
     target_base_url: String,
+    auth_token: Option<String>,
     client: Client,
 }
 
@@ -67,14 +68,24 @@ impl ProxyRouter {
 
         Self {
             target_base_url: target_base_url.into().trim_end_matches('/').to_string(),
+            auth_token: None,
             client,
         }
+    }
+
+    pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
+        self.auth_token = Some(token.into());
+        self
     }
 
     /// Check whether local bridge is responsive (GET /ui-tree or health).
     pub async fn check_target_status(&self) -> bool {
         let url = format!("{}/ui-tree", self.target_base_url);
-        match self.client.get(&url).send().await {
+        let mut req = self.client.get(&url);
+        if let Some(ref tok) = self.auth_token {
+            req = req.bearer_auth(tok);
+        }
+        match req.send().await {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,
         }
@@ -148,29 +159,49 @@ impl ProxyRouter {
     /// Dispatch tool call to local HTTP bridge.
     async fn dispatch_tool_call(&self, rpc: &str, args: Value) -> Result<Value, Value> {
         let (endpoint, is_post) = match rpc {
-            "device_tree" | "ui_tree" | "/ui-tree" => ("/ui-tree", false),
-            "tap" | "/tap" => ("/tap", true),
-            "type" | "/type" => ("/type", true),
-            "screenshot" | "/screenshot" => ("/screenshot", false),
+            "device_tree" | "ui_tree" | "/ui-tree" => ("/ui-tree".to_string(), false),
+            "tap" | "/tap" => ("/tap".to_string(), true),
+            "type" | "/type" => ("/type".to_string(), true),
+            "screenshot" | "/screenshot" => ("/screenshot".to_string(), false),
             other => {
-                let _trimmed = other.trim_start_matches('/');
-                (other, !args.is_null() && args != json!({}))
+                let path = if other.starts_with('/') {
+                    other.to_string()
+                } else {
+                    format!("/{}", other)
+                };
+                let has_args = !args.is_null() && args != json!({});
+                (path, has_args)
             }
         };
 
         let target_url = format!("{}{}", self.target_base_url, endpoint);
         debug!(rpc, url = %target_url, "Proxying tool call to target bridge");
 
-        let request_builder = if is_post {
+        let mut request_builder = if is_post {
             self.client.post(&target_url).json(&args)
         } else {
             self.client.get(&target_url)
         };
 
+        if let Some(ref token) = self.auth_token {
+            request_builder = request_builder.bearer_auth(token);
+        }
+
         match request_builder.send().await {
             Ok(response) => {
                 let status = response.status();
-                let bytes = response.bytes().await.unwrap_or_default();
+                let bytes = match response.bytes().await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        warn!(error = %e, "Failed to read response body from bridge");
+                        return Err(json!({
+                            "code": ErrorCode::CaptureFailed.as_str(),
+                            "message": format!("Failed reading bridge response body: {}", e),
+                            "hint": "target bridge dropped connection mid-read",
+                            "relayed": true,
+                        }));
+                    }
+                };
                 let parsed: Result<Value, _> = serde_json::from_slice(&bytes);
 
                 match parsed {
@@ -192,7 +223,16 @@ impl ProxyRouter {
                     }
                     Err(_) => {
                         if status.is_success() {
-                            Ok(json!({ "raw": String::from_utf8_lossy(&bytes) }))
+                            if endpoint == "/screenshot" || bytes.starts_with(b"\x89PNG") {
+                                use base64::engine::general_purpose::STANDARD;
+                                use base64::Engine;
+                                Ok(json!({
+                                    "image": STANDARD.encode(&bytes),
+                                    "mime": "image/png"
+                                }))
+                            } else {
+                                Ok(json!({ "raw": String::from_utf8_lossy(&bytes) }))
+                            }
                         } else {
                             Err(json!({
                                 "code": ErrorCode::InjectFailed.as_str(),

@@ -74,7 +74,7 @@ pub struct AppState {
     pub proxy_router: Arc<ProxyRouter>,
     pub started_at: Mutex<Option<Instant>>,
     pub last_pairing: Mutex<Option<PairingConfig>>,
-    pub event_sink: Mutex<Option<EventSink>>,
+    pub event_sink: Arc<std::sync::Mutex<Option<EventSink>>>,
 }
 
 impl Default for AppState {
@@ -90,7 +90,7 @@ impl AppState {
             proxy_router: Arc::new(ProxyRouter::default()),
             started_at: Mutex::new(None),
             last_pairing: Mutex::new(None),
-            event_sink: Mutex::new(None),
+            event_sink: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -100,19 +100,19 @@ impl AppState {
             proxy_router: Arc::new(proxy_router),
             started_at: Mutex::new(None),
             last_pairing: Mutex::new(None),
-            event_sink: Mutex::new(None),
+            event_sink: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
-    pub async fn emit_event(&self, event: &str, payload: Value) {
-        let sink = self.event_sink.lock().await;
-        if let Some(ref emit_fn) = *sink {
+    pub fn emit_event(&self, event: &str, payload: Value) {
+        let guard = self.event_sink.lock().unwrap();
+        if let Some(ref emit_fn) = *guard {
             emit_fn(event, payload);
         }
     }
 
-    pub async fn set_event_sink(&self, sink: impl Fn(&str, Value) + Send + Sync + 'static) {
-        let mut guard = self.event_sink.lock().await;
+    pub fn set_event_sink(&self, sink: impl Fn(&str, Value) + Send + Sync + 'static) {
+        let mut guard = self.event_sink.lock().unwrap();
         *guard = Some(Arc::new(sink));
     }
 }
@@ -139,7 +139,23 @@ pub async fn start_tunnel_impl(
     };
 
     let router = state.proxy_router.clone();
-    let tunnel = ReverseTunnel::new(tunnel_config).with_proxy_router(router);
+    let sink_holder = state.event_sink.clone();
+    let url_clone = ws_url.clone();
+
+    let tunnel = ReverseTunnel::new(tunnel_config)
+        .with_proxy_router(router)
+        .with_state_listener(move |st| {
+            let guard = sink_holder.lock().unwrap();
+            if let Some(ref sink) = *guard {
+                sink(
+                    "tunnel_state_changed",
+                    json!({
+                        "state": st.to_string(),
+                        "url": url_clone,
+                    }),
+                );
+            }
+        });
     let handle = tunnel.start();
 
     let initial_state = handle.current_state();
@@ -151,16 +167,14 @@ pub async fn start_tunnel_impl(
     let mut pairing_guard = state.last_pairing.lock().await;
     *pairing_guard = Some(config);
 
-    // Emit event to frontend
-    state
-        .emit_event(
-            "tunnel_state_changed",
-            json!({
-                "state": initial_state.to_string(),
-                "url": ws_url
-            }),
-        )
-        .await;
+    // Emit initial event to frontend
+    state.emit_event(
+        "tunnel_state_changed",
+        json!({
+            "state": initial_state.to_string(),
+            "url": ws_url
+        }),
+    );
 
     Ok(TunnelStatusResponse {
         state: initial_state,
@@ -181,14 +195,12 @@ pub async fn stop_tunnel_impl(state: &AppState) -> Result<TunnelStatusResponse, 
     let mut started_guard = state.started_at.lock().await;
     *started_guard = None;
 
-    state
-        .emit_event(
-            "tunnel_state_changed",
-            json!({
-                "state": TunnelState::Disconnected.to_string()
-            }),
-        )
-        .await;
+    state.emit_event(
+        "tunnel_state_changed",
+        json!({
+            "state": TunnelState::Disconnected.to_string()
+        }),
+    );
 
     Ok(TunnelStatusResponse {
         state: TunnelState::Disconnected,
@@ -303,11 +315,9 @@ mod tests {
 
         let event_counter = Arc::new(AtomicUsize::new(0));
         let ec_clone = event_counter.clone();
-        state
-            .set_event_sink(move |_event, _payload| {
-                ec_clone.fetch_add(1, Ordering::SeqCst);
-            })
-            .await;
+        state.set_event_sink(move |_event, _payload| {
+            ec_clone.fetch_add(1, Ordering::SeqCst);
+        });
 
         let config = PairingConfig {
             scheme: "ws".to_string(),

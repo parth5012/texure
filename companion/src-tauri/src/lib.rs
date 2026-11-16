@@ -21,6 +21,15 @@ pub use texure_contract::{
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::{Emitter, Manager};
+            let handle = app.handle().clone();
+            let state = app.state::<AppState>();
+            state.set_event_sink(move |event, payload| {
+                let _ = handle.emit(event, payload);
+            });
+            Ok(())
+        })
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::start_tunnel,
