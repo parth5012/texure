@@ -115,7 +115,7 @@ const DashboardShell: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
-        <ErrorBoundary fallbackTitle={`Error rendering ${activeTab} tab`}>
+        <ErrorBoundary key={activeTab} fallbackTitle={`Error rendering ${activeTab} tab`}>
           <div id="tab-content" className="space-y-6">
             {activeTab === 'dashboard' && (
               <div data-testid="dashboard-view">
