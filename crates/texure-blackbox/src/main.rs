@@ -1,6 +1,7 @@
 pub mod client_http;
 pub mod client_mcp;
 pub mod fake_bridge;
+pub mod fake_companion;
 pub mod fake_mcp;
 pub mod history;
 pub mod recording;
@@ -83,7 +84,7 @@ enum Commands {
     about = "Texure blackbox test runner & regression tracking"
 )]
 struct Args {
-    /// Target mode: all | mcp | http | mcp-fake | mcp-real
+    /// Target mode: all | mcp | http | mcp-fake | mcp-real | mcp-tunnel
     #[arg(long, default_value = "all")]
     target: String,
 
@@ -416,12 +417,14 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: true,
             write_first: false,
         },
-        // Group R: remote tunnel & gateway (write-first red suite, map 9 #41)
+        // Group R: remote tunnel & gateway (write-first suite, map 9 #41).
+        // Flipped green by ticket #63 via the `--target mcp-tunnel` full
+        // round-trip (real server binary + in-process fake companion).
         TestDef {
             id: "BB-R1".to_string(),
             name: "Reverse WS handshake with valid bearer token".to_string(),
             scenario_file: "reverse_ws_handshake.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -429,7 +432,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R2".to_string(),
             name: "Reverse WS auth rejection on mismatched token".to_string(),
             scenario_file: "reverse_ws_auth_reject.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -437,7 +440,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R3".to_string(),
             name: "Reverse WS supervisor reconnect with exponential backoff".to_string(),
             scenario_file: "reverse_ws_reconnect.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -445,7 +448,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R4".to_string(),
             name: "Gateway proxies device_tree RPC across tunnel".to_string(),
             scenario_file: "gateway_proxy_tree.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -453,7 +456,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R5".to_string(),
             name: "Gateway proxies mutating tap with rev check".to_string(),
             scenario_file: "gateway_proxy_tap.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -461,7 +464,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R6".to_string(),
             name: "Gateway relays bridge NODE_OUTDATED error".to_string(),
             scenario_file: "gateway_error_propagation.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -469,7 +472,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R7".to_string(),
             name: "Shizuku wake & keyguard dismiss".to_string(),
             scenario_file: "shizuku_wake_keyguard.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -477,7 +480,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R8".to_string(),
             name: "Shizuku cold app launch (am start)".to_string(),
             scenario_file: "shizuku_cold_start.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -485,7 +488,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R9".to_string(),
             name: "Shizuku runtime permission grant (pm grant)".to_string(),
             scenario_file: "shizuku_pm_grant.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -493,7 +496,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R10".to_string(),
             name: "Shizuku fallback system tap injection".to_string(),
             scenario_file: "shizuku_input_tap.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -501,7 +504,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R11".to_string(),
             name: "Pairing QR payload generation & validation".to_string(),
             scenario_file: "pairing_qr.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -509,7 +512,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R12".to_string(),
             name: "Transport fallback reverse_ws -> lan_direct".to_string(),
             scenario_file: "transport_fallback.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -517,7 +520,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             id: "BB-R13".to_string(),
             name: "Single-flight lock across remote tunnel (BUSY)".to_string(),
             scenario_file: "tunnel_single_flight.json".to_string(),
-            target: "mcp".to_string(),
+            target: "mcp-tunnel".to_string(),
             is_device: false,
             write_first: true,
         },
@@ -638,6 +641,7 @@ async fn main() {
                     t.target == "mcp-fake" || t.target == "fake" || t.target == "mcp"
                 }
                 "mcp-real" => t.target == "mcp" || t.target == "mcp-fake" || t.target == "http",
+                "mcp-tunnel" => t.target == "mcp-tunnel",
                 other => t.target == other,
             }
         })
