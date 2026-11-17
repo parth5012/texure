@@ -510,11 +510,12 @@ fn mcp_content_to_response(call_res: &Value) -> Value {
 
 /// Environment variables stripped from spawned real-server children so host
 /// machine settings cannot override the per-test TOML config.
-const TEXURE_ENV_KEYS: [&str; 4] = [
+const TEXURE_ENV_KEYS: [&str; 5] = [
     "TEXURE_URL",
     "TEXURE_TOKEN",
     "TEXURE_TIMEOUT",
     "TEXURE_CONFIG",
+    "TEXURE_PROFILE",
 ];
 
 /// Scenarios that resolve NO_CONFIG before any bridge dial; no FakeBridge needed.
@@ -1180,11 +1181,12 @@ async fn walk_mcp_tunnel_steps(
                 };
                 let mut value = mcp_content_to_response(&call_res);
                 // Facts genuinely observed on the tunnel but stripped by the
-                // server when it re-serializes BridgeSuccessResponse.
+                // server when it re-serializes BridgeSuccessResponse. Do NOT
+                // inject `rpc` here: scenarios must assert fields from the
+                // actual tool response (e.g. `rev`) or they pass vacuously.
                 if companion.last_envelope_verify_at_execute() {
                     value["verify_at_execute"] = json!(true);
                 }
-                value["rpc"] = json!(rpc);
                 value
             }
             "shizuku_cmd" => {

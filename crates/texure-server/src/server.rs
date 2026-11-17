@@ -1,6 +1,8 @@
 use crate::bridge_client::BridgeClient;
-use crate::router::TunnelRouter;
-use crate::transport::{resolve_transport, SelectedTransport};
+use crate::router::{RouteError, TunnelRouter};
+use crate::transport::{
+    resolve_transport, resolve_transport_excluding, SelectedTransport, Transport,
+};
 use crate::tunnel_server::TunnelHandle;
 use crate::wait_for::execute_wait_for;
 use crate::ws_supervisor::WsSupervisor;
@@ -314,7 +316,36 @@ impl McpServer {
                 if self.lifecycle_probe {
                     router = router.with_lifecycle_probe();
                 }
-                return Ok(router.route(name, &parsed, verbose).await);
+                match router.route_transport(name, &parsed, verbose).await {
+                    Ok(result) => return Ok(result),
+                    Err(RouteError::Tool(result)) => return Ok(result),
+                    Err(RouteError::Transport(error)) => {
+                        // The tunnel is connected but unusable (timeout, drop,
+                        // heartbeat lapse). transport_order.json declares
+                        // fallback_on these failures, so re-resolve without the
+                        // dead tunnel instead of returning OFFLINE prematurely.
+                        let fallback = resolve_transport_excluding(
+                            self.tunnel.as_ref(),
+                            self.custom_config_path.as_deref(),
+                            self.profile_override.as_deref(),
+                            Some(Transport::ReverseWs),
+                        )
+                        .await;
+                        match fallback {
+                            Ok(SelectedTransport::Direct(client)) => {
+                                self.get_or_init_bridge(client).await
+                            }
+                            _ => {
+                                return Ok(CallToolResult::error(
+                                    error.code(),
+                                    Some(&error.to_string()),
+                                    verbose,
+                                    None,
+                                ));
+                            }
+                        }
+                    }
+                }
             }
             SelectedTransport::Direct(client) => self.get_or_init_bridge(client).await,
         };

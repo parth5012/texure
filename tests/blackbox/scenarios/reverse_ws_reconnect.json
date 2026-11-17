@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "reverse_ws_reconnect",
   "kind": "scenario",
-  "description": "BB-R3 (spec 3R row 3): supervisor detects a tunnel drop and reconnects with exponential backoff until CONNECTED",
+  "description": "BB-R3 (spec 3R row 3, L2 scope): companion re-registers on the server tunnel after a drop until CONNECTED; backoff scheduling itself is companion-supervisor (L3) scope",
   "tags": ["remote", "tunnel", "write-first"],
   "steps": [
     {
@@ -20,7 +20,7 @@
     },
     {
       "action": "tunnel_heartbeat",
-      "args": { "interval_ms": 1000, "backoff": "exponential" },
+      "args": { "interval_ms": 1000 },
       "expect": { "reconnected": true }
     }
   ],

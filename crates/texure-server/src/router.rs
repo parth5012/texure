@@ -27,6 +27,16 @@ const TUNNEL_BRIDGE_URL: &str = "tunnel://companion";
 /// `ws.is_connected() == true` state in verbose error context.
 const TUNNEL_WS_CONNECTED: bool = true;
 
+/// Why a tunneled call failed. Transport failures are distinct from tool-level
+/// errors so the server can fall back to the next configured transport; a
+/// relayed bridge error (e.g. `NODE_OUTDATED`) must stay a tool error and never
+/// trigger fallback (guardrail G8 + `transport_order.json`).
+#[derive(Debug)]
+pub(crate) enum RouteError {
+    Transport(TunnelError),
+    Tool(CallToolResult),
+}
+
 /// Routes frozen tool calls through a connected companion tunnel.
 pub struct TunnelRouter {
     handle: TunnelHandle,
@@ -66,34 +76,34 @@ impl TunnelRouter {
     /// Forward one validated tool call and translate the reply. All failures
     /// become `CallToolResult` errors — never panics — so the MCP daemon keeps
     /// running when the tunnel drops mid-call (guardrail G8).
-    pub(crate) async fn route(
+    /// Forward one validated tool call. Transport-level failures are returned
+    /// as `RouteError::Transport` so the caller can fall back; every other
+    /// outcome is a normal tool result (including relayed bridge errors).
+    pub(crate) async fn route_transport(
         &self,
         name: &str,
         parsed: &ToolArgs,
         verbose: bool,
-    ) -> CallToolResult {
+    ) -> Result<CallToolResult, RouteError> {
         if self.lifecycle_probe {
             self.ensure_device_running().await;
         }
 
-        // `wait_for` is evaluated here by polling `device_tree` over the same
-        // tunnel: the tunnel has no separate WS `tree_changed` channel, which
-        // is exactly the direct path's "WS down => 500ms HTTP poll" branch.
+        // `wait_for` polls `device_tree` over the same tunnel: there is no
+        // separate WS `tree_changed` channel, mirroring the direct path's
+        // "WS down => 500ms HTTP poll" branch.
         if let ToolArgs::WaitFor(params) = parsed {
             return self.wait_for_via_tunnel(params, verbose).await;
         }
 
         let (rpc, args, verify_at_execute) = rpc_for(parsed);
         let envelope = self.envelope(rpc, args, verify_at_execute);
-        let reply = match self.request(&envelope).await {
-            Ok(reply) => reply,
-            Err(error) => {
-                let code = error.code();
-                return CallToolResult::error(code, Some(&error.to_string()), verbose, None);
-            }
-        };
+        let reply = self
+            .request(&envelope)
+            .await
+            .map_err(RouteError::Transport)?;
 
-        match decode_reply(&reply) {
+        Ok(match decode_reply(&reply) {
             Ok(Reply::Success(payload)) => match self.success(name, parsed, payload) {
                 Ok(result) => result,
                 Err(error) => error.to_mcp_result(verbose, TUNNEL_BRIDGE_URL, TUNNEL_WS_CONNECTED),
@@ -115,6 +125,25 @@ impl TunnelRouter {
                 error.to_mcp_result(verbose, TUNNEL_BRIDGE_URL, TUNNEL_WS_CONNECTED)
             }
             Err(error) => error.to_mcp_result(verbose, TUNNEL_BRIDGE_URL, TUNNEL_WS_CONNECTED),
+        })
+    }
+
+    /// Render a tunneled call as a plain tool result. The production path uses
+    /// `route_transport` so it can fall back; this convenience wrapper keeps
+    /// the focused router tests readable.
+    #[cfg(test)]
+    pub(crate) async fn route(
+        &self,
+        name: &str,
+        parsed: &ToolArgs,
+        verbose: bool,
+    ) -> CallToolResult {
+        match self.route_transport(name, parsed, verbose).await {
+            Ok(result) => result,
+            Err(RouteError::Tool(result)) => result,
+            Err(RouteError::Transport(error)) => {
+                CallToolResult::error(error.code(), Some(&error.to_string()), verbose, None)
+            }
         }
     }
 
@@ -206,17 +235,14 @@ impl TunnelRouter {
         &self,
         params: &texure_contract::tools::WaitForParams,
         verbose: bool,
-    ) -> CallToolResult {
+    ) -> Result<CallToolResult, RouteError> {
         let deadline = Instant::now() + Duration::from_secs(params.effective_timeout_secs());
 
         // Immediate evaluation before the first sleep, matching the direct path.
-        let initial = match self.fetch_tree(verbose).await {
-            Ok(tree) => tree,
-            Err(result) => return result,
-        };
+        let initial = self.fetch_tree(verbose).await?;
         if evaluate_condition(&initial, params.where_, &params.value) {
             let ok = json!({"ok": true, "rev": initial.rev});
-            return CallToolResult::success_text(ok.to_string());
+            return Ok(CallToolResult::success_text(ok.to_string()));
         }
 
         let mut last_rev = initial.rev;
@@ -228,27 +254,25 @@ impl TunnelRouter {
             }
             tokio::time::sleep(Duration::from_millis(500).min(remaining)).await;
 
-            match self.fetch_tree(verbose).await {
-                Ok(tree) => {
-                    last_rev = tree.rev;
-                    if evaluate_condition(&tree, params.where_, &params.value) {
-                        let ok = json!({"ok": true, "rev": tree.rev});
-                        return CallToolResult::success_text(ok.to_string());
-                    }
-                    final_tree = Some(tree);
-                }
-                Err(result) => return result,
+            let tree = self.fetch_tree(verbose).await?;
+            last_rev = tree.rev;
+            if evaluate_condition(&tree, params.where_, &params.value) {
+                let ok = json!({"ok": true, "rev": tree.rev});
+                return Ok(CallToolResult::success_text(ok.to_string()));
             }
+            final_tree = Some(tree);
         }
 
         // Match the direct path: one final fresh snapshot so the agent can
         // re-plan from the state at the deadline, not a stale poll result.
+        // A transport failure must still propagate so fallback can fire.
         let final_tree = match self.fetch_tree(verbose).await {
             Ok(tree) => {
                 last_rev = tree.rev;
                 Some(tree)
             }
-            Err(_) => final_tree,
+            Err(RouteError::Transport(error)) => return Err(RouteError::Transport(error)),
+            Err(RouteError::Tool(_)) => final_tree,
         };
 
         let timeout = json!({
@@ -257,30 +281,27 @@ impl TunnelRouter {
             "hint": "re-fetch device_tree and re-plan",
             "tree": final_tree,
         });
-        CallToolResult::success_text(timeout.to_string())
+        Ok(CallToolResult::success_text(timeout.to_string()))
     }
 
     /// Fetch one tree snapshot over the tunnel for `wait_for` polling.
-    async fn fetch_tree(&self, verbose: bool) -> Result<UiTree, CallToolResult> {
+    async fn fetch_tree(&self, verbose: bool) -> Result<UiTree, RouteError> {
         let envelope = self.envelope("device_tree", json!({}), false);
-        let reply = match self.request(&envelope).await {
-            Ok(reply) => reply,
-            Err(error) => {
-                return Err(CallToolResult::error(
-                    error.code(),
-                    Some(&error.to_string()),
-                    verbose,
-                    None,
-                ))
-            }
-        };
+        let reply = self
+            .request(&envelope)
+            .await
+            .map_err(RouteError::Transport)?;
         match decode_reply(&reply) {
             Ok(Reply::Success(payload)) => serde_json::from_value(payload).map_err(|e| {
                 let error = BridgeCallError::new(
                     ErrorCode::CaptureFailed,
                     format!("Invalid UI tree payload: {e}"),
                 );
-                error.to_mcp_result(verbose, TUNNEL_BRIDGE_URL, TUNNEL_WS_CONNECTED)
+                RouteError::Tool(error.to_mcp_result(
+                    verbose,
+                    TUNNEL_BRIDGE_URL,
+                    TUNNEL_WS_CONNECTED,
+                ))
             }),
             Ok(Reply::Error(relayed)) => {
                 let code = relayed_code(&relayed);
@@ -294,9 +315,17 @@ impl TunnelRouter {
                     raw_json: Some(json!({ "error": relayed })),
                     http_status: None,
                 };
-                Err(error.to_mcp_result(verbose, TUNNEL_BRIDGE_URL, TUNNEL_WS_CONNECTED))
+                Err(RouteError::Tool(error.to_mcp_result(
+                    verbose,
+                    TUNNEL_BRIDGE_URL,
+                    TUNNEL_WS_CONNECTED,
+                )))
             }
-            Err(error) => Err(error.to_mcp_result(verbose, TUNNEL_BRIDGE_URL, TUNNEL_WS_CONNECTED)),
+            Err(error) => Err(RouteError::Tool(error.to_mcp_result(
+                verbose,
+                TUNNEL_BRIDGE_URL,
+                TUNNEL_WS_CONNECTED,
+            ))),
         }
     }
 
@@ -701,6 +730,22 @@ mod tests {
             text_of(&result).starts_with("OFFLINE:"),
             "tunnel drop must become OFFLINE, got: {}",
             text_of(&result)
+        );
+    }
+
+    #[tokio::test]
+    async fn silent_tunnel_is_a_transport_failure_so_fallback_can_fire() {
+        // Registered companion that accepts frames but never replies: the
+        // contract's fallback_on(heartbeat_timeout / tunnel_unreachable) case.
+        let companion = FakeCompanion::spawn(Arc::new(|_| None)).await;
+        let router = TunnelRouter::new(companion.handle());
+        let parsed = parse_tool_args("device_tree", json!({})).expect("valid args");
+
+        let outcome = router.route_transport("device_tree", &parsed, false).await;
+
+        assert!(
+            matches!(outcome, Err(RouteError::Transport(_))),
+            "a silent tunnel must be reported as a transport failure, not OFFLINE-as-tool-error"
         );
     }
 

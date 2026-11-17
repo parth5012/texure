@@ -438,7 +438,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
         },
         TestDef {
             id: "BB-R3".to_string(),
-            name: "Reverse WS supervisor reconnect with exponential backoff".to_string(),
+            name: "Reverse WS reconnect after drop (backoff is companion L3 scope)".to_string(),
             scenario_file: "reverse_ws_reconnect.json".to_string(),
             target: "mcp-tunnel".to_string(),
             is_device: false,
