@@ -65,7 +65,20 @@ timeout_secs = 10
 url = "http://192.168.1.105:8765"
 token = "9f8e7d6c5b4a..."
 timeout_secs = 15
+
+# Transport resolution (optional, Group R ticket #62)
+[network]
+transport_order = ["reverse_ws", "lan_direct", "tailscale"]
+tailscale_ip = "100.64.0.5"   # optional tailnet destination; skip when omitted
 ```
+
+The `[network]` table is optional. When omitted (or when `transport_order` is
+omitted inside it), resolution uses the default order
+`reverse_ws -> lan_direct -> tailscale`, preserving pre-#62 behavior. An
+unknown name in `transport_order` is a `NO_CONFIG` config error, not a silent
+skip. `tailscale` is only attempted when `tailscale_ip` is set; if every
+configured transport is unavailable the tool call returns `OFFLINE` (with
+`NO_CONFIG` preserved when no device config exists). No new error code.
 
 ### 2.3 Configuration Resolution Order
 1. **Environment Variables:** `TEXURE_URL`, `TEXURE_TOKEN`, `TEXURE_TIMEOUT` (highest precedence).

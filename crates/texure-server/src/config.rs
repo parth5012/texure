@@ -161,4 +161,42 @@ mod tests {
         std::env::remove_var("TEXURE_TOKEN");
         assert_eq!(resolved.url, "http://127.0.0.1:8765");
     }
+
+    #[test]
+    fn network_transport_order_defaults_when_table_absent() {
+        let config: TexureConfig =
+            toml::from_str("url = 'http://192.168.1.10:8765'\ntoken = 'tok'\ntimeout_secs = 7\n")
+                .expect("parse config without [network]");
+        assert_eq!(config.url.as_deref(), Some("http://192.168.1.10:8765"));
+        assert_eq!(config.timeout_secs, Some(7));
+        assert_eq!(
+            config.network.transport_order,
+            vec!["reverse_ws", "lan_direct", "tailscale"]
+        );
+        assert_eq!(config.network.tailscale_ip, None);
+    }
+
+    #[test]
+    fn network_transport_order_custom_and_tailscale_ip_parse() {
+        let config: TexureConfig = toml::from_str(
+            "[network]\ntransport_order = ['tailscale', 'lan_direct']\ntailscale_ip = '100.64.0.5'\n",
+        )
+        .expect("parse config with [network]");
+        assert_eq!(
+            config.network.transport_order,
+            vec!["tailscale", "lan_direct"]
+        );
+        assert_eq!(config.network.tailscale_ip.as_deref(), Some("100.64.0.5"));
+    }
+
+    #[test]
+    fn network_partial_table_uses_default_order() {
+        let config: TexureConfig = toml::from_str("[network]\ntailscale_ip = '100.64.0.5'\n")
+            .expect("parse partial network");
+        assert_eq!(
+            config.network.transport_order,
+            vec!["reverse_ws", "lan_direct", "tailscale"]
+        );
+        assert_eq!(config.network.tailscale_ip.as_deref(), Some("100.64.0.5"));
+    }
 }

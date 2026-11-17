@@ -1,6 +1,6 @@
 use crate::bridge_client::BridgeClient;
-use crate::config::load_resolved_config_async;
 use crate::router::TunnelRouter;
+use crate::transport::{resolve_transport, SelectedTransport};
 use crate::tunnel_server::TunnelHandle;
 use crate::wait_for::execute_wait_for;
 use crate::ws_supervisor::WsSupervisor;
@@ -10,7 +10,6 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 use texure_contract::bridge::{KeyPressRequest, TapRequest, TypeRequest};
-use texure_contract::error::ErrorCode;
 use texure_contract::rpc::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use texure_contract::tools::{
     CallToolResult, DeviceTreeParams, KeyPressParams, ScreenshotParams, TapParams, TypeParams,
@@ -18,13 +17,22 @@ use texure_contract::tools::{
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tokio::task::JoinHandle;
+use tracing::{debug, info};
+
+/// A cached direct bridge plus the reconnect task that must be cancelled when
+/// the resolved target changes.
+type CachedBridge = (BridgeClient, WsSupervisor, JoinHandle<()>);
 
 /// Stdio MCP server state.
 pub struct McpServer {
     pub custom_config_path: Option<PathBuf>,
     pub profile_override: Option<String>,
-    bridge: Arc<Mutex<Option<(BridgeClient, WsSupervisor)>>>,
+    /// Cached direct bridge, keyed by resolved config. The client itself is
+    /// built by the resolver (so config errors fall over to the next
+    /// transport); the cache keeps one WS supervisor task alive per target and
+    /// aborts the previous task when the target changes.
+    bridge: Arc<Mutex<Option<CachedBridge>>>,
     /// Connected reverse-tunnel companion, when `--enable-tunnel` is used.
     /// `None` keeps the plain stdio / direct-LAN behavior unchanged.
     tunnel: Option<TunnelHandle>,
@@ -44,8 +52,9 @@ impl McpServer {
     }
 
     /// Attach the reverse tunnel handle. Tool calls route through the
-    /// companion whenever it is connected, and fall back to the direct LAN
-    /// bridge while it is absent (behavior-spec BB-R12 transport fallback).
+    /// companion whenever it is connected; the fallback target is chosen by
+    /// `[network].transport_order` (default LAN direct, then Tailscale) per
+    /// behavior-spec BB-R12.
     pub fn with_tunnel(mut self, handle: TunnelHandle) -> Self {
         self.tunnel = Some(handle);
         self
@@ -278,26 +287,36 @@ impl McpServer {
         // must yield -32602 even when no device is configured.
         let parsed = parse_tool_args(name, args)?;
 
-        // A connected companion owns the device: route every tool through the
-        // reverse tunnel instead of the direct LAN bridge. When the tunnel is
-        // present but currently disconnected, fall through to the LAN path.
-        if let Some(handle) = &self.tunnel {
-            if handle.is_connected() {
-                let mut router = TunnelRouter::new(handle.clone());
+        // Resolve transports in declared priority order (default:
+        // reverse_ws -> lan_direct -> tailscale). A connected companion still
+        // wins by default; config can reorder or skip candidates (BB-R12).
+        let selected = match resolve_transport(
+            self.tunnel.as_ref(),
+            self.custom_config_path.as_deref(),
+            self.profile_override.as_deref(),
+        )
+        .await
+        {
+            Ok(selected) => selected,
+            Err(failure) => {
+                return Ok(CallToolResult::error(
+                    failure.code,
+                    Some(&failure.message),
+                    verbose,
+                    None,
+                ));
+            }
+        };
+
+        let (bridge, ws) = match selected {
+            SelectedTransport::ReverseWs(handle) => {
+                let mut router = TunnelRouter::new(handle);
                 if self.lifecycle_probe {
                     router = router.with_lifecycle_probe();
                 }
                 return Ok(router.route(name, &parsed, verbose).await);
             }
-        }
-
-        // Lazy configuration and bridge connection setup
-        let (bridge, ws) = match self.get_or_init_bridge().await {
-            Ok(pair) => pair,
-            Err((code, msg)) => {
-                let msg = msg.unwrap_or_else(|| code.default_message().to_string());
-                return Ok(CallToolResult::error(code, Some(&msg), verbose, None));
-            }
+            SelectedTransport::Direct(client) => self.get_or_init_bridge(client).await,
         };
 
         match parsed {
@@ -399,29 +418,24 @@ impl McpServer {
         }
     }
 
-    async fn get_or_init_bridge(
-        &self,
-    ) -> Result<(BridgeClient, WsSupervisor), (ErrorCode, Option<String>)> {
+    /// Reuse the cached WS supervisor when the resolved target is unchanged;
+    /// otherwise spawn one for the new target (LAN or Tailscale).
+    async fn get_or_init_bridge(&self, client: BridgeClient) -> (BridgeClient, WsSupervisor) {
         let mut guard = self.bridge.lock().await;
-        if let Some((ref client, ref ws)) = *guard {
-            return Ok((client.clone(), ws.clone()));
+        if let Some((ref cached_client, ref cached_ws, _)) = *guard {
+            if cached_client.config == client.config {
+                return (client, cached_ws.clone());
+            }
         }
 
-        let resolved = load_resolved_config_async(
-            self.custom_config_path.as_deref(),
-            self.profile_override.as_deref(),
-        )
-        .await?;
-        let client = BridgeClient::new(resolved.clone()).map_err(|e| {
-            error!("Bridge client creation failed: {}", e.message);
-            (e.code, Some(e.message))
-        })?;
-
-        let ws = WsSupervisor::new(resolved);
-        ws.spawn();
-
-        *guard = Some((client.clone(), ws.clone()));
-        Ok((client, ws))
+        let ws = WsSupervisor::new(client.config.clone());
+        let task = ws.spawn();
+        // Config is re-read per call, so a target change must not leave the
+        // old supervisor's infinite reconnect loop dialing the stale URL.
+        if let Some((_, _, old_task)) = guard.replace((client.clone(), ws.clone(), task)) {
+            old_task.abort();
+        }
+        (client, ws)
     }
 }
 
