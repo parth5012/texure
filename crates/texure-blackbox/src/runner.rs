@@ -1033,8 +1033,22 @@ async fn run_mcp_tunnel_test(scenario: &Scenario, root_dir: &Path) -> WalkOutcom
 
     let run_tag = format!("texure-bb-tunnel-{}-{}", std::process::id(), scenario.name);
     let config_path = env::temp_dir().join(format!("{run_tag}.toml"));
+    // Gateway scenarios must prove the tunnel actually proxied the RPC. With
+    // lan_direct in the order, a silent tunnel would time out and the LAN
+    // FakeBridge (which serves the same rev:42 tree) would satisfy `rev > 0`
+    // vacuously. Only BB-R12 (transport_resolve) tests fallback, so only that
+    // scenario needs a second transport.
+    let order = if scenario
+        .steps
+        .iter()
+        .any(|step| step.action == "transport_resolve")
+    {
+        "[\"reverse_ws\", \"lan_direct\"]"
+    } else {
+        "[\"reverse_ws\"]"
+    };
     let config_body = format!(
-        "url = \"http://127.0.0.1:{bridge_port}\"\ntoken = \"{VALID_TUNNEL_TOKEN}\"\ntimeout_secs = 10\n\n[network]\ntransport_order = [\"reverse_ws\", \"lan_direct\"]\n"
+        "url = \"http://127.0.0.1:{bridge_port}\"\ntoken = \"{VALID_TUNNEL_TOKEN}\"\ntimeout_secs = 10\n\n[network]\ntransport_order = {order}\n"
     );
     if let Err(e) = std::fs::write(&config_path, config_body) {
         return Err((steps, format!("Failed to write temp tunnel config: {e}")));

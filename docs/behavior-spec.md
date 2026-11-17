@@ -149,7 +149,7 @@ config-driven fallback order); Shizuku is used only for remote lifecycle bootstr
 |---|---|---|
 | Reverse WS handshake | BB-R1 | Companion dials the desktop `wss://` tunnel endpoint with a valid bearer token; server accepts and the tunnel enters CONNECTED state. |
 | Reverse WS auth rejection | BB-R2 | Mismatched bearer token → connection refused with `AUTH_FAILED` and no tunnel established. |
-| Reverse WS reconnect | BB-R3 | Supervisor detects connection drop and reconnects with exponential backoff until CONNECTED again. |
+| Reverse WS reconnect | BB-R3 | Companion re-registers on the tunnel after a drop until CONNECTED again. Backoff scheduling is companion-supervisor behaviour (L3, `docs/runbook-device.md`); the L2 blackbox asserts only re-registration. |
 | Gateway proxying (read) | BB-R4 | Desktop forwards `device_tree` RPC encapsulated in the tunnel envelope to the target bridge; result returned verbatim. |
 | Gateway proxying (mutate) | BB-R5 | Desktop forwards `tap` with verify-at-execute revision check; stale payload is refused. |
 | Gateway error propagation | BB-R6 | Bridge error `NODE_OUTDATED` is relayed through the tunnel unchanged (code, message, hint). |
