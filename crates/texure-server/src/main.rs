@@ -1,11 +1,12 @@
 pub mod bridge_client;
 pub mod config;
 pub mod mdns;
+pub mod pair;
 pub mod server;
 pub mod wait_for;
 pub mod ws_supervisor;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use server::McpServer;
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
@@ -30,12 +31,26 @@ pub(crate) mod test_env_lock {
 )]
 struct Args {
     /// Optional path to custom configuration file
-    #[arg(long)]
+    #[arg(long, global = true)]
     config: Option<PathBuf>,
 
     /// Optional device profile name to activate (overrides active_profile / TEXURE_PROFILE)
-    #[arg(long)]
+    #[arg(long, global = true)]
     profile: Option<String>,
+
+    /// Optional subcommand; omit to run the stdio MCP server
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Print a scannable pairing QR and the raw wss:// connection string
+    Pair {
+        /// Tunnel override: a full wss://host[:port]/path or a bare domain
+        #[arg(long)]
+        tunnel_url: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -49,7 +64,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .init();
 
     let args = Args::parse();
-    let server = McpServer::new(args.config, args.profile);
+    let config = args.config;
+    let profile = args.profile;
 
-    server.run_stdio().await
+    match args.command {
+        Some(Command::Pair { tunnel_url }) => {
+            pair::run_pair(config.as_deref(), profile.as_deref(), tunnel_url.as_deref())
+        }
+        None => {
+            let server = McpServer::new(config, profile);
+            server.run_stdio().await
+        }
+    }
 }
