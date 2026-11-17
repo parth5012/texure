@@ -196,6 +196,18 @@ pub async fn resolve_transport(
     custom_config_path: Option<&Path>,
     profile_override: Option<&str>,
 ) -> Result<SelectedTransport, ResolutionFailure> {
+    resolve_transport_excluding(tunnel, custom_config_path, profile_override, None).await
+}
+
+/// Same as [`resolve_transport`], but skips one transport. Used after a tunnel
+/// transport failure so the next configured candidate actually gets tried
+/// (`transport_order.json` `fallback_on`: tunnel_unreachable / heartbeat_timeout).
+pub async fn resolve_transport_excluding(
+    tunnel: Option<&TunnelHandle>,
+    custom_config_path: Option<&Path>,
+    profile_override: Option<&str>,
+    exclude: Option<Transport>,
+) -> Result<SelectedTransport, ResolutionFailure> {
     let config = crate::config::read_config(custom_config_path);
     let order = parse_transport_order(&config.network.transport_order)?;
     let tailscale_ip = config.network.tailscale_ip.clone();
@@ -212,6 +224,12 @@ pub async fn resolve_transport(
         let config = config_ref;
         let tailscale_ip = tailscale_ip.clone();
         async move {
+            if exclude == Some(transport) {
+                return Err(ResolutionFailure::new(
+                    ErrorCode::Offline,
+                    "transport excluded after failure",
+                ));
+            }
             match transport {
                 Transport::ReverseWs => match tunnel.filter(|handle| handle.is_connected()) {
                     Some(handle) => Ok(SelectedTransport::ReverseWs(handle.clone())),

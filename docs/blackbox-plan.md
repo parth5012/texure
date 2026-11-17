@@ -75,7 +75,7 @@ reverse tunnel). All 13 pass with 0 fail / 0 xfail.
 |---|---|---|---|
 | R1 | Reverse WS handshake with valid bearer token → CONNECTED | `reverse_ws_handshake` | mcp-tunnel |
 | R2 | Mismatched token → `AUTH_FAILED`, no tunnel | `reverse_ws_auth_reject` | mcp-tunnel |
-| R3 | Drop → supervisor reconnect with exponential backoff | `reverse_ws_reconnect` | mcp-tunnel |
+| R3 | Drop → re-register on tunnel until CONNECTED (backoff scheduling is companion L3 scope) | `reverse_ws_reconnect` | mcp-tunnel |
 | R4 | `device_tree` RPC proxied across tunnel verbatim | `gateway_proxy_tree` | mcp-tunnel |
 | R5 | Mutating `tap` proxied with verify-at-execute rev check | `gateway_proxy_tap` | mcp-tunnel |
 | R6 | Bridge `NODE_OUTDATED` relayed unchanged | `gateway_error_propagation` | mcp-tunnel |

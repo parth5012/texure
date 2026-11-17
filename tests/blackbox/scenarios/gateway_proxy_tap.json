@@ -19,7 +19,7 @@
         "rpc": "device_tree",
         "args": {}
       },
-      "expect": { "rpc": "device_tree" }
+      "expect": { "rev": "> 0" }
     },
     {
       "action": "gateway_proxy",

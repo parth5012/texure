@@ -1,5 +1,12 @@
 # Log
 
+## 2026-11-17 (session) — Council round 1 fixes (map #64 stack)
+- Council: Hy4 Free 8/10 YES, GLM 5.3 Flash 8/10 YES, DeepSeek V4.1 Flash 6/10 NO; Gemini 3.8 Flash unavailable (Antigravity individual quota, resets ~86h). Pre-audit: applied CodeRabbit's 4 #119 findings (query token encoding, authority delimiters, port 0, unknown selected profile) and restacked all 5 branches.
+- BLOCK B1 (DeepSeek): fallback fired only on tunnel *absence*, not failure. Added `RouteError::{Transport,Tool}` in `router.rs` + `route_transport`, `resolve_transport_excluding` in `transport.rs`, and server fallback on transport failure. Repro (`/tmp/opencode/bb-review/repro_fallback.py`) now returns LAN tree `rev:42` after a silent-tunnel timeout instead of OFFLINE.
+- BLOCK B2 (all three): BB-R4/R5 first-step `expect` checked a harness-injected `rpc` key. Removed injection; scenarios now assert `rev: > 0` from the real tree payload.
+- BLOCK B3 (DeepSeek/Hy4): BB-R3 overclaimed exponential backoff. Scenario/TestDef/blackbox-plan reworded to "reconnect after drop", with backoff scheduling declared companion L3 scope.
+- Also: `TEXURE_PROFILE` added to blackbox env sanitization; `route()` restricted to cfg(test). VERIFY after fixes: texure-lint 0 · workspace 148 tests · clippy clean · fmt clean · mcp-tunnel 13/13 · B1 repro green.
+
 ## 2026-11-17 (session) — Wayfinder #64/#63: blackbox end-to-end tunnel test (BB-R1..R13 -> GREEN)
 - Branch `wf/64-63-blackbox-tunnel-e2e` (stacked on `wf/64-62-transport-fallback`). Scope: flip all 13 authored-red Group R scenarios green via a real-server + in-process fake-companion blackbox target.
 - RED baseline captured first: `cargo run -p texure-blackbox -- --target mcp` showed BB-R1..R13 all XFAIL with `Unsupported action in MCP test: <action>` (13 xfail, 6 pass) — saved to `tmp/evidence/63/red-run.txt`.
