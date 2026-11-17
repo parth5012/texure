@@ -81,6 +81,7 @@ class CompanionDaemonService : Service() {
          * Stops the daemon service and releases resources.
          */
         fun stop(context: Context) {
+            if (!isRunning) return
             val intent = Intent(context, CompanionDaemonService::class.java).apply {
                 action = ACTION_STOP
             }
@@ -91,6 +92,7 @@ class CompanionDaemonService : Service() {
          * Updates status text in the ongoing foreground notification.
          */
         fun updateStatus(context: Context, status: String) {
+            if (!isRunning) return
             val intent = Intent(context, CompanionDaemonService::class.java).apply {
                 action = ACTION_UPDATE_STATUS
                 putExtra(EXTRA_STATUS, status)
@@ -169,7 +171,6 @@ class CompanionDaemonService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel(this)
-        isRunning = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -181,7 +182,17 @@ class CompanionDaemonService : Service() {
                 return START_NOT_STICKY
             }
 
+            ACTION_RESTART_APP -> {
+                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    startActivity(launchIntent)
+                }
+                return START_NOT_STICKY
+            }
+
             ACTION_UPDATE_STATUS -> {
+                if (!isRunning) return START_NOT_STICKY
                 val status = intent?.getStringExtra(EXTRA_STATUS) ?: DEFAULT_STATUS
                 handleUpdateStatus(status)
             }
@@ -193,14 +204,22 @@ class CompanionDaemonService : Service() {
                 currentStatus = status
                 val notification = buildNotification(this, status)
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-                    )
-                } else {
-                    startForeground(NOTIFICATION_ID, notification)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                        )
+                    } else {
+                        startForeground(NOTIFICATION_ID, notification)
+                    }
+                    isRunning = true
+                } catch (e: Exception) {
+                    android.util.Log.e("CompanionDaemonService", "Failed to start foreground service: ${e.message}", e)
+                    isRunning = false
+                    stopSelf()
+                    return START_NOT_STICKY
                 }
 
                 if (shouldWakeLock) {

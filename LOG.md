@@ -7,8 +7,20 @@
 - Ticket #55 (`wf/58-55-lifecycle-supervisor`): Lifecycle supervisor commands (`shizuku_wake_screen`, `shizuku_dismiss_keyguard`, `shizuku_start_app`, `shizuku_stop_app`) wrapping IPC shell executions via Shizuku binder process runner reflection. Timeout and stream capture. Addressed OCR self-review findings (reflection try/catch containment, stream thread interruption, runner exception trapping). PR #116 filed into `wf/58-54-shizuku-permission`. Linked via `link_pull_request`. All checks green. Issue #55 closed.
 - Ticket #56 (`wf/58-56-elevated-fallback`): Elevated system fallback commands (`shizuku_grant_permission`, `shizuku_system_tap`, `shizuku_press_key`) with strict input validation regexes (`PACKAGE_REGEX`, `PERMISSION_REGEX`, `KEYCODE_REGEX`) against command injection. Addressed OCR self-review findings (namespace checking, extracted safe execution helper `executeSafely`, bounds documentation). PR #117 filed into `wf/58-55-lifecycle-supervisor`. Linked via `link_pull_request`. All checks green. Issue #56 closed.
 - Ticket #57 (`wf/58-57-foreground-service-daemon`): Android Foreground Service `connectedDevice` daemon (`CompanionDaemonService.kt`) with ongoing notification ("Texure Relay: Connected to PC"), action buttons ("Stop Relay", "Restart App"), and partial wake lock management with 1-hour safety timeout. Addressed OCR self-review findings (AtomicReference/AtomicBoolean state, START_NOT_STICKY policy, default wake lock safety timeout). PR #118 filed into `wf/58-56-elevated-fallback`. Linked via `link_pull_request`. All checks green. Issue #57 closed.
-- Verification & Babysitting: 25/25 Android unit tests passing across `ShizukuSetupTest`, `ShizukuPluginTest`, `CompanionDaemonServiceTest`. Workspace cargo check clean (89/89 tests passing, texure-lint 0 findings, clippy clean with 0 warnings). All CI checks across PRs #114, #115, #116, #117, #118 green.
-- Status: Map #58 complete. Stacked PRs #114..#118 ready for handoff to `merge-pr`.
+- Council Review (5 Members: Gemini 3.8 Flash, GLM 5.3 Flash, DeepSeek V4.1 Flash, Hy4, Claude Sonnet 4.6):
+  - Round 1 Scores: Gemini 3.8 Flash (8/10), GLM 5.3 Flash (6/10), DeepSeek V4.1 Flash (5/10), Hy4 (6/10), Claude Sonnet 4.6 (7/10). Verdict: REQUESTING CHANGES across all members.
+  - Concrete improvements applied:
+    1. Added `<queries>` block in `AndroidManifest.xml` for `moe.shizuku.privileged.api` and `rikka.shizuku` ensuring package visibility on Android 11+ (API 30–35).
+    2. Added `CHANGE_NETWORK_STATE` and `CHANGE_WIFI_STATE` to AndroidManifest.xml satisfying Android 14+ (API 34/35) `FOREGROUND_SERVICE_CONNECTED_DEVICE` runtime prerequisites.
+    3. Added `ACTIVITY_REGEX` validation and package matching in `buildStartAppCommand` to eliminate command flag injection via `activityName`.
+    4. Guarded `CompanionDaemonService.stop()` and `updateStatus()` against inactive execution; moved `isRunning` state mutation to post-`startForeground` success; added `ACTION_RESTART_APP` intent handler.
+    5. Cleaned up process execution stream handling: closed stdin output stream immediately; closed streams on timeout; made reader threads daemon; bounded output capture buffer (256 KiB); mapped non-zero exit codes to `error = "NON_ZERO_EXIT"` with `errorHint`.
+    6. Synchronized listener registrations via `AtomicBoolean` and wrapped listener removals in `runCatching`; dispatched `emitBinderState` to main looper.
+    7. Hardened app security with `android:allowBackup="false"`.
+    8. Created `companion/src-tauri/gen/android/app/proguard-rules.pro` keeping Shizuku reflection methods and daemon classes.
+    9. Wired `ShizukuPlugin` into `MainActivity` lifecycle.
+- Verification: 47/47 Android unit tests passing across `ShizukuSetupTest` (3/3), `ShizukuPluginTest` (35/35), `CompanionDaemonServiceTest` (9/9). Workspace cargo check clean (89/89 tests passing, texure-lint 0 findings, clippy clean with 0 warnings).
+- Status: Map #58 complete. Council improvements applied. Stacked PRs #114..#118 ready for handoff to `merge-pr`.
 
 ## 2026-11-15 (session) — Wayfinder map 11 (#52): Tauri Rust backend & reverse WebSocket tunnel engine
 - Full-cycle execution of Map #52 in Single-PR mode (4 AFK tickets #48–#51).

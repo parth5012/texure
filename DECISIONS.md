@@ -309,3 +309,23 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
      - Transport fallback resolves in strict priority order (`reverse_ws` primary, falling back to `lan_direct` on absence/failure per `transport_order.json`).
    - *Why:* Unattended test rigs operating across cellular networks or separate subnet VLANs cannot receive inbound LAN connections from the controller desktop. An outbound TLS reverse connection allows secure NAT traversal without opening in-app bridge ports to WAN traffic or relying on heavy VPN setups.
    - *Alternatives rejected:* In-app bridge exposing public internet ports (violates G11 and release hygiene G1); mandatory VPN/WireGuard daemon (burdens device setup).
+
+---
+
+## 2026-11-17 (Wayfinder Map #58: Android Shizuku Native Bridge & Daemon Hardening via Council Review)
+
+1. **Android 11–15 Package Visibility Declarations (`<queries>`).**
+   - *What:* Declared `<queries>` elements for `moe.shizuku.privileged.api` and `rikka.shizuku` in `companion/src-tauri/gen/android/app/src/main/AndroidManifest.xml`.
+   - *Why:* Android 11+ (API 30–35) package visibility restrictions cause `packageManager.getPackageInfo()` to throw `NameNotFoundException` even when Shizuku is installed unless declared in `<queries>`.
+
+2. **Android 14+ (API 34/35) Foreground Service Prerequisites for `connectedDevice`.**
+   - *What:* Added `android.permission.CHANGE_NETWORK_STATE` and `android.permission.CHANGE_WIFI_STATE` to AndroidManifest.xml.
+   - *Why:* Official Android 14+ requirements for `FOREGROUND_SERVICE_CONNECTED_DEVICE` mandate at least one network or device state modification permission at runtime, preventing `SecurityException` crashes upon service startup on physical API 34+ devices.
+
+3. **Input Validation on Activity Components in `buildStartAppCommand`.**
+   - *What:* Implemented `validateActivityName(activityName, expectedPackageName)` enforcing package prefix matching when `/` is present and validating class names against `ACTIVITY_REGEX` (`^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)*$`).
+   - *Why:* Prevents arbitrary flag injection into `am start -n` and ensures the activity component targets only the validated target application package.
+
+4. **Process Stream & Timeout Resource Hygiene.**
+   - *What:* Explicitly closed `process.outputStream` on launch; closed `inputStream` and `errorStream` on timeout or completion; configured reader threads as daemon threads; bounded stdout/stderr capture buffer to 256 KiB; and mapped non-zero exit codes to `error = "NON_ZERO_EXIT"` with `errorHint`.
+   - *Why:* Prevents file descriptor, thread, and memory leaks during repeated or hanging elevated shell commands.

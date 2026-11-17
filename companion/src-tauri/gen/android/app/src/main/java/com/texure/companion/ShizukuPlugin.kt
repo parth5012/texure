@@ -2,9 +2,12 @@ package com.texure.companion
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import rikka.shizuku.Shizuku
 import java.lang.reflect.Method
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Result of executing an elevated shell command via Shizuku.
@@ -15,7 +18,8 @@ data class ShellResult(
     val stdout: String,
     val stderr: String,
     val timedOut: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val errorHint: String? = null
 )
 
 /**
@@ -29,11 +33,15 @@ class ShizukuPlugin(
     Shizuku.OnBinderReceivedListener,
     Shizuku.OnBinderDeadListener {
 
-    var processRunner: ((cmd: Array<String>, timeoutMs: Long) -> ShellResult)? = null
+    internal var processRunner: ((cmd: Array<String>, timeoutMs: Long) -> ShellResult)? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val listenersRegistered = AtomicBoolean(false)
 
     companion object {
         const val REQUEST_CODE_PERMISSION = 1001
         const val EVENT_BINDER_STATE = "shizuku://binder-state"
+        const val MAX_OUTPUT_BYTES = 256 * 1024 // 256 KiB stream capture limit
         val SHIZUKU_PACKAGES = listOf("moe.shizuku.privileged.api", "rikka.shizuku")
 
         private val newProcessMethod: Method? by lazy {
@@ -63,12 +71,33 @@ class ShizukuPlugin(
         // --- Sanitization & Validation Helpers ---
 
         val PACKAGE_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
+        val ACTIVITY_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)*$")
         val PERMISSION_REGEX = Regex("^[a-zA-Z0-9_.]+$")
         val KEYCODE_REGEX = Regex("^[a-zA-Z0-9_]+$")
 
         fun validatePackageName(packageName: String) {
             require(packageName.matches(PACKAGE_REGEX)) {
                 "Invalid package name: '$packageName' contains invalid characters or format"
+            }
+        }
+
+        fun validateActivityName(activityName: String, expectedPackageName: String? = null) {
+            val target = if (activityName.contains("/")) {
+                val parts = activityName.split("/")
+                require(parts.size == 2) { "Invalid component syntax: '$activityName'" }
+                validatePackageName(parts[0])
+                if (expectedPackageName != null) {
+                    require(parts[0] == expectedPackageName) {
+                        "Component package '${parts[0]}' does not match expected package '$expectedPackageName'"
+                    }
+                }
+                parts[1]
+            } else {
+                activityName
+            }
+            val classPart = if (target.startsWith(".")) target.substring(1) else target
+            require(classPart.isNotEmpty() && classPart.matches(ACTIVITY_REGEX)) {
+                "Invalid activity name: '$activityName' contains invalid characters or format"
             }
         }
 
@@ -87,6 +116,7 @@ class ShizukuPlugin(
         fun buildStartAppCommand(packageName: String, activityName: String? = null): Array<String> {
             validatePackageName(packageName)
             return if (!activityName.isNullOrBlank()) {
+                validateActivityName(activityName, packageName)
                 val component = if (activityName.contains("/")) {
                     activityName
                 } else if (activityName.startsWith(".")) {
@@ -148,8 +178,6 @@ class ShizukuPlugin(
         }
     }
 
-    private var listenersRegistered = false
-
     init {
         registerListeners()
     }
@@ -157,15 +185,15 @@ class ShizukuPlugin(
     /**
      * Registers binder received/dead and permission result listeners with Shizuku.
      */
+    @Synchronized
     fun registerListeners() {
-        if (!listenersRegistered) {
+        if (listenersRegistered.compareAndSet(false, true)) {
             try {
                 Shizuku.addBinderReceivedListenerSticky(this)
                 Shizuku.addBinderDeadListener(this)
                 Shizuku.addRequestPermissionResultListener(this)
-                listenersRegistered = true
             } catch (e: Throwable) {
-                // Ignore if binder registration fails
+                listenersRegistered.set(false)
             }
         }
     }
@@ -173,18 +201,20 @@ class ShizukuPlugin(
     /**
      * Unregisters all Shizuku listeners.
      */
+    @Synchronized
     fun unregisterListeners() {
-        if (listenersRegistered) {
-            try {
-                Shizuku.removeBinderReceivedListener(this)
-                Shizuku.removeBinderDeadListener(this)
-                Shizuku.removeRequestPermissionResultListener(this)
-            } catch (e: Throwable) {
-                // Ignore during teardown
-            } finally {
-                listenersRegistered = false
-            }
+        if (listenersRegistered.compareAndSet(true, false)) {
+            runCatching { Shizuku.removeBinderReceivedListener(this) }
+            runCatching { Shizuku.removeBinderDeadListener(this) }
+            runCatching { Shizuku.removeRequestPermissionResultListener(this) }
         }
+    }
+
+    /**
+     * Cleans up listeners and resources on destroy.
+     */
+    fun destroy() {
+        unregisterListeners()
     }
 
     /**
@@ -235,6 +265,9 @@ class ShizukuPlugin(
             return false
         }
         return try {
+            if (Shizuku.isPreV11()) {
+                return false
+            }
             if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
                 emitBinderState(connected = true, permission = true)
                 true
@@ -275,83 +308,95 @@ class ShizukuPlugin(
                 exitCode = -1,
                 stdout = "",
                 stderr = "Shizuku is not running or permission is not granted",
-                error = "PERMISSION_DENIED"
+                error = "PERMISSION_DENIED",
+                errorHint = "request Shizuku permission on the device"
             )
         }
 
         return try {
             val process = newProcess(cmd, null, null)
+            runCatching { process.outputStream.close() }
+
             val stdoutBuffer = StringBuilder()
             val stderrBuffer = StringBuilder()
 
             val stdoutThread = Thread {
                 try {
                     process.inputStream.bufferedReader().useLines { lines ->
-                        lines.forEach { line ->
-                            if (Thread.currentThread().isInterrupted) return@useLines
+                        for (line in lines) {
+                            if (Thread.currentThread().isInterrupted) break
                             synchronized(stdoutBuffer) {
-                                if (stdoutBuffer.isNotEmpty()) stdoutBuffer.append("\n")
-                                stdoutBuffer.append(line)
+                                if (stdoutBuffer.length + line.length < MAX_OUTPUT_BYTES) {
+                                    if (stdoutBuffer.isNotEmpty()) stdoutBuffer.append("\n")
+                                    stdoutBuffer.append(line)
+                                }
                             }
                         }
                     }
                 } catch (ignored: Throwable) {}
-            }
+            }.apply { isDaemon = true }
+
             val stderrThread = Thread {
                 try {
                     process.errorStream.bufferedReader().useLines { lines ->
-                        lines.forEach { line ->
-                            if (Thread.currentThread().isInterrupted) return@useLines
+                        for (line in lines) {
+                            if (Thread.currentThread().isInterrupted) break
                             synchronized(stderrBuffer) {
-                                if (stderrBuffer.isNotEmpty()) stderrBuffer.append("\n")
-                                stderrBuffer.append(line)
+                                if (stderrBuffer.length + line.length < MAX_OUTPUT_BYTES) {
+                                    if (stderrBuffer.isNotEmpty()) stderrBuffer.append("\n")
+                                    stderrBuffer.append(line)
+                                }
                             }
                         }
                     }
                 } catch (ignored: Throwable) {}
-            }
+            }.apply { isDaemon = true }
 
             stdoutThread.start()
             stderrThread.start()
 
-            val completed = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val completed = try {
+                val waitTimeoutMethod = process.javaClass.getMethod(
+                    "waitForTimeout",
+                    Long::class.javaPrimitiveType,
+                    TimeUnit::class.java
+                )
+                waitTimeoutMethod.invoke(process, timeoutMs, TimeUnit.MILLISECONDS) as Boolean
+            } catch (_: Throwable) {
                 process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-            } else {
-                val start = System.currentTimeMillis()
-                var done = false
-                while (System.currentTimeMillis() - start < timeoutMs) {
-                    try {
-                        process.exitValue()
-                        done = true
-                        break
-                    } catch (e: IllegalThreadStateException) {
-                        Thread.sleep(50)
-                    }
-                }
-                done
             }
 
             if (!completed) {
-                process.destroy()
+                runCatching { process.inputStream.close() }
+                runCatching { process.errorStream.close() }
+                runCatching { process.destroy() }
                 stdoutThread.interrupt()
                 stderrThread.interrupt()
+                runCatching { stdoutThread.join(500) }
+                runCatching { stderrThread.join(500) }
                 ShellResult(
                     ok = false,
                     exitCode = -1,
                     stdout = synchronized(stdoutBuffer) { stdoutBuffer.toString() },
                     stderr = "Command timed out after ${timeoutMs}ms",
                     timedOut = true,
-                    error = "TIMEOUT"
+                    error = "TIMEOUT",
+                    errorHint = "increase timeout or verify device responsiveness"
                 )
             } else {
-                stdoutThread.join(500)
-                stderrThread.join(500)
+                runCatching { stdoutThread.join(1000) }
+                runCatching { stderrThread.join(1000) }
+                runCatching { process.inputStream.close() }
+                runCatching { process.errorStream.close() }
                 val exitCode = process.exitValue()
+                val isOk = (exitCode == 0)
+                val err = if (!isOk) "NON_ZERO_EXIT" else null
                 ShellResult(
-                    ok = (exitCode == 0),
+                    ok = isOk,
                     exitCode = exitCode,
                     stdout = synchronized(stdoutBuffer) { stdoutBuffer.toString() },
-                    stderr = synchronized(stderrBuffer) { stderrBuffer.toString() }
+                    stderr = synchronized(stderrBuffer) { stderrBuffer.toString() },
+                    error = err
                 )
             }
         } catch (e: Throwable) {
@@ -375,7 +420,8 @@ class ShizukuPlugin(
                 exitCode = -1,
                 stdout = "",
                 stderr = e.message ?: "Invalid arguments",
-                error = "INVALID_ARGUMENT"
+                error = "INVALID_ARGUMENT",
+                errorHint = "verify command parameters match regex constraints"
             )
         }
     }
@@ -456,6 +502,7 @@ class ShizukuPlugin(
     }
 
     override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
+        if (requestCode != REQUEST_CODE_PERMISSION) return
         val granted = grantResult == PackageManager.PERMISSION_GRANTED
         emitBinderState(connected = shizuku_is_running(), permission = granted)
     }
@@ -463,6 +510,7 @@ class ShizukuPlugin(
     // --- Event Emission ---
 
     private fun emitBinderState(connected: Boolean, permission: Boolean) {
+        val isRunning = shizuku_is_running()
         val version = try {
             if (connected) Shizuku.getVersion() else 0
         } catch (e: Throwable) {
@@ -470,10 +518,16 @@ class ShizukuPlugin(
         }
         val payload = mapOf(
             "connected" to connected,
-            "running" to connected,
+            "running" to (connected && isRunning),
             "permission" to permission,
             "version" to version
         )
-        eventSink?.invoke(EVENT_BINDER_STATE, payload)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            eventSink?.invoke(EVENT_BINDER_STATE, payload)
+        } else {
+            mainHandler.post {
+                eventSink?.invoke(EVENT_BINDER_STATE, payload)
+            }
+        }
     }
 }
