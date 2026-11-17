@@ -329,3 +329,13 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 4. **Process Stream & Timeout Resource Hygiene.**
    - *What:* Explicitly closed `process.outputStream` on launch; closed `inputStream` and `errorStream` on timeout or completion; configured reader threads as daemon threads; bounded stdout/stderr capture buffer to 256 KiB; and mapped non-zero exit codes to `error = "NON_ZERO_EXIT"` with `errorHint`.
    - *Why:* Prevents file descriptor, thread, and memory leaks during repeated or hanging elevated shell commands.
+
+---
+
+## 2026-11-17 (Wayfinder Map #13 / #64: reverse tunnel tool routing)
+
+1. **Lifecycle probe is opt-in and depends on a companion `device_state` RPC.**
+   - *What:* `texure-server --lifecycle-probe` enables a best-effort STOPPED-state probe followed by `shizuku_start_app` before tunneled tool calls. It is OFF by default because the frozen gateway contract (`companion/src-tauri/src/proxy.rs`) does not yet publish a `device_state` RPC; until that lands, the probe times out harmlessly and no trigger fires. The Rust path and its test exist now so the feature is reachable the moment the companion ships the RPC.
+   - *Why:* Ticket #61 asks for an *optional* lifecycle trigger, but inventing a state-reporting wire shape would change the frozen gateway contract without companion consensus. Keeping the probe behind a flag preserves the 6-tool freeze (G7) and avoids a 750 ms penalty on every call for companions that cannot answer it.
+   - *Alternatives rejected:* enabling the probe by default (adds latency and sends unsupported RPCs); implementing `device_state` in the companion as part of this server-scoped ticket (out of scope).
+   - *Follow-up:* [#121](https://github.com/parth5012/texure/issues/121) tracks adding `device_state` to the companion gateway and flipping the probe on by default.

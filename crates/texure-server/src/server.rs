@@ -1,5 +1,7 @@
 use crate::bridge_client::BridgeClient;
 use crate::config::load_resolved_config_async;
+use crate::router::TunnelRouter;
+use crate::tunnel_server::TunnelHandle;
 use crate::wait_for::execute_wait_for;
 use crate::ws_supervisor::WsSupervisor;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -23,6 +25,11 @@ pub struct McpServer {
     pub custom_config_path: Option<PathBuf>,
     pub profile_override: Option<String>,
     bridge: Arc<Mutex<Option<(BridgeClient, WsSupervisor)>>>,
+    /// Connected reverse-tunnel companion, when `--enable-tunnel` is used.
+    /// `None` keeps the plain stdio / direct-LAN behavior unchanged.
+    tunnel: Option<TunnelHandle>,
+    /// Whether to probe for STOPPED state and trigger shizuku_start_app before calls.
+    lifecycle_probe: bool,
 }
 
 impl McpServer {
@@ -31,7 +38,25 @@ impl McpServer {
             custom_config_path,
             profile_override,
             bridge: Arc::new(Mutex::new(None)),
+            tunnel: None,
+            lifecycle_probe: false,
         }
+    }
+
+    /// Attach the reverse tunnel handle. Tool calls route through the
+    /// companion whenever it is connected, and fall back to the direct LAN
+    /// bridge while it is absent (behavior-spec BB-R12 transport fallback).
+    pub fn with_tunnel(mut self, handle: TunnelHandle) -> Self {
+        self.tunnel = Some(handle);
+        self
+    }
+
+    /// Opt in to the best-effort STOPPED-state probe + `shizuku_start_app`
+    /// trigger before tunneled tool calls. Off by default: the companion must
+    /// publish a `device_state` RPC (tracked in DECISIONS.md).
+    pub fn with_lifecycle_probe(mut self) -> Self {
+        self.lifecycle_probe = true;
+        self
     }
 
     /// Run the main stdin / stdout JSON-RPC 2.0 loop.
@@ -229,7 +254,7 @@ impl McpServer {
     /// Execute a `tools/call`. Protocol-level problems (unknown tool, malformed
     /// arguments) are `Err` and surface as JSON-RPC -32602; tool outcomes —
     /// including bridge failures — are `Ok(CallToolResult)`.
-    async fn call_tool(&self, params: Value) -> Result<CallToolResult, JsonRpcError> {
+    pub(crate) async fn call_tool(&self, params: Value) -> Result<CallToolResult, JsonRpcError> {
         let name = params
             .get("name")
             .and_then(|n| n.as_str())
@@ -252,6 +277,19 @@ impl McpServer {
         // Parse arguments BEFORE initializing the bridge: a malformed call
         // must yield -32602 even when no device is configured.
         let parsed = parse_tool_args(name, args)?;
+
+        // A connected companion owns the device: route every tool through the
+        // reverse tunnel instead of the direct LAN bridge. When the tunnel is
+        // present but currently disconnected, fall through to the LAN path.
+        if let Some(handle) = &self.tunnel {
+            if handle.is_connected() {
+                let mut router = TunnelRouter::new(handle.clone());
+                if self.lifecycle_probe {
+                    router = router.with_lifecycle_probe();
+                }
+                return Ok(router.route(name, &parsed, verbose).await);
+            }
+        }
 
         // Lazy configuration and bridge connection setup
         let (bridge, ws) = match self.get_or_init_bridge().await {
@@ -388,7 +426,7 @@ impl McpServer {
 }
 
 /// Parsed, validated arguments for one of the 6 frozen tools.
-enum ToolArgs {
+pub(crate) enum ToolArgs {
     DeviceTree(DeviceTreeParams),
     Tap(TapParams),
     TypeText(TypeParams),
@@ -397,7 +435,7 @@ enum ToolArgs {
     WaitFor(WaitForParams),
 }
 
-fn parse_tool_args(name: &str, args: Value) -> Result<ToolArgs, JsonRpcError> {
+pub(crate) fn parse_tool_args(name: &str, args: Value) -> Result<ToolArgs, JsonRpcError> {
     let invalid = |e: serde_json::Error| {
         JsonRpcError::invalid_params(&format!("Invalid {name} arguments: {e}"))
     };
