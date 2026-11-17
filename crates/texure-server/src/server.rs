@@ -320,6 +320,19 @@ impl McpServer {
                     Ok(result) => return Ok(result),
                     Err(RouteError::Tool(result)) => return Ok(result),
                     Err(RouteError::Transport(error)) => {
+                        // A timeout means the companion may have executed the
+                        // call before its reply was lost. Only retry on a
+                        // target with a revision guard (tap/type) or a
+                        // side-effect-free read; `keypress` has no rev, so a
+                        // retry could double-fire. Return OFFLINE for it.
+                        if name == "keypress" {
+                            return Ok(CallToolResult::error(
+                                error.code(),
+                                Some(&error.to_string()),
+                                verbose,
+                                None,
+                            ));
+                        }
                         // The tunnel is connected but unusable (timeout, drop,
                         // heartbeat lapse). transport_order.json declares
                         // fallback_on these failures, so re-resolve without the

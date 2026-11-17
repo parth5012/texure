@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-17 (session) — Council round 2 fixes (map #64 stack)
+- DeepSeek 7/10 NO: round-1 B2 fix was still exploitable — with lan_direct in every tunnel scenario's transport_order, a silent tunnel timed out and the FakeBridge tree (same rev:42) satisfied `rev > 0`, so BB-R4 passed while the gateway proxied nothing. Gateway scenarios now get `transport_order = ["reverse_ws"]` (only BB-R12 transport_resolve keeps lan_direct), so a silent tunnel yields OFFLINE and fails the oracle; B1 fallback remains covered by BB-R12 + the repro.
+- Hy4 9/10 YES (blockers RESOLVED). Non-blocking replay risk addressed: `keypress` (no rev guard) is excluded from fallback retry to avoid double execution; rev-guarded tap/type and reads still fall over.
+- Docs traceability: behavior-spec §3R R3 and bridge-contract item 1 now annotate that exponential backoff is companion/L3 scope while BB-R3 L2 asserts re-registration only.
+- VERIFY: texure-lint 0 · workspace 148 tests · clippy clean · fmt clean · mcp-tunnel 13/13 · B1 repro still returns LAN rev:42.
+
 ## 2026-11-17 (session) — Council round 1 fixes (map #64 stack)
 - Council: Hy4 Free 8/10 YES, GLM 5.3 Flash 8/10 YES, DeepSeek V4.1 Flash 6/10 NO; Gemini 3.8 Flash unavailable (Antigravity individual quota, resets ~86h). Pre-audit: applied CodeRabbit's 4 #119 findings (query token encoding, authority delimiters, port 0, unknown selected profile) and restacked all 5 branches.
 - BLOCK B1 (DeepSeek): fallback fired only on tunnel *absence*, not failure. Added `RouteError::{Transport,Tool}` in `router.rs` + `route_transport`, `resolve_transport_excluding` in `transport.rs`, and server fallback on transport failure. Repro (`/tmp/opencode/bb-review/repro_fallback.py`) now returns LAN tree `rev:42` after a silent-tunnel timeout instead of OFFLINE.
