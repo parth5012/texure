@@ -392,6 +392,10 @@ class ShizukuPluginTest {
         // Full component with matching package
         val cmd3 = ShizukuPlugin.buildStartAppCommand("com.texure.sample", "com.texure.sample/com.texure.sample.MainActivity")
         assertArrayEquals(arrayOf("am", "start", "-n", "com.texure.sample/com.texure.sample.MainActivity"), cmd3)
+
+        // Fully-qualified activity class without slash prefix
+        val cmd4 = ShizukuPlugin.buildStartAppCommand("com.texure.sample", "com.texure.sample.MainActivity")
+        assertArrayEquals(arrayOf("am", "start", "-n", "com.texure.sample/com.texure.sample.MainActivity"), cmd4)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -412,7 +416,14 @@ class ShizukuPluginTest {
     @Test
     fun testNonZeroExitPopulatesError() {
         val runner = { _: Array<String>, _: Long ->
-            ShellResult(ok = false, exitCode = 1, stdout = "", stderr = "some error")
+            ShellResult(
+                ok = false,
+                exitCode = 1,
+                stdout = "",
+                stderr = "some error",
+                error = "NON_ZERO_EXIT",
+                errorHint = "process exited with code 1"
+            )
         }
         val plugin = ShizukuPlugin(context).apply {
             processRunner = runner
@@ -420,6 +431,8 @@ class ShizukuPluginTest {
         val res = plugin.shizuku_stop_app("com.texure.sample")
         assertFalse(res.ok)
         assertEquals(1, res.exitCode)
+        assertEquals("NON_ZERO_EXIT", res.error)
+        assertEquals("process exited with code 1", res.errorHint)
     }
 
     @Test

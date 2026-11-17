@@ -121,6 +121,8 @@ class ShizukuPlugin(
                     activityName
                 } else if (activityName.startsWith(".")) {
                     "$packageName/$activityName"
+                } else if (activityName.startsWith("$packageName.")) {
+                    "$packageName/$activityName"
                 } else {
                     "$packageName/.$activityName"
                 }
@@ -391,12 +393,14 @@ class ShizukuPlugin(
                 val exitCode = process.exitValue()
                 val isOk = (exitCode == 0)
                 val err = if (!isOk) "NON_ZERO_EXIT" else null
+                val hint = if (!isOk) "process exited with code $exitCode" else null
                 ShellResult(
                     ok = isOk,
                     exitCode = exitCode,
                     stdout = synchronized(stdoutBuffer) { stdoutBuffer.toString() },
                     stderr = synchronized(stderrBuffer) { stderrBuffer.toString() },
-                    error = err
+                    error = err,
+                    errorHint = hint
                 )
             }
         } catch (e: Throwable) {
