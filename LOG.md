@@ -1,5 +1,13 @@
 # Log
 
+## 2026-11-17 (session) — Wayfinder map 13 (#64) ticket #59: `texure-server pair` ASCII QR + pairing secret
+- Ticket #59 (`wf/64-59-pair-qr`): added `pair` subcommand to `texure-server` (crate `crates/texure-server`) rendering an ASCII QR (`#`/space, quiet zone) plus the raw `wss://<ip>:<port>/tunnel?token=<token>` connection string.
+- New module `src/pair.rs`: `DEFAULT_TUNNEL_PORT=8766`, `DEFAULT_TUNNEL_PATH="/tunnel"` pub consts for #60 reuse; `--tunnel-url` normalization (full `wss://host[:port]/path` or bare domain, scheme forced to wss, default port 443); token reuse from config via `resolve_token_from_config` with an OS-CSPRNG (`getrandom`) 32-byte base64url fallback that errors rather than downgrading; JSON payload matches `contract/fixtures/pairing_qr_payload.json`.
+- CLI keeps global `--config`/`--profile` (clap `global = true`) and defaults to the stdio MCP server with no subcommand; 6-tool frozen list unchanged (G7). Added `qrcode = "0.14"` dependency.
+- RED: 10 focused unit tests failed on stubs (captured to `tmp/evidence/59/red-run.txt`). GREEN: 24/24 `texure-server` tests pass. Stdio smoke test with `--config`/`--profile` returned initialize + 6 tools. CLI smoke test rendered a readable QR.
+- Self-review (2 iterations): reviewer APPROVE; OCR HIGH CSPRNG finding fixed (getrandom 0.3 + Result propagation), MEDIUM host-whitespace + localhost-warn findings fixed; 2 OCR findings discarded as invalid (read_config is not Result, profile lookup is not recursive); IDN/percent-encoding and CSPRNG-mock findings parked as non-blocking. Re-verified green: L0 0 findings · L1 101 tests · clippy clean · fmt clean.
+- NOT committed — orchestrator handles commit/PR/issue. BB-R11 remains xfail until #63.
+
 ## 2026-11-17 (session) — Wayfinder map 12 (#58): Android Shizuku native integration & lifecycle daemon
 - Full-cycle execution of Map #58 in stacked-PR mode (5 AFK tickets #53–#57).
 - Ticket #53 (`wf/58-53-android-gradle-shizuku`): Android Gradle configuration in `companion/src-tauri/gen/android` with Gradle 8.8, AGP 8.4.0, compileSdk 35, minSdk 26, targetSdk 35, Shizuku dependencies (`dev.rikka.shizuku:api:13.1.5`, `dev.rikka.shizuku:provider:13.1.5`). ShizukuProvider and permissions registered in AndroidManifest.xml. Automated tests: `ShizukuSetupTest.kt`. PR #114 filed into `main`. Linked via `link_pull_request`. All checks green. Issue #53 closed.

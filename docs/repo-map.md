@@ -64,6 +64,7 @@ texure/
 | Standalone MCP probe (L2) | `python3 tools/test_mcp_client.py --no-build` | live (#94) |
 | Blackbox vs device (L3) | `cargo run -p texure-blackbox -- --target http --url <phone-ip>:<port>` | planned (#1) |
 | Server unit tests | `cargo test -p texure-server` | live (#19) |
+| Pairing QR command | `cargo run -p texure-server -- pair [--tunnel-url <wss://host[:port]/path\|domain>]` | live (#59) |
 | Contract fixture check | `cargo test -p texure-contract` | live (#18) |
 | Bridge unit tests | `./gradlew :bridge:testDebug` | live (#1, #4) |
 | Companion Android tests | `cd companion/src-tauri/gen/android && ./gradlew :app:testDebugUnitTest` | live (#53-#57) |
