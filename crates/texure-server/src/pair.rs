@@ -42,12 +42,31 @@ pub struct PairingEndpoint {
     pub token: String,
 }
 
+/// Percent-encode a value for a URL query parameter. Unreserved characters
+/// (including the base64url token alphabet) are left untouched; everything
+/// else is encoded so a configured token like `a+b` survives companion parsing.
+fn encode_query_value(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
 impl PairingEndpoint {
     /// Human-readable raw connection string: `wss://host:port/path?token=…`.
     pub fn connection_string(&self) -> String {
         format!(
             "wss://{}:{}{}?token={}",
-            self.host, self.port, self.path, self.token
+            self.host,
+            self.port,
+            self.path,
+            encode_query_value(&self.token)
         )
     }
 
@@ -85,7 +104,9 @@ pub fn normalize_tunnel_url(raw: &str) -> Result<TunnelOverride, String> {
         return Err(format!("tunnel URL '{raw}' is missing a host"));
     }
 
-    let (authority, raw_path) = match authority_and_path.find('/') {
+    // The authority ends at the first path/query/fragment delimiter; leaving
+    // `?` or `#` attached would put the token into a fragment.
+    let (authority, raw_path) = match authority_and_path.find(['/', '?', '#']) {
         Some(idx) => (&authority_and_path[..idx], &authority_and_path[idx..]),
         None => (authority_and_path, DEFAULT_TUNNEL_PATH),
     };
@@ -113,6 +134,9 @@ pub fn normalize_tunnel_url(raw: &str) -> Result<TunnelOverride, String> {
     }
     if host.chars().any(char::is_whitespace) {
         return Err(format!("tunnel URL '{raw}' has an invalid host"));
+    }
+    if port == Some(0) {
+        return Err(format!("invalid port 0 in tunnel URL '{raw}'"));
     }
 
     // Strip any query/fragment so the builder can append `?token=` cleanly.
@@ -161,7 +185,7 @@ pub fn choose_token(
 pub fn resolve_token_from_config(
     config: &TexureConfig,
     profile_override: Option<&str>,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let get_env = |key: &str| std::env::var(key).ok();
 
     let requested = profile_override
@@ -175,7 +199,14 @@ pub fn resolve_token_from_config(
         });
 
     let profile = if let Some(name) = &requested {
-        config.profiles.get(name)
+        // An explicitly selected profile must exist; silently falling back to
+        // the top-level token would hide a typo in --profile / TEXURE_PROFILE.
+        Some(
+            config
+                .profiles
+                .get(name)
+                .ok_or_else(|| format!("profile '{name}' not found in config"))?,
+        )
     } else {
         config
             .active_profile
@@ -183,7 +214,7 @@ pub fn resolve_token_from_config(
             .and_then(|name| config.profiles.get(name))
     };
 
-    get_env("TEXURE_TOKEN")
+    Ok(get_env("TEXURE_TOKEN")
         .filter(|s| !s.trim().is_empty())
         .or_else(|| {
             profile
@@ -191,7 +222,7 @@ pub fn resolve_token_from_config(
                 .filter(|s| !s.trim().is_empty())
         })
         .or_else(|| config.token.clone().filter(|s| !s.trim().is_empty()))
-        .map(|s| s.trim().to_string())
+        .map(|s| s.trim().to_string()))
 }
 
 /// Generate a random, opaque, URL-safe pairing token backed by the OS CSPRNG.
@@ -249,7 +280,7 @@ pub fn run_pair(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = crate::config::read_config(config_path);
     let (token, source) = choose_token(
-        resolve_token_from_config(&config, profile).as_deref(),
+        resolve_token_from_config(&config, profile)?.as_deref(),
         generate_pairing_token,
     )?;
 
@@ -423,8 +454,50 @@ mod tests {
             profiles,
         };
 
-        let token = resolve_token_from_config(&config, Some("phone"));
+        let token = resolve_token_from_config(&config, Some("phone")).expect("profile exists");
         assert_eq!(token.as_deref(), Some("phone-token"));
+    }
+
+    #[test]
+    fn connection_string_percent_encodes_configured_token() {
+        let mut endpoint = endpoint();
+        endpoint.token = "a+b&c".to_string();
+        assert!(endpoint
+            .connection_string()
+            .ends_with("/tunnel?token=a%2Bb%26c"));
+        // The JSON QR keeps the raw token so companion parsing matches.
+        let payload: serde_json::Value =
+            serde_json::from_str(&endpoint.qr_payload_json()).expect("valid JSON");
+        assert_eq!(payload["token"], "a+b&c");
+    }
+
+    #[test]
+    fn normalize_stops_authority_at_fragment_or_query() {
+        let override_endpoint =
+            normalize_tunnel_url("wss://relay.example#section").expect("normalize");
+        assert_eq!(override_endpoint.host, "relay.example");
+        assert_eq!(override_endpoint.path, DEFAULT_TUNNEL_PATH);
+
+        let override_endpoint = normalize_tunnel_url("wss://relay.example?x=1").expect("normalize");
+        assert_eq!(override_endpoint.host, "relay.example");
+        assert_eq!(override_endpoint.path, DEFAULT_TUNNEL_PATH);
+    }
+
+    #[test]
+    fn normalize_rejects_port_zero() {
+        assert!(normalize_tunnel_url("wss://relay.example:0/tunnel").is_err());
+    }
+
+    #[test]
+    fn resolve_token_from_config_rejects_unknown_selected_profile() {
+        let _env = crate::test_env_lock::lock();
+        std::env::remove_var("TEXURE_PROFILE");
+        let config = TexureConfig {
+            token: Some("top-level-token".to_string()),
+            ..Default::default()
+        };
+        let err = resolve_token_from_config(&config, Some("missing")).expect_err("unknown profile");
+        assert!(err.contains("missing"));
     }
 
     #[test]
