@@ -3,6 +3,7 @@ pub mod config;
 pub mod mdns;
 pub mod pair;
 pub mod server;
+pub mod tunnel_server;
 pub mod wait_for;
 pub mod ws_supervisor;
 
@@ -38,6 +39,14 @@ struct Args {
     #[arg(long, global = true)]
     profile: Option<String>,
 
+    /// Opt-in: bind the reverse WebSocket tunnel endpoint (/tunnel) for the remote companion
+    #[arg(long, global = true)]
+    enable_tunnel: bool,
+
+    /// Port for the reverse tunnel listener; passing it implies --enable-tunnel (default 8766)
+    #[arg(long, global = true)]
+    tunnel_port: Option<u16>,
+
     /// Optional subcommand; omit to run the stdio MCP server
     #[command(subcommand)]
     command: Option<Command>,
@@ -66,12 +75,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
     let config = args.config;
     let profile = args.profile;
+    let enable_tunnel = args.enable_tunnel;
+    let tunnel_port = args.tunnel_port;
 
     match args.command {
         Some(Command::Pair { tunnel_url }) => {
             pair::run_pair(config.as_deref(), profile.as_deref(), tunnel_url.as_deref())
         }
         None => {
+            // Opt-in only. With neither flag, this stays the plain stdio MCP
+            // server (the mcp-real blackbox depends on unchanged behavior).
+            let _tunnel_server = if enable_tunnel || tunnel_port.is_some() {
+                let file_config = crate::config::read_config(config.as_deref());
+                let token = pair::resolve_token_from_config(&file_config, profile.as_deref())
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "--enable-tunnel requires a bearer token in config or TEXURE_TOKEN",
+                        )
+                    })?;
+                let port = tunnel_port.unwrap_or(pair::DEFAULT_TUNNEL_PORT);
+                let tunnel = tunnel_server::TunnelServer::bind(port, token).await?;
+                eprintln!(
+                    "Reverse tunnel listening on 0.0.0.0:{}{} (TLS terminated externally)",
+                    tunnel.local_addr().port(),
+                    pair::DEFAULT_TUNNEL_PATH
+                );
+                Some(tunnel)
+            } else {
+                None
+            };
+
             let server = McpServer::new(config, profile);
             server.run_stdio().await
         }
