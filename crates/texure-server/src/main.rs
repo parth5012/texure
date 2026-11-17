@@ -88,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let _tunnel_server = if enable_tunnel || tunnel_port.is_some() {
                 let file_config = crate::config::read_config(config.as_deref());
                 let token = pair::resolve_token_from_config(&file_config, profile.as_deref())
+                    .map_err(std::io::Error::other)?
                     .ok_or_else(|| {
                         std::io::Error::new(
                             std::io::ErrorKind::InvalidInput,
