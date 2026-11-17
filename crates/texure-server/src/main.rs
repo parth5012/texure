@@ -2,6 +2,7 @@ pub mod bridge_client;
 pub mod config;
 pub mod mdns;
 pub mod pair;
+pub mod router;
 pub mod server;
 pub mod tunnel_server;
 pub mod wait_for;
@@ -47,6 +48,11 @@ struct Args {
     #[arg(long, global = true)]
     tunnel_port: Option<u16>,
 
+    /// Opt-in: probe the companion for STOPPED state and trigger shizuku_start_app before tool calls.
+    /// Requires the companion to publish a `device_state` RPC (see DECISIONS.md); off by default.
+    #[arg(long, global = true)]
+    lifecycle_probe: bool,
+
     /// Optional subcommand; omit to run the stdio MCP server
     #[command(subcommand)]
     command: Option<Command>,
@@ -77,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let profile = args.profile;
     let enable_tunnel = args.enable_tunnel;
     let tunnel_port = args.tunnel_port;
+    let lifecycle_probe = args.lifecycle_probe;
 
     match args.command {
         Some(Command::Pair { tunnel_url }) => {
@@ -108,6 +115,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             };
 
             let server = McpServer::new(config, profile);
+            // Pass the tunnel handle (when opt-in) into the MCP server so it
+            // can select tunnel-vs-direct routing per tool call.
+            let mut server = match _tunnel_server.as_ref() {
+                Some(tunnel) => server.with_tunnel(tunnel.handle()),
+                None => server,
+            };
+            if lifecycle_probe {
+                server = server.with_lifecycle_probe();
+            }
             server.run_stdio().await
         }
     }
