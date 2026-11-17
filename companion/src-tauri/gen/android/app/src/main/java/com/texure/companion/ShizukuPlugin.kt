@@ -60,6 +60,24 @@ class ShizukuPlugin(
             return method.invoke(null, cmd, env, dir) as Process
         }
 
+        // --- Sanitization & Validation Helpers ---
+
+        val PACKAGE_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
+        val PERMISSION_REGEX = Regex("^[a-zA-Z0-9_.]+$")
+        val KEYCODE_REGEX = Regex("^[a-zA-Z0-9_]+$")
+
+        fun validatePackageName(packageName: String) {
+            require(packageName.matches(PACKAGE_REGEX)) {
+                "Invalid package name: '$packageName' contains invalid characters or format"
+            }
+        }
+
+        fun validatePermission(permission: String) {
+            require(permission.matches(PERMISSION_REGEX)) {
+                "Invalid permission name: '$permission' contains invalid characters"
+            }
+        }
+
         // --- Command Builder Helpers ---
 
         fun buildWakeCommand(): Array<String> = arrayOf("input", "keyevent", "KEYCODE_WAKEUP")
@@ -67,7 +85,7 @@ class ShizukuPlugin(
         fun buildDismissKeyguardCommand(): Array<String> = arrayOf("wm", "dismiss-keyguard")
 
         fun buildStartAppCommand(packageName: String, activityName: String? = null): Array<String> {
-            require(packageName.isNotBlank()) { "packageName cannot be blank" }
+            validatePackageName(packageName)
             return if (!activityName.isNullOrBlank()) {
                 val component = if (activityName.contains("/")) {
                     activityName
@@ -88,8 +106,45 @@ class ShizukuPlugin(
         }
 
         fun buildStopAppCommand(packageName: String): Array<String> {
-            require(packageName.isNotBlank()) { "packageName cannot be blank" }
+            validatePackageName(packageName)
             return arrayOf("am", "force-stop", packageName)
+        }
+
+        fun buildGrantPermissionCommand(packageName: String, permission: String): Array<String> {
+            validatePackageName(packageName)
+            validatePermission(permission)
+            // Prepend android.permission. only if permission has no namespace (does not contain '.')
+            val perm = if (!permission.contains(".")) {
+                "android.permission.$permission"
+            } else {
+                permission
+            }
+            return arrayOf("pm", "grant", packageName, perm)
+        }
+
+        /**
+         * Builds input tap command. Assumes coordinates are non-negative and within valid screen bounds.
+         */
+        fun buildSystemTapCommand(x: Int, y: Int): Array<String> {
+            require(x >= 0) { "x coordinate must be non-negative: $x" }
+            require(y >= 0) { "y coordinate must be non-negative: $y" }
+            return arrayOf("input", "tap", x.toString(), y.toString())
+        }
+
+        fun buildPressKeyCommand(keycode: Int): Array<String> {
+            require(keycode >= 0) { "keycode must be non-negative: $keycode" }
+            return arrayOf("input", "keyevent", keycode.toString())
+        }
+
+        /**
+         * Builds input keyevent command. Validates syntax format against KEYCODE_REGEX
+         * (alphanumeric and underscores) to reject shell metacharacters.
+         */
+        fun buildPressKeyCommand(keycodeName: String): Array<String> {
+            require(keycodeName.matches(KEYCODE_REGEX)) {
+                "Invalid keycode: '$keycodeName' contains invalid characters"
+            }
+            return arrayOf("input", "keyevent", keycodeName)
         }
     }
 
@@ -192,7 +247,7 @@ class ShizukuPlugin(
         }
     }
 
-    // --- IPC Shell Wrapper & Lifecycle Supervisor Commands ---
+    // --- IPC Shell Wrapper & Elevated / Supervisor Commands ---
 
     /**
      * Executes shell command via Shizuku with timeout and output capture.
@@ -310,6 +365,21 @@ class ShizukuPlugin(
         }
     }
 
+    private inline fun executeSafely(timeoutMs: Long, commandBuilder: () -> Array<String>): ShellResult {
+        return try {
+            val cmd = commandBuilder()
+            executeShellCommand(cmd, timeoutMs)
+        } catch (e: IllegalArgumentException) {
+            ShellResult(
+                ok = false,
+                exitCode = -1,
+                stdout = "",
+                stderr = e.message ?: "Invalid arguments",
+                error = "INVALID_ARGUMENT"
+            )
+        }
+    }
+
     /**
      * Wakes the device screen via KEYCODE_WAKEUP.
      */
@@ -332,36 +402,46 @@ class ShizukuPlugin(
         activityName: String? = null,
         timeoutMs: Long = 10000L
     ): ShellResult {
-        return try {
-            val cmd = buildStartAppCommand(packageName, activityName)
-            executeShellCommand(cmd, timeoutMs)
-        } catch (e: IllegalArgumentException) {
-            ShellResult(
-                ok = false,
-                exitCode = -1,
-                stdout = "",
-                stderr = e.message ?: "Invalid arguments",
-                error = "BAD_REQUEST"
-            )
-        }
+        return executeSafely(timeoutMs) { buildStartAppCommand(packageName, activityName) }
     }
 
     /**
      * Force-stops target app package via `am force-stop`.
      */
     fun shizuku_stop_app(packageName: String, timeoutMs: Long = 5000L): ShellResult {
-        return try {
-            val cmd = buildStopAppCommand(packageName)
-            executeShellCommand(cmd, timeoutMs)
-        } catch (e: IllegalArgumentException) {
-            ShellResult(
-                ok = false,
-                exitCode = -1,
-                stdout = "",
-                stderr = e.message ?: "Invalid arguments",
-                error = "BAD_REQUEST"
-            )
-        }
+        return executeSafely(timeoutMs) { buildStopAppCommand(packageName) }
+    }
+
+    /**
+     * Grants elevated runtime permission via `pm grant`.
+     */
+    fun shizuku_grant_permission(
+        packageName: String,
+        permission: String,
+        timeoutMs: Long = 5000L
+    ): ShellResult {
+        return executeSafely(timeoutMs) { buildGrantPermissionCommand(packageName, permission) }
+    }
+
+    /**
+     * Simulates a system tap at screen coordinates (x, y) on system windows.
+     */
+    fun shizuku_system_tap(x: Int, y: Int, timeoutMs: Long = 5000L): ShellResult {
+        return executeSafely(timeoutMs) { buildSystemTapCommand(x, y) }
+    }
+
+    /**
+     * Injects a hardware keycode via `input keyevent`.
+     */
+    fun shizuku_press_key(keycode: Int, timeoutMs: Long = 5000L): ShellResult {
+        return executeSafely(timeoutMs) { buildPressKeyCommand(keycode) }
+    }
+
+    /**
+     * Injects a named keyevent via `input keyevent`.
+     */
+    fun shizuku_press_key(keycodeName: String, timeoutMs: Long = 5000L): ShellResult {
+        return executeSafely(timeoutMs) { buildPressKeyCommand(keycodeName) }
     }
 
     // --- Shizuku Listener Callbacks ---

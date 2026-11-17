@@ -229,4 +229,128 @@ class ShizukuPluginTest {
         assertTrue(res.timedOut)
         assertEquals("TIMEOUT", res.error)
     }
+
+    // --- Elevated Fallback Command & Sanitization Tests (Ticket #56) ---
+
+    @Test
+    fun testBuildGrantPermissionCommandValid() {
+        val cmd = ShizukuPlugin.buildGrantPermissionCommand(
+            "com.texure.sample",
+            "android.permission.POST_NOTIFICATIONS"
+        )
+        assertArrayEquals(
+            arrayOf("pm", "grant", "com.texure.sample", "android.permission.POST_NOTIFICATIONS"),
+            cmd
+        )
+
+        // Auto-prefixes short permission name
+        val shortCmd = ShizukuPlugin.buildGrantPermissionCommand(
+            "com.texure.sample",
+            "RECORD_AUDIO"
+        )
+        assertArrayEquals(
+            arrayOf("pm", "grant", "com.texure.sample", "android.permission.RECORD_AUDIO"),
+            shortCmd
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testGrantPermissionRejectsPackageShellInjection() {
+        ShizukuPlugin.buildGrantPermissionCommand(
+            "com.texure.sample; rm -rf /",
+            "android.permission.POST_NOTIFICATIONS"
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testGrantPermissionRejectsPermissionShellInjection() {
+        ShizukuPlugin.buildGrantPermissionCommand(
+            "com.texure.sample",
+            "POST_NOTIFICATIONS && echo pwned"
+        )
+    }
+
+    @Test
+    fun testBuildSystemTapCommandValid() {
+        val cmd = ShizukuPlugin.buildSystemTapCommand(540, 960)
+        assertArrayEquals(arrayOf("input", "tap", "540", "960"), cmd)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testSystemTapRejectsNegativeX() {
+        ShizukuPlugin.buildSystemTapCommand(-1, 960)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testSystemTapRejectsNegativeY() {
+        ShizukuPlugin.buildSystemTapCommand(540, -100)
+    }
+
+    @Test
+    fun testBuildPressKeyCommandValid() {
+        val intCmd = ShizukuPlugin.buildPressKeyCommand(4) // KEYCODE_BACK
+        assertArrayEquals(arrayOf("input", "keyevent", "4"), intCmd)
+
+        val strCmd = ShizukuPlugin.buildPressKeyCommand("KEYCODE_BACK")
+        assertArrayEquals(arrayOf("input", "keyevent", "KEYCODE_BACK"), strCmd)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testPressKeyRejectsShellInjection() {
+        ShizukuPlugin.buildPressKeyCommand("KEYCODE_BACK; reboot")
+    }
+
+    @Test
+    fun testElevatedCommandsExecuteViaRunner() {
+        var lastCmd: Array<String>? = null
+
+        val runner = { cmd: Array<String>, _: Long ->
+            lastCmd = cmd
+            ShellResult(ok = true, exitCode = 0, stdout = "Success", stderr = "")
+        }
+
+        val plugin = ShizukuPlugin(context).apply {
+            processRunner = runner
+        }
+
+        // Grant permission
+        val grantRes = plugin.shizuku_grant_permission("com.texure.sample", "POST_NOTIFICATIONS")
+        assertTrue(grantRes.ok)
+        assertArrayEquals(
+            arrayOf("pm", "grant", "com.texure.sample", "android.permission.POST_NOTIFICATIONS"),
+            lastCmd
+        )
+
+        // System tap
+        val tapRes = plugin.shizuku_system_tap(100, 200)
+        assertTrue(tapRes.ok)
+        assertArrayEquals(arrayOf("input", "tap", "100", "200"), lastCmd)
+
+        // Press key int
+        val keyIntRes = plugin.shizuku_press_key(66)
+        assertTrue(keyIntRes.ok)
+        assertArrayEquals(arrayOf("input", "keyevent", "66"), lastCmd)
+
+        // Press key string
+        val keyStrRes = plugin.shizuku_press_key("KEYCODE_ENTER")
+        assertTrue(keyStrRes.ok)
+        assertArrayEquals(arrayOf("input", "keyevent", "KEYCODE_ENTER"), lastCmd)
+    }
+
+    @Test
+    fun testElevatedCommandsCleanErrorWhenNotBound() {
+        val plugin = ShizukuPlugin(context)
+
+        val grantRes = plugin.shizuku_grant_permission("com.texure.sample", "POST_NOTIFICATIONS")
+        assertFalse(grantRes.ok)
+        assertEquals("PERMISSION_DENIED", grantRes.error)
+
+        val tapRes = plugin.shizuku_system_tap(100, 200)
+        assertFalse(tapRes.ok)
+        assertEquals("PERMISSION_DENIED", tapRes.error)
+
+        val keyRes = plugin.shizuku_press_key(4)
+        assertFalse(keyRes.ok)
+        assertEquals("PERMISSION_DENIED", keyRes.error)
+    }
 }
