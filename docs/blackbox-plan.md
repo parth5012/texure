@@ -6,7 +6,7 @@ Executable form of [bridge-contract](bridge-contract.md) + [behavior-spec](behav
 
 The suite is written FIRST, while no implementation exists. Phase 0 ends with a runnable runner + authored scenarios that all fail. Each implementation milestone (issues #1, #2) flips groups from red to green. This makes the suite the progress gauge, not a post-hoc chore.
 
-## Harness shape (one runner, three targets)
+## Harness shape (one runner, multiple targets)
 
 ```
 tests/blackbox/
@@ -22,7 +22,8 @@ Targets (one suite, run against progressively more-real things):
 1. `--target mcp-fake` — direct FakeBridge HTTP/WS scenarios; CI-speed contract runs with no server binary at all.
 2. `--target mcp` — the bundled fake MCP stdio server (`--fake-mcp`): handshake, tool list, and server-state error surfaces without the real binary.
 3. `--target mcp-real` — spawns the REAL texure-server binary over stdio, configured against FakeBridge; same scenario suite as mcp-fake (full blackbox, the agent's actual path). Build prerequisite: `cargo build -p texure-server` first (the blackbox crate does not depend on the server, so `cargo run -p texure-blackbox` will not build it); override the binary with `TEXURE_SERVER_BIN`.
-4. `--target http --url phone:port` — real bridge on the sample app (device needed).
+4. `--target mcp-tunnel` — spawns the REAL `texure-server` with `--enable-tunnel --tunnel-port <ephemeral>` over stdio and connects an in-process fake companion to its reverse tunnel (issue #63). Drives the full Group R round-trip (BB-R1..R13): real MCP stdio → `TunnelRouter` → tunnel → companion → canned bridge response → reply → assertion. Build prerequisite: `cargo build -p texure-server` (override with `TEXURE_SERVER_BIN`).
+5. `--target http --url phone:port` — real bridge on the sample app (device needed).
 
 FakeBridge scenarios and blackbox scenarios are THE SAME JSON files; the runner can play a scenario server-side (FakeBridge mode) or assert against a real device session.
 
@@ -66,23 +67,25 @@ Test IDs: `BB-<group><n>`. Every row from behavior-spec is covered or explicitly
 ### Group R — remote tunnel, gateway, Shizuku, pairing (write-first, maps 10–13)
 
 Authored RED before implementation (map 9, issue #41). Every row maps to a
-behavior-spec §3R row; flips green when its owning map lands.
+behavior-spec §3R row; flipped green by issue #63 via the `mcp-tunnel` target
+(real `texure-server` binary over stdio + in-process fake companion on the
+reverse tunnel). All 13 pass with 0 fail / 0 xfail.
 
 | ID | Asserts | Scenario | Target |
 |---|---|---|---|
-| R1 | Reverse WS handshake with valid bearer token → CONNECTED | `reverse_ws_handshake` | mcp |
-| R2 | Mismatched token → `AUTH_FAILED`, no tunnel | `reverse_ws_auth_reject` | mcp |
-| R3 | Drop → supervisor reconnect with exponential backoff | `reverse_ws_reconnect` | mcp |
-| R4 | `device_tree` RPC proxied across tunnel verbatim | `gateway_proxy_tree` | mcp |
-| R5 | Mutating `tap` proxied with verify-at-execute rev check | `gateway_proxy_tap` | mcp |
-| R6 | Bridge `NODE_OUTDATED` relayed unchanged | `gateway_error_propagation` | mcp |
-| R7 | Shizuku `wake` + `keyguard_dismiss` executed | `shizuku_wake_keyguard` | mcp |
-| R8 | `am start` cold launch when bridge offline | `shizuku_cold_start` | mcp |
-| R9 | `pm grant` runtime permission auto-grant | `shizuku_pm_grant` | mcp |
-| R10 | System `input tap` fallback injection | `shizuku_input_tap` | mcp |
-| R11 | Pairing QR payload: `wss://` endpoint + bearer token | `pairing_qr` | mcp |
-| R12 | Fallback `reverse_ws` → `lan_direct` when tunnel absent | `transport_fallback` | mcp |
-| R13 | Second tunnel connection → `BUSY` + owner | `tunnel_single_flight` | mcp |
+| R1 | Reverse WS handshake with valid bearer token → CONNECTED | `reverse_ws_handshake` | mcp-tunnel |
+| R2 | Mismatched token → `AUTH_FAILED`, no tunnel | `reverse_ws_auth_reject` | mcp-tunnel |
+| R3 | Drop → supervisor reconnect with exponential backoff | `reverse_ws_reconnect` | mcp-tunnel |
+| R4 | `device_tree` RPC proxied across tunnel verbatim | `gateway_proxy_tree` | mcp-tunnel |
+| R5 | Mutating `tap` proxied with verify-at-execute rev check | `gateway_proxy_tap` | mcp-tunnel |
+| R6 | Bridge `NODE_OUTDATED` relayed unchanged | `gateway_error_propagation` | mcp-tunnel |
+| R7 | Shizuku `wake` + `keyguard_dismiss` executed | `shizuku_wake_keyguard` | mcp-tunnel |
+| R8 | `am start` cold launch when bridge offline | `shizuku_cold_start` | mcp-tunnel |
+| R9 | `pm grant` runtime permission auto-grant | `shizuku_pm_grant` | mcp-tunnel |
+| R10 | System `input tap` fallback injection | `shizuku_input_tap` | mcp-tunnel |
+| R11 | Pairing QR payload: `wss://` endpoint + bearer token | `pairing_qr` | mcp-tunnel |
+| R12 | Fallback `reverse_ws` → `lan_direct` when tunnel absent | `transport_fallback` | mcp-tunnel |
+| R13 | Second tunnel connection → `BUSY` + owner | `tunnel_single_flight` | mcp-tunnel |
 
 New actions: `tunnel_connect`, `tunnel_drop`, `tunnel_heartbeat`, `gateway_proxy`,
 `shizuku_cmd`, `pairing_qr`, `transport_resolve`. Protocol envelopes live in

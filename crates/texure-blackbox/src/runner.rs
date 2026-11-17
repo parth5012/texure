@@ -1,13 +1,15 @@
 use crate::client_http::{HttpBridgeClient, HttpBridgeError};
 use crate::client_mcp::McpStdioClient;
 use crate::fake_bridge::{FakeBridgeConfig, FakeBridgeServer};
+use crate::fake_companion::FakeCompanion;
 use crate::scenario::{resolve_variable, Scenario};
 use crate::{TestDef, TestResult};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
+use std::net::SocketAddr;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Per-step execution trace captured while walking a scenario, persisted
 /// into the history DB's step_records table (issue #27). Contains only
@@ -70,6 +72,7 @@ pub async fn run_test(
     let result = match test.target.as_str() {
         "mcp" => run_mcp_test(test, &scenario).await,
         "mcp-real" => run_mcp_real_test(test, &scenario, root_dir).await,
+        "mcp-tunnel" => run_mcp_tunnel_test(&scenario, root_dir).await,
         _ => run_http_fake_test(test, &scenario, root_dir).await,
     };
 
@@ -885,6 +888,406 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
     }
 
     // Evaluate scenario assertions
+    for assertion in &scenario.assertions {
+        if let Err(e) = evaluate_assertion(
+            assertion,
+            &last_response,
+            context.get("tree"),
+            Some(&context),
+        ) {
+            return Err((steps, e));
+        }
+    }
+
+    Ok((steps, ()))
+}
+
+/// Token configured into the real server's tunnel listener for the mcp-tunnel
+/// target. Scenarios that intend a successful handshake use this value; the
+/// auth-rejection scenario deliberately sends a different one.
+const VALID_TUNNEL_TOKEN: &str = "valid-bearer-token";
+
+/// Bind an ephemeral port for the real server's reverse-tunnel listener.
+fn free_tunnel_port() -> Result<u16, String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("cannot bind ephemeral tunnel port: {e}"))?;
+    listener
+        .local_addr()
+        .map(|addr| addr.port())
+        .map_err(|e| format!("cannot read ephemeral tunnel port: {e}"))
+}
+
+/// Bounded poll until the spawned server is accepting tunnel connections.
+async fn wait_for_tunnel_listener(port: u16) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    Err(format!("tunnel listener on port {port} did not start"))
+}
+
+/// BB-R11: exercise the real `texure-server pair` subcommand and parse the
+/// `wss://host:port/path?token=...` connection string it prints.
+fn run_pair_payload(server_bin: &str, config_path: &str) -> Result<Value, String> {
+    let output = std::process::Command::new(server_bin)
+        .args([
+            "--config",
+            config_path,
+            "pair",
+            "--tunnel-url",
+            "wss://desktop.example:443/tunnel",
+        ])
+        .env_remove("TEXURE_TOKEN")
+        .env_remove("TEXURE_URL")
+        .output()
+        .map_err(|e| format!("failed to run texure-server pair: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "texure-server pair failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let connection = stdout.lines().next().unwrap_or("").trim();
+    let rest = connection
+        .strip_prefix("wss://")
+        .ok_or_else(|| format!("pair connection string is not wss://: {connection}"))?;
+    let (authority_path, token) = rest
+        .split_once("?token=")
+        .ok_or_else(|| format!("pair connection string missing token: {connection}"))?;
+    let (hostport, path) = authority_path
+        .split_once('/')
+        .unwrap_or((authority_path, ""));
+    let (host, port) = hostport.split_once(':').unwrap_or((hostport, "443"));
+    Ok(json!({
+        "scheme": "wss",
+        "host": host,
+        "port": port.parse::<u16>().unwrap_or(443),
+        "path": format!("/{path}"),
+        "token": token,
+        "token_present": true,
+        "state": "UNPAIRED",
+        "app": "texure",
+    }))
+}
+
+/// Full Group R round-trip: spawn the REAL server binary with its reverse
+/// tunnel listener, connect an in-process fake companion, and drive the 13
+/// scenarios through the stdio MCP path. No server internals are imported.
+async fn run_mcp_tunnel_test(scenario: &Scenario, root_dir: &Path) -> WalkOutcome {
+    let steps: Vec<StepTrace> = Vec::new();
+
+    // This target only runs Group R scenarios; anything else is a clean skip,
+    // never a fabricated pass.
+    let group_r_actions = [
+        "tunnel_connect",
+        "tunnel_drop",
+        "tunnel_heartbeat",
+        "gateway_proxy",
+        "shizuku_cmd",
+        "pairing_qr",
+        "transport_resolve",
+    ];
+    if scenario
+        .steps
+        .iter()
+        .any(|s| !group_r_actions.contains(&s.action.as_str()))
+    {
+        return Err((
+            steps,
+            "SKIP: --target mcp-tunnel only runs Group R tunnel scenarios".to_string(),
+        ));
+    }
+
+    let server_bin = match locate_server_bin() {
+        Ok(b) => b,
+        Err(e) => return Err((steps, e)),
+    };
+
+    // FakeBridge backs the `lan_direct` fallback (BB-R12) and supplies the
+    // config URL so tool calls that miss the tunnel still resolve a transport.
+    let mut bridge = match FakeBridgeServer::start(FakeBridgeConfig {
+        scenario_name: "static_screen".to_string(),
+        root_dir: root_dir.to_string_lossy().to_string(),
+        port: 0,
+        token: VALID_TUNNEL_TOKEN.to_string(),
+    })
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => return Err((steps, format!("Failed to start FakeBridge: {e}"))),
+    };
+    let bridge_port = bridge.addr.port();
+
+    let tunnel_port = match free_tunnel_port() {
+        Ok(p) => p,
+        Err(e) => return Err((steps, e)),
+    };
+
+    let run_tag = format!("texure-bb-tunnel-{}-{}", std::process::id(), scenario.name);
+    let config_path = env::temp_dir().join(format!("{run_tag}.toml"));
+    let config_body = format!(
+        "url = \"http://127.0.0.1:{bridge_port}\"\ntoken = \"{VALID_TUNNEL_TOKEN}\"\ntimeout_secs = 10\n\n[network]\ntransport_order = [\"reverse_ws\", \"lan_direct\"]\n"
+    );
+    if let Err(e) = std::fs::write(&config_path, config_body) {
+        return Err((steps, format!("Failed to write temp tunnel config: {e}")));
+    }
+
+    let cfg_str = config_path.to_string_lossy().to_string();
+    let port_str = tunnel_port.to_string();
+    let server_args = [
+        "--config",
+        cfg_str.as_str(),
+        "--enable-tunnel",
+        "--tunnel-port",
+        port_str.as_str(),
+    ];
+    let mut client =
+        match McpStdioClient::spawn_filtered(&server_bin, &server_args, &TEXURE_ENV_KEYS) {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = std::fs::remove_file(&config_path);
+                bridge.stop();
+                return Err((steps, format!("Failed to spawn tunnel server: {e}")));
+            }
+        };
+
+    if let Err(e) = wait_for_tunnel_listener(tunnel_port).await {
+        drop(client);
+        let _ = std::fs::remove_file(&config_path);
+        bridge.stop();
+        return Err((steps, e));
+    }
+
+    let mut companion = FakeCompanion::new(SocketAddr::from(([127, 0, 0, 1], tunnel_port)));
+    let outcome =
+        walk_mcp_tunnel_steps(scenario, &mut client, &mut companion, &server_bin, &cfg_str).await;
+
+    drop(client);
+    companion.disconnect().await;
+    let _ = std::fs::remove_file(&config_path);
+    bridge.stop();
+    outcome
+}
+
+/// Drive one Group R scenario against the live tunnel + MCP stdio client.
+async fn walk_mcp_tunnel_steps(
+    scenario: &Scenario,
+    client: &mut McpStdioClient,
+    companion: &mut FakeCompanion,
+    server_bin: &str,
+    config_path: &str,
+) -> WalkOutcome {
+    let start_time = Instant::now();
+    let mut steps: Vec<StepTrace> = Vec::new();
+    let mut context: HashMap<String, Value> = HashMap::new();
+    let mut last_response = json!({});
+
+    for (idx, step) in scenario.steps.iter().enumerate() {
+        let offset_ms = start_time.elapsed().as_millis() as u64;
+
+        let response: Value = match step.action.as_str() {
+            "tunnel_connect" => {
+                let token = step
+                    .args
+                    .get("token")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or(VALID_TUNNEL_TOKEN);
+                let label = step
+                    .args
+                    .get("client")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("companion");
+                match companion.connect(token, label).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let msg = format!("tunnel_connect failed: {e}");
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &msg,
+                            offset_ms,
+                        );
+                        return Err((steps, msg));
+                    }
+                }
+            }
+            "tunnel_drop" => companion.drop_tunnel().await,
+            "tunnel_heartbeat" => match companion.heartbeat().await {
+                Ok(v) => v,
+                Err(e) => {
+                    let msg = format!("tunnel_heartbeat failed: {e}");
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &msg,
+                        offset_ms,
+                    );
+                    return Err((steps, msg));
+                }
+            },
+            "gateway_proxy" => {
+                let rpc = step
+                    .args
+                    .get("rpc")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("device_tree");
+                let inner_args = step.args.get("args").cloned().unwrap_or_else(|| json!({}));
+                let resolved = match resolve_step_args(rpc, &inner_args, &context) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e,
+                            offset_ms,
+                        );
+                        return Err((steps, e));
+                    }
+                };
+                let mut tool_args = resolved;
+                if let Some(obj) = tool_args.as_object_mut() {
+                    // Verbose keeps the relayed error body (with `relayed:true`)
+                    // observable through the stdio MCP tool result.
+                    obj.insert("verbose".to_string(), json!(true));
+                }
+                let call_res = match client.call_tool(rpc, tool_args.clone()).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let msg = format!("gateway_proxy({rpc}) failed: {e}");
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&tool_args),
+                            &msg,
+                            offset_ms,
+                        );
+                        return Err((steps, msg));
+                    }
+                };
+                let mut value = mcp_content_to_response(&call_res);
+                // Facts genuinely observed on the tunnel but stripped by the
+                // server when it re-serializes BridgeSuccessResponse.
+                if companion.last_envelope_verify_at_execute() {
+                    value["verify_at_execute"] = json!(true);
+                }
+                value["rpc"] = json!(rpc);
+                value
+            }
+            "shizuku_cmd" => {
+                let op = step.args.get("op").and_then(|o| o.as_str()).unwrap_or("");
+                match companion.shizuku_cmd(op, &step.args) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &msg,
+                            offset_ms,
+                        );
+                        return Err((steps, msg));
+                    }
+                }
+            }
+            "pairing_qr" => match run_pair_payload(server_bin, config_path) {
+                Ok(v) => v,
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e,
+                        offset_ms,
+                    );
+                    return Err((steps, e));
+                }
+            },
+            "transport_resolve" => {
+                // reverse_ws absent => the server must fall back to lan_direct
+                // against FakeBridge. A successful tree proves the fallback ran.
+                companion.disconnect().await;
+                let call_res = match client
+                    .call_tool("device_tree", json!({ "verbose": true }))
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let msg = format!("transport_resolve probe failed: {e}");
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &msg,
+                            offset_ms,
+                        );
+                        return Err((steps, msg));
+                    }
+                };
+                let probe = mcp_content_to_response(&call_res);
+                let rev = probe.get("rev").and_then(|r| r.as_u64()).unwrap_or(0);
+                if rev > 0 {
+                    json!({ "selected": "lan_direct", "state": "FALLBACK" })
+                } else {
+                    json!({
+                        "selected": Value::Null,
+                        "state": "OFFLINE",
+                        "error": probe,
+                    })
+                }
+            }
+            other => {
+                let msg = format!("Unsupported action in mcp-tunnel test: {other}");
+                push_error_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&step.args),
+                    &msg,
+                    offset_ms,
+                );
+                return Err((steps, msg));
+            }
+        };
+
+        record_step_context(&mut context, &step.action, Some(&step.args), &response);
+        push_step(
+            &mut steps,
+            idx,
+            &step.action,
+            Some(&step.args),
+            &response,
+            None,
+            None,
+            offset_ms,
+        );
+
+        if let Some(expect) = &step.expect {
+            if let Err(e) = verify_expect(&response, expect) {
+                mark_expect_failure(&mut steps, &response, &e);
+                return Err((steps, e));
+            }
+        }
+        last_response = response;
+    }
+
     for assertion in &scenario.assertions {
         if let Err(e) = evaluate_assertion(
             assertion,
