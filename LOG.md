@@ -6,6 +6,7 @@
 - CLI keeps global `--config`/`--profile` (clap `global = true`) and defaults to the stdio MCP server with no subcommand; 6-tool frozen list unchanged (G7). Added `qrcode = "0.14"` dependency.
 - RED: 10 focused unit tests failed on stubs (captured to `tmp/evidence/59/red-run.txt`). GREEN: 24/24 `texure-server` tests pass. Stdio smoke test with `--config`/`--profile` returned initialize + 6 tools. CLI smoke test rendered a readable QR.
 - Self-review (2 iterations): reviewer APPROVE; OCR HIGH CSPRNG finding fixed (getrandom 0.3 + Result propagation), MEDIUM host-whitespace + localhost-warn findings fixed; 2 OCR findings discarded as invalid (read_config is not Result, profile lookup is not recursive); IDN/percent-encoding and CSPRNG-mock findings parked as non-blocking. Re-verified green: L0 0 findings · L1 101 tests · clippy clean · fmt clean.
+- CodeRabbit review (PR #119) applied: percent-encode configured tokens in the URL query (JSON QR keeps raw token); stop authority parsing at `/`, `?`, `#`; reject port 0; return an error for an explicitly selected but unknown profile (signature now `Result<Option<String>, String>`). 4 new tests; `cargo test -p texure-server` 29 passed.
 - NOT committed — orchestrator handles commit/PR/issue. BB-R11 remains xfail until #63.
 
 ## 2026-11-17 (session) — Wayfinder map 12 (#58): Android Shizuku native integration & lifecycle daemon
