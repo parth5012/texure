@@ -19,8 +19,10 @@
     7. Hardened app security with `android:allowBackup="false"`.
     8. Created `companion/src-tauri/gen/android/app/proguard-rules.pro` keeping Shizuku reflection methods and daemon classes.
     9. Wired `ShizukuPlugin` into `MainActivity` lifecycle.
+  - Round 2 Scores: Gemini 3.8 Flash (10/10), GLM 5.3 Flash (9/10), DeepSeek V4.1 Flash (8/10), Hy4 (8/10), Claude Sonnet 4.6 (8.5/10). Verdict: SATISFIED across all 5 council members.
+  - Additional polish applied in commit `c14c129`: normalized fully-qualified activity names without slash prefix, aligned `errorHint` on `NON_ZERO_EXIT` result envelopes, and expanded regression test coverage.
 - Verification: 47/47 Android unit tests passing across `ShizukuSetupTest` (3/3), `ShizukuPluginTest` (35/35), `CompanionDaemonServiceTest` (9/9). Workspace cargo check clean (89/89 tests passing, texure-lint 0 findings, clippy clean with 0 warnings).
-- Status: Map #58 complete. Council improvements applied. Stacked PRs #114..#118 ready for handoff to `merge-pr`.
+- Status: Map #58 complete. Council unanimously SATISFIED (Rounds: 2). Stacked PRs #114..#118 ready for handoff to `merge-pr`.
 
 ## 2026-11-15 (session) — Wayfinder map 11 (#52): Tauri Rust backend & reverse WebSocket tunnel engine
 - Full-cycle execution of Map #52 in Single-PR mode (4 AFK tickets #48–#51).
