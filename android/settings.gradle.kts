@@ -39,3 +39,8 @@ includeBuild("gradle-plugin")
 rootProject.name = "texure-android"
 include(":bridge")
 include(":sample")
+val appDir = file("../companion/src-tauri/gen/android/app")
+if (appDir.exists()) {
+    include(":app")
+    project(":app").projectDir = appDir
+}
