@@ -344,6 +344,7 @@ class ShizukuPluginTest {
         val grantRes = plugin.shizuku_grant_permission("com.texure.sample", "POST_NOTIFICATIONS")
         assertFalse(grantRes.ok)
         assertEquals("PERMISSION_DENIED", grantRes.error)
+        assertEquals("request Shizuku permission on the device", grantRes.errorHint)
 
         val tapRes = plugin.shizuku_system_tap(100, 200)
         assertFalse(tapRes.ok)
@@ -352,5 +353,79 @@ class ShizukuPluginTest {
         val keyRes = plugin.shizuku_press_key(4)
         assertFalse(keyRes.ok)
         assertEquals("PERMISSION_DENIED", keyRes.error)
+    }
+
+    @Test
+    fun testOnBinderReceivedEmitsConnectedState() {
+        val plugin = ShizukuPlugin(context) { event, payload ->
+            emittedEvents.add(event to payload)
+        }
+
+        plugin.onBinderReceived()
+
+        assertEquals(1, emittedEvents.size)
+        val (event, payload) = emittedEvents[0]
+        assertEquals(ShizukuPlugin.EVENT_BINDER_STATE, event)
+        assertEquals(true, payload["connected"])
+    }
+
+    @Test
+    fun testOnRequestPermissionResultIgnoresWrongRequestCode() {
+        val plugin = ShizukuPlugin(context) { event, payload ->
+            emittedEvents.add(event to payload)
+        }
+
+        plugin.onRequestPermissionResult(9999, PackageManager.PERMISSION_GRANTED)
+        assertEquals(0, emittedEvents.size)
+    }
+
+    @Test
+    fun testBuildStartAppCommandValidVariants() {
+        // Simple name
+        val cmd1 = ShizukuPlugin.buildStartAppCommand("com.texure.sample", "MainActivity")
+        assertArrayEquals(arrayOf("am", "start", "-n", "com.texure.sample/.MainActivity"), cmd1)
+
+        // Leading dot
+        val cmd2 = ShizukuPlugin.buildStartAppCommand("com.texure.sample", ".ui.DetailActivity")
+        assertArrayEquals(arrayOf("am", "start", "-n", "com.texure.sample/.ui.DetailActivity"), cmd2)
+
+        // Full component with matching package
+        val cmd3 = ShizukuPlugin.buildStartAppCommand("com.texure.sample", "com.texure.sample/com.texure.sample.MainActivity")
+        assertArrayEquals(arrayOf("am", "start", "-n", "com.texure.sample/com.texure.sample.MainActivity"), cmd3)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testStartAppRejectsActivityWithFlags() {
+        ShizukuPlugin.buildStartAppCommand("com.texure.sample", "MainActivity -W --user 0")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testStartAppRejectsActivityWithMetacharacters() {
+        ShizukuPlugin.buildStartAppCommand("com.texure.sample", "MainActivity; reboot")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testStartAppRejectsActivityWithMismatchedPackage() {
+        ShizukuPlugin.buildStartAppCommand("com.texure.sample", "com.other.pkg/com.other.pkg.MainActivity")
+    }
+
+    @Test
+    fun testNonZeroExitPopulatesError() {
+        val runner = { _: Array<String>, _: Long ->
+            ShellResult(ok = false, exitCode = 1, stdout = "", stderr = "some error")
+        }
+        val plugin = ShizukuPlugin(context).apply {
+            processRunner = runner
+        }
+        val res = plugin.shizuku_stop_app("com.texure.sample")
+        assertFalse(res.ok)
+        assertEquals(1, res.exitCode)
+    }
+
+    @Test
+    fun testPluginDestroyCleansListeners() {
+        val plugin = ShizukuPlugin(context)
+        plugin.destroy()
+        plugin.destroy() // idempotent
     }
 }

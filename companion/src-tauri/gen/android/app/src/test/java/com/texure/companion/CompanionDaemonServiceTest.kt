@@ -112,13 +112,37 @@ class CompanionDaemonServiceTest {
         val stopIntent = Intent(context, CompanionDaemonService::class.java).apply {
             action = CompanionDaemonService.ACTION_STOP
         }
-        controller.startCommand(0, 2)
-        service.onStartCommand(stopIntent, 0, 2)
+        controller.withIntent(stopIntent).startCommand(0, 2)
 
         assertFalse(CompanionDaemonService.isWakeLockHeld)
         assertFalse(CompanionDaemonService.isRunning)
         assertEquals("Stopped", CompanionDaemonService.currentStatus)
 
+        controller.destroy()
+    }
+
+    @Test
+    fun testStopAndStatusNoOpWhenNotRunning() {
+        assertFalse(CompanionDaemonService.isRunning)
+        CompanionDaemonService.stop(context)
+        assertFalse(CompanionDaemonService.isRunning)
+
+        CompanionDaemonService.updateStatus(context, "New Status")
+        assertEquals("Stopped", CompanionDaemonService.currentStatus)
+    }
+
+    @Test
+    fun testActionRestartAppDoesNotCrash() {
+        val startIntent = Intent(context, CompanionDaemonService::class.java).apply {
+            action = CompanionDaemonService.ACTION_START
+        }
+        val controller = Robolectric.buildService(CompanionDaemonService::class.java, startIntent)
+        controller.create().startCommand(0, 1)
+
+        val restartIntent = Intent(context, CompanionDaemonService::class.java).apply {
+            action = CompanionDaemonService.ACTION_RESTART_APP
+        }
+        controller.withIntent(restartIntent).startCommand(0, 2)
         controller.destroy()
     }
 

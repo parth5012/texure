@@ -42,6 +42,11 @@ texure/
     bridge/               # Bridge SDK (Kotlin AAR -> mavenLocal)
     gradle-plugin/        # 1-line adoption seam
     sample/               # gauntlet sample app (also the spike target)
+  companion/
+    src-tauri/            # Tauri 2.0 Rust backend (reverse tunnel, loopback proxy)
+      gen/android/        # Android companion native harness & daemon
+        app/              # Android companion application (Shizuku plugin, daemon service)
+    src/                  # React + TypeScript frontend (QR pairing, status dashboard)
   contract/
     fixtures/             # golden JSON, shared Kotlin<->Rust
   tests/blackbox/         # scenario JSONs (schema_version 1)
@@ -61,6 +66,7 @@ texure/
 | Server unit tests | `cargo test -p texure-server` | live (#19) |
 | Contract fixture check | `cargo test -p texure-contract` | live (#18) |
 | Bridge unit tests | `./gradlew :bridge:testDebug` | live (#1, #4) |
+| Companion Android tests | `cd companion/src-tauri/gen/android && ./gradlew :app:testDebugUnitTest` | live (#53-#57) |
 | Sample app build | `./gradlew :sample:assembleDebug` | live (#1) |
 | Plugin publish (mavenLocal) | `./gradlew :gradle-plugin:publishToMavenLocal` | live (#21) |
 | Sample (with plugin) debug build | `./gradlew :sample:assembleDebug` | live (#21) — bridge via plugin injection |
