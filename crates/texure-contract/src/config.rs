@@ -2,6 +2,39 @@ use crate::error::ErrorCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Default transport resolution order (Group R, ticket #62):
+/// reverse-WS companion first, then direct LAN, then Tailscale when configured.
+pub fn default_transport_order() -> Vec<String> {
+    vec![
+        "reverse_ws".to_string(),
+        "lan_direct".to_string(),
+        "tailscale".to_string(),
+    ]
+}
+
+/// `[network]` table: configurable transport resolution and Tailscale target.
+/// Every field is optional so configs written before this table was added keep
+/// parsing unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkConfig {
+    #[serde(default = "default_transport_order")]
+    pub transport_order: Vec<String>,
+
+    /// Optional Tailscale destination (IP or hostname). Tailscale is skipped
+    /// by resolution when this is absent; no new error code is needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tailscale_ip: Option<String>,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            transport_order: default_transport_order(),
+            tailscale_ip: None,
+        }
+    }
+}
+
 /// A single device profile in the configuration file.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProfileConfig {
@@ -32,6 +65,11 @@ pub struct TexureConfig {
 
     #[serde(default)]
     pub profiles: HashMap<String, ProfileConfig>,
+
+    /// Transport resolution settings. Missing `[network]` uses the documented
+    /// default order, preserving backwards compatibility.
+    #[serde(default)]
+    pub network: NetworkConfig,
 }
 
 /// Final resolved device connection parameters ready for client dial.
@@ -184,6 +222,7 @@ mod tests {
             timeout_secs: Some(5),
             active_profile: None,
             profiles: HashMap::new(),
+            ..Default::default()
         };
 
         let resolved = config
@@ -216,6 +255,7 @@ mod tests {
             timeout_secs: Some(10),
             active_profile: Some("tablet".to_string()),
             profiles,
+            ..Default::default()
         };
 
         let resolved = config.resolve(|_| None).expect("resolve");
@@ -248,6 +288,7 @@ mod tests {
             timeout_secs: Some(10),
             active_profile: None,
             profiles,
+            ..Default::default()
         };
         let resolved = config
             .resolve_with_profile(Some("pixel"), |_| None)
@@ -265,6 +306,7 @@ mod tests {
             timeout_secs: Some(10),
             active_profile: None,
             profiles: HashMap::new(),
+            ..Default::default()
         };
         let res = config.resolve_with_profile(Some("nope"), |_| None);
         assert!(res.is_err());
@@ -290,6 +332,7 @@ mod tests {
             timeout_secs: Some(10),
             active_profile: None,
             profiles,
+            ..Default::default()
         };
         let resolved = config
             .resolve_with_profile(None, |key| {
@@ -311,6 +354,7 @@ mod tests {
             timeout_secs: Some(10),
             active_profile: None,
             profiles: HashMap::new(),
+            ..Default::default()
         };
         let resolved = config
             .resolve_with_profile(None, |_| None)
@@ -327,6 +371,7 @@ mod tests {
             timeout_secs: Some(0),
             active_profile: None,
             profiles: HashMap::new(),
+            ..Default::default()
         };
 
         let resolved = config

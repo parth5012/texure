@@ -67,6 +67,7 @@ texure/
 | Pairing QR command | `cargo run -p texure-server -- pair [--tunnel-url <wss://host[:port]/path\|domain>]` | live (#59) |
 | Reverse tunnel listener | `cargo run -p texure-server -- --enable-tunnel [--tunnel-port <port>] [--lifecycle-probe]` | live (#60/#61) — opt-in, default port 8766; lifecycle probe needs companion `device_state` RPC (#121) |
 | Tunnel tool routing (tunnel vs direct per call) | `cargo test -p texure-server router::tests` | live (#61) — 9 router tests, connected companion → gateway RPC |
+| Configurable transport resolution (`transport.rs`) | `cargo test -p texure-server transport::tests` | live (#62) — ordered fallback, invalid-name config error, tailscale-only-when-configured |
 | Contract fixture check | `cargo test -p texure-contract` | live (#18) |
 | Bridge unit tests | `./gradlew :bridge:testDebug` | live (#1, #4) |
 | Companion Android tests | `cd companion/src-tauri/gen/android && ./gradlew :app:testDebugUnitTest` | live (#53-#57) |

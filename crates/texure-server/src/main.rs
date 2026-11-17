@@ -4,6 +4,7 @@ pub mod mdns;
 pub mod pair;
 pub mod router;
 pub mod server;
+pub mod transport;
 pub mod tunnel_server;
 pub mod wait_for;
 pub mod ws_supervisor;

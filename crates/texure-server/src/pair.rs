@@ -452,6 +452,7 @@ mod tests {
             active_profile: None,
             timeout_secs: None,
             profiles,
+            ..Default::default()
         };
 
         let token = resolve_token_from_config(&config, Some("phone")).expect("profile exists");
