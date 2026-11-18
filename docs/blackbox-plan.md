@@ -84,7 +84,7 @@ reverse tunnel). All 13 pass with 0 fail / 0 xfail.
 | R9 | `pm grant` runtime permission auto-grant | `shizuku_pm_grant` | mcp-tunnel |
 | R10 | System `input tap` fallback injection | `shizuku_input_tap` | mcp-tunnel |
 | R11 | Pairing QR payload: `wss://` endpoint + bearer token | `pairing_qr` | mcp-tunnel |
-| R12 | Fallback `reverse_ws` → `lan_direct` when tunnel absent | `transport_fallback` | mcp-tunnel |
+| R12 | Fallback `reverse_ws` → `lan_direct` when tunnel is absent; fallback on *failure* (timeout/drop) is covered by router unit test + out-of-tree repro, not this scenario | `transport_fallback` | mcp-tunnel |
 | R13 | Second tunnel connection → `BUSY` + owner | `tunnel_single_flight` | mcp-tunnel |
 
 New actions: `tunnel_connect`, `tunnel_drop`, `tunnel_heartbeat`, `gateway_proxy`,
