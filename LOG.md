@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-18 (session) — Council round 3 close-out (map #64 stack)
+- Round 3 respawn: DeepSeek V4.1 Flash 9/10 SATISFIED — independently reproduced 150 workspace tests, clippy/fmt/lint, 13/13 mcp-tunnel, and two out-of-tree repros proving (a) silent tunnel → LAN fallback tree rev:42 and (b) gateway-only order → OFFLINE with no rev, so BB-R4/R5 FAIL. Round-2 F1 confirmed genuinely fixed.
+- GLM 5.3 Flash unavailable (model no longer advertised by any provider); Gemini 3.8 Flash unavailable (Antigravity quota + provider-session open failure). No substitution or invented scores.
+- Final state: 3 of 4 members satisfied (Hy4 9/10, DeepSeek 9/10, GLM 8.5/10 in round 2). All blocking findings across 3 rounds fixed. Non-blocking follow-ups recorded: no blackbox scenario for fallback-on-failure, bare-reply stale-reply risk for non-conforming companions, heartbeat cadence vs fixture clarification, decorative transport_resolve args.
+- Doc drift fixed: blackbox-plan R12 scope, repo-map router test count (13). VERIFY: texure-lint 0 · workspace 150 tests · clippy clean · fmt clean · mcp-tunnel 13/13. Council section added to all 5 PR descriptions via REST API.
+
 ## 2026-11-17 (session) — Council round 2 fixes (map #64 stack)
 - DeepSeek 7/10 NO: round-1 B2 fix was still exploitable — with lan_direct in every tunnel scenario's transport_order, a silent tunnel timed out and the FakeBridge tree (same rev:42) satisfied `rev > 0`, so BB-R4 passed while the gateway proxied nothing. Gateway scenarios now get `transport_order = ["reverse_ws"]` (only BB-R12 transport_resolve keeps lan_direct), so a silent tunnel yields OFFLINE and fails the oracle; B1 fallback remains covered by BB-R12 + the repro.
 - Hy4 9/10 YES (blockers RESOLVED). Non-blocking replay risk addressed: `keypress` (no rev guard) is excluded from fallback retry to avoid double execution; rev-guarded tap/type and reads still fall over.
