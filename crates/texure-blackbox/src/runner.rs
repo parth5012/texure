@@ -981,6 +981,22 @@ fn run_pair_payload(server_bin: &str, config_path: &str) -> Result<Value, String
 /// Full Group R round-trip: spawn the REAL server binary with its reverse
 /// tunnel listener, connect an in-process fake companion, and drive the 13
 /// scenarios through the stdio MCP path. No server internals are imported.
+/// Gateway scenarios must run with reverse_ws ONLY: with lan_direct available,
+/// a silent tunnel's timeout would fall back to the LAN FakeBridge (same
+/// rev:42 tree) and satisfy `rev > 0` while the gateway proxied nothing.
+/// Only BB-R12's `transport_resolve` action tests fallback.
+fn tunnel_transport_order(scenario: &Scenario) -> &'static str {
+    if scenario
+        .steps
+        .iter()
+        .any(|step| step.action == "transport_resolve")
+    {
+        "[\"reverse_ws\", \"lan_direct\"]"
+    } else {
+        "[\"reverse_ws\"]"
+    }
+}
+
 async fn run_mcp_tunnel_test(scenario: &Scenario, root_dir: &Path) -> WalkOutcome {
     let steps: Vec<StepTrace> = Vec::new();
 
@@ -1038,15 +1054,7 @@ async fn run_mcp_tunnel_test(scenario: &Scenario, root_dir: &Path) -> WalkOutcom
     // FakeBridge (which serves the same rev:42 tree) would satisfy `rev > 0`
     // vacuously. Only BB-R12 (transport_resolve) tests fallback, so only that
     // scenario needs a second transport.
-    let order = if scenario
-        .steps
-        .iter()
-        .any(|step| step.action == "transport_resolve")
-    {
-        "[\"reverse_ws\", \"lan_direct\"]"
-    } else {
-        "[\"reverse_ws\"]"
-    };
+    let order = tunnel_transport_order(scenario);
     let config_body = format!(
         "url = \"http://127.0.0.1:{bridge_port}\"\ntoken = \"{VALID_TUNNEL_TOKEN}\"\ntimeout_secs = 10\n\n[network]\ntransport_order = {order}\n"
     );
@@ -2396,6 +2404,53 @@ mod assertion_tests {
         assert!(
             super::verify_expect(&qr_resp, &json!({ "scheme": "wss", "token_present": true }))
                 .is_ok()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tunnel_order_tests {
+    use super::tunnel_transport_order;
+    use crate::scenario::{Scenario, Step};
+    use serde_json::json;
+
+    fn scenario(action: &str) -> Scenario {
+        Scenario {
+            schema_version: 1,
+            name: "tunnel-order-test".to_string(),
+            kind: "scenario".to_string(),
+            description: None,
+            tags: vec![],
+            steps: vec![Step {
+                action: action.to_string(),
+                args: json!({}),
+                expect: None,
+            }],
+            assertions: vec![],
+        }
+    }
+
+    #[test]
+    fn gateway_scenarios_never_include_lan_direct() {
+        for action in [
+            "gateway_proxy",
+            "tunnel_connect",
+            "pairing_qr",
+            "shizuku_cmd",
+        ] {
+            assert_eq!(
+                tunnel_transport_order(&scenario(action)),
+                "[\"reverse_ws\"]",
+                "action {action} must prove the tunnel, not fall back to LAN"
+            );
+        }
+    }
+
+    #[test]
+    fn transport_resolve_scenario_keeps_fallback() {
+        assert_eq!(
+            tunnel_transport_order(&scenario("transport_resolve")),
+            "[\"reverse_ws\", \"lan_direct\"]"
         );
     }
 }
