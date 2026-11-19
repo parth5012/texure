@@ -212,9 +212,26 @@ class BridgeServer(
         }
 
         val method = body.optString("method", "*").trim().ifEmpty { "*" }
-        val delayMs = body.optLong("delay_ms", 0L)
+        val delayMs = if (body.has("delay_ms") && !body.isNull("delay_ms")) {
+            val raw = body.get("delay_ms")
+            if (raw !is Number) {
+                return badRequest("Parameter 'delay_ms' must be a number")
+            }
+            val d = raw.toLong()
+            if (d < 0L) {
+                return badRequest("Parameter 'delay_ms' cannot be negative")
+            }
+            d
+        } else {
+            0L
+        }
+
         val times = if (body.has("times") && !body.isNull("times")) {
-            val t = body.optInt("times", -1)
+            val raw = body.get("times")
+            if (raw !is Number) {
+                return badRequest("Parameter 'times' must be an integer")
+            }
+            val t = raw.toInt()
             if (t <= 0) {
                 return badRequest("Parameter 'times' must be greater than 0")
             }
@@ -226,6 +243,9 @@ class BridgeServer(
         // Response can be nested under "response" or flattened at top level
         val responseObj = body.optJSONObject("response")
         val status = responseObj?.optInt("status", 200) ?: body.optInt("status", 200)
+        if (status !in 100..599) {
+            return badRequest("Invalid HTTP status code '$status'")
+        }
 
         val headers = mutableMapOf<String, String>()
         val headersObj = responseObj?.optJSONObject("headers") ?: body.optJSONObject("headers")
@@ -267,6 +287,8 @@ class BridgeServer(
                 put("method", method)
                 put("url_pattern", urlPatternStr)
                 put("status", status)
+                put("headers", JSONObject(headers as Map<*, *>))
+                put("body", responseBody)
                 times?.let { put("times", it) }
                 put("delay_ms", delayMs)
             })
