@@ -90,6 +90,17 @@ class BridgeServer(
             }
         }
         if (isNetworkRoute(uri)) {
+            if (!isOkHttpAvailable()) {
+                return jsonResponse(
+                    Response.Status.NOT_IMPLEMENTED,
+                    JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", "OKHTTP_NOT_FOUND")
+                            put("message", "OkHttp is not present on the app classpath")
+                        })
+                    }
+                )
+            }
             return try {
                 when {
                     method == Method.POST && uri == "/network/mocks" -> handlePostNetworkMocks(session)
@@ -103,11 +114,11 @@ class BridgeServer(
                         })
                     })
                 }
-            } catch (e: Exception) {
+            } catch (t: Throwable) {
                 jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
                     put("error", JSONObject().apply {
                         put("code", "INTERNAL_ERROR")
-                        put("message", e.message ?: "network endpoint error")
+                        put("message", t.message ?: "network endpoint error")
                     })
                 })
             }
@@ -199,6 +210,15 @@ class BridgeServer(
     private fun isNetworkRoute(uri: String): Boolean =
         uri.startsWith("/network/")
 
+    private fun isOkHttpAvailable(): Boolean {
+        return try {
+            Class.forName("okhttp3.OkHttpClient")
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     private fun handlePostNetworkMocks(session: IHTTPSession): Response {
         val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
 
@@ -220,6 +240,9 @@ class BridgeServer(
             val d = raw.toLong()
             if (d < 0L) {
                 return badRequest("Parameter 'delay_ms' cannot be negative")
+            }
+            if (d > 30_000L) {
+                return badRequest("Parameter 'delay_ms' cannot exceed 30000ms (30s)")
             }
             d
         } else {
@@ -754,6 +777,7 @@ class BridgeServer(
 
     override fun stop() {
         try { recordingController.stop() } catch (_: Exception) {}
+        try { com.texure.bridge.network.TexureNetworkInterceptor.reset() } catch (_: Throwable) {}
         worker.shutdown()
         for (ws in activeWebSockets) {
             try {

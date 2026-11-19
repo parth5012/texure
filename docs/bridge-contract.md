@@ -164,7 +164,7 @@ Clears the buffered trace. Response `{ "ok": true, "count": 0 }`.
 
 ### In-app Network Interception & Dynamic API Mocking (map #69)
 
-In debug builds, OkHttpClient is instrumented via AGP ASM to attach TexureNetworkInterceptor. All real network requests pass through 100% untouched by default unless an active mock rule matches. Control routes are authenticated with Bearer token:
+In debug builds, OkHttpClient is instrumented via AGP ASM to attach TexureNetworkInterceptor. All real network requests pass through 100% untouched by default unless an active mock rule matches. Control routes are authenticated with Bearer token and are exempt from single-flight locking (control plane):
 
 #### POST /network/mocks
 
@@ -183,7 +183,7 @@ Registers a new dynamic mock rule:
 }
 ```
 Response: `{ "ok": true, "id": "<id>", "rule": { ... } }`.
-Invalid regex or malformed payload returns HTTP 400 with `BAD_REQUEST`.
+Invalid regex, invalid status (< 100 or > 599), negative `delay_ms`, delay exceeding 30,000ms (30s), or malformed payload returns HTTP 400 with `BAD_REQUEST`.
 
 #### DELETE /network/mocks
 
@@ -191,7 +191,7 @@ Clears all registered mock rules. Response `{ "ok": true, "cleared": true }`.
 
 #### GET /network/history
 
-Returns the rolling ring buffer of captured requests (last 100 requests). Accepts optional query parameter `?url_contains=<string>` to filter results.
+Returns the rolling ring buffer of captured requests (last 100 requests). Accepts optional query parameter `?url_contains=<string>` to filter results. Request bodies are captured up to 64 KB; bodies exceeding 64 KB or one-shot/streaming bodies are reported with placeholder descriptors (`[one-shot / streaming body]` or `[body exceeds 64KB ... - omitted]`) to prevent memory exhaustion.
 ```json
 {
   "history": [
@@ -214,7 +214,7 @@ Sets runtime mocking enable/disable mode without rebuilding the app:
 ```json
 { "enabled": false }
 ```
-Response: `{ "ok": true, "enabled": false }`. When disabled, all requests pass through 100% untouched regardless of active mock rules.
+Response: `{ "ok": true, "enabled": false }`. When disabled, all requests pass through 100% untouched regardless of active mock rules. Missing or non-boolean `enabled` returns HTTP 400 `BAD_REQUEST`. Mock rules and captured history are reset when the bridge server stops.
 
 ### (tool note, agent-facing)
 

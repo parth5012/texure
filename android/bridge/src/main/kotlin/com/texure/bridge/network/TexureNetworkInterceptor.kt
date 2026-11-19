@@ -7,6 +7,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.buffer
 
 /**
  * Texure in-app OkHttp network interceptor.
@@ -20,6 +21,8 @@ import okio.Buffer
 object TexureNetworkInterceptor : Interceptor {
 
     private const val MAX_HISTORY_SIZE = 100
+    private const val MAX_MOCK_RULES = 200
+    private const val MAX_BODY_CAPTURE_BYTES = 64 * 1024L // 64 KB
 
     @Volatile
     private var mockingEnabled: Boolean = true
@@ -141,13 +144,38 @@ object TexureNetworkInterceptor : Interceptor {
         if (body.isOneShot() || body.isDuplex()) {
             return "[one-shot / streaming body]"
         }
+        val contentLength = try { body.contentLength() } catch (_: Exception) { -1L }
+        if (contentLength > MAX_BODY_CAPTURE_BYTES) {
+            return "[body exceeds 64KB (${contentLength} bytes) - omitted]"
+        }
         return try {
             val buffer = Buffer()
-            body.writeTo(buffer)
-            val maxBytes = 64 * 1024L
-            val byteCount = minOf(buffer.size, maxBytes)
+            val limitedSink = object : okio.ForwardingSink(buffer) {
+                private var bytesWritten = 0L
+                override fun write(source: Buffer, byteCount: Long) {
+                    val remaining = MAX_BODY_CAPTURE_BYTES - bytesWritten
+                    if (remaining <= 0) {
+                        source.skip(byteCount)
+                        return
+                    }
+                    val toWrite = minOf(byteCount, remaining)
+                    super.write(source, toWrite)
+                    bytesWritten += toWrite
+                    if (byteCount > toWrite) {
+                        source.skip(byteCount - toWrite)
+                    }
+                }
+            }
+            val bufferedSink = limitedSink.buffer()
+            body.writeTo(bufferedSink)
+            bufferedSink.flush()
+            val byteCount = minOf(buffer.size, MAX_BODY_CAPTURE_BYTES)
             val prefix = buffer.readUtf8(byteCount)
-            if (buffer.size > 0) "$prefix... [truncated]" else prefix
+            if (contentLength == -1L && buffer.size >= MAX_BODY_CAPTURE_BYTES) {
+                "$prefix... [truncated]"
+            } else {
+                prefix
+            }
         } catch (_: Exception) {
             null
         }
@@ -167,6 +195,9 @@ object TexureNetworkInterceptor : Interceptor {
     fun addMock(rule: MockRule) {
         synchronized(rulesLock) {
             mockRules.removeIf { it.id == rule.id }
+            if (mockRules.size >= MAX_MOCK_RULES) {
+                mockRules.removeAt(0)
+            }
             mockRules.add(rule)
         }
     }
@@ -175,6 +206,16 @@ object TexureNetworkInterceptor : Interceptor {
         synchronized(rulesLock) {
             mockRules.clear()
         }
+    }
+
+    fun reset() {
+        synchronized(rulesLock) {
+            mockRules.clear()
+        }
+        synchronized(historyLock) {
+            requestHistory.clear()
+        }
+        mockingEnabled = true
     }
 
     fun getMocks(): List<MockRule> {
@@ -203,11 +244,5 @@ object TexureNetworkInterceptor : Interceptor {
         synchronized(historyLock) {
             requestHistory.clear()
         }
-    }
-
-    fun reset() {
-        clearMocks()
-        clearHistory()
-        mockingEnabled = true
     }
 }
