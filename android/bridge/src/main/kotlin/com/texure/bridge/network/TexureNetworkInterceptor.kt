@@ -102,11 +102,11 @@ object TexureNetworkInterceptor : Interceptor {
                 val rule = iterator.next()
                 if (rule.matches(method, url)) {
                     val times = rule.times
-                    if (times != null && times > 0) {
-                        val remaining = times - 1
-                        rule.times = remaining
-                        if (remaining == 0) {
+                    if (times != null) {
+                        if (times <= 1) {
                             iterator.remove()
+                        } else {
+                            rule.times = times - 1
                         }
                     }
                     return rule
@@ -138,10 +138,16 @@ object TexureNetworkInterceptor : Interceptor {
 
     private fun readRequestBody(request: Request): String? {
         val body = request.body ?: return null
+        if (body.isOneShot() || body.isDuplex()) {
+            return "[one-shot / streaming body]"
+        }
         return try {
             val buffer = Buffer()
             body.writeTo(buffer)
-            buffer.readUtf8()
+            val maxBytes = 64 * 1024L
+            val byteCount = minOf(buffer.size, maxBytes)
+            val prefix = buffer.readUtf8(byteCount)
+            if (buffer.size > 0) "$prefix... [truncated]" else prefix
         } catch (_: Exception) {
             null
         }
@@ -160,6 +166,7 @@ object TexureNetworkInterceptor : Interceptor {
 
     fun addMock(rule: MockRule) {
         synchronized(rulesLock) {
+            mockRules.removeIf { it.id == rule.id }
             mockRules.add(rule)
         }
     }

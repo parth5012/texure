@@ -213,7 +213,15 @@ class BridgeServer(
 
         val method = body.optString("method", "*").trim().ifEmpty { "*" }
         val delayMs = body.optLong("delay_ms", 0L)
-        val times = if (body.has("times") && !body.isNull("times")) body.getInt("times") else null
+        val times = if (body.has("times") && !body.isNull("times")) {
+            val t = body.optInt("times", -1)
+            if (t <= 0) {
+                return badRequest("Parameter 'times' must be greater than 0")
+            }
+            t
+        } else {
+            null
+        }
 
         // Response can be nested under "response" or flattened at top level
         val responseObj = body.optJSONObject("response")
@@ -230,18 +238,8 @@ class BridgeServer(
         }
 
         val responseBody = when {
-            responseObj != null -> {
-                if (responseObj.has("body")) {
-                    val b = responseObj.get("body")
-                    if (b is JSONObject || b is JSONArray) b.toString() else b.toString()
-                } else {
-                    ""
-                }
-            }
-            body.has("body") -> {
-                val b = body.get("body")
-                if (b is JSONObject || b is JSONArray) b.toString() else b.toString()
-            }
+            responseObj != null -> if (responseObj.has("body")) responseObj.get("body").toString() else ""
+            body.has("body") -> body.get("body").toString()
             else -> ""
         }
 
@@ -316,7 +314,10 @@ class BridgeServer(
         if (!body.has("enabled")) {
             return badRequest("Missing 'enabled' parameter")
         }
-        val enabled = body.getBoolean("enabled")
+        val enabled = when (val raw = body.opt("enabled")) {
+            is Boolean -> raw
+            else -> return badRequest("Parameter 'enabled' must be a boolean")
+        }
         com.texure.bridge.network.TexureNetworkInterceptor.setMockingEnabled(enabled)
         return jsonResponse(Response.Status.OK, JSONObject().apply {
             put("ok", true)
