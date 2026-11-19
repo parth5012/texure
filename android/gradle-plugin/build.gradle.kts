@@ -16,6 +16,12 @@ repositories {
 
 dependencies {
     compileOnly("com.android.tools.build:gradle:8.4.0")
+    compileOnly("org.ow2.asm:asm:9.6")
+    compileOnly("org.ow2.asm:asm-commons:9.6")
+    testImplementation("com.android.tools.build:gradle:8.4.0")
+    testImplementation("org.ow2.asm:asm:9.6")
+    testImplementation("org.ow2.asm:asm-tree:9.6")
+    testImplementation("org.ow2.asm:asm-commons:9.6")
     testImplementation("junit:junit:4.13.2")
 }
 
