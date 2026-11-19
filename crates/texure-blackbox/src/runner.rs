@@ -562,12 +562,20 @@ async fn run_mcp_real_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path
     if scenario.steps.iter().any(|s| {
         matches!(
             s.action.as_str(),
-            "recording_start" | "recording_stop" | "recording_export" | "recording_clear" | "tag"
+            "recording_start"
+                | "recording_stop"
+                | "recording_export"
+                | "recording_clear"
+                | "tag"
+                | "network_mock"
+                | "network_request"
+                | "network_history"
+                | "network_mode"
         )
     }) {
         return Err((
             steps,
-            "SKIP: tag and recording_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
+            "SKIP: tag, recording_*, and network_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
                 .to_string(),
         ));
     }

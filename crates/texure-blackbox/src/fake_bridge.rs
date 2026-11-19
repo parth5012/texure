@@ -1022,7 +1022,7 @@ async fn route_request(
                 Err(e) => {
                     let err = json!({
                         "error": {
-                            "code": "INVALID_JSON",
+                            "code": "BAD_REQUEST",
                             "message": format!("Invalid JSON: {e}")
                         }
                     });
@@ -1038,7 +1038,7 @@ async fn route_request(
                 None => {
                     let err = json!({
                         "error": {
-                            "code": "INVALID_ARGUMENT",
+                            "code": "BAD_REQUEST",
                             "message": "'url_pattern' is required"
                         }
                     });
@@ -1052,7 +1052,7 @@ async fn route_request(
             if let Err(e) = regex::Regex::new(&url_pattern) {
                 let err = json!({
                     "error": {
-                        "code": "INVALID_REGEX",
+                        "code": "BAD_REQUEST",
                         "message": format!("Invalid regex pattern: {e}")
                     }
                 });
@@ -1065,16 +1065,18 @@ async fn route_request(
             let method = req_json
                 .get("method")
                 .and_then(|v| v.as_str())
-                .unwrap_or("GET")
+                .unwrap_or("*")
                 .to_uppercase();
             let resp_obj = req_json.get("response");
             let status = resp_obj
                 .and_then(|r| r.get("status"))
+                .or_else(|| req_json.get("status"))
                 .and_then(|s| s.as_u64())
                 .unwrap_or(200) as u16;
             let mut headers_map = std::collections::HashMap::new();
             if let Some(h) = resp_obj
                 .and_then(|r| r.get("headers"))
+                .or_else(|| req_json.get("headers"))
                 .and_then(|h| h.as_object())
             {
                 for (k, v) in h {
@@ -1085,20 +1087,50 @@ async fn route_request(
             }
             let body_str = resp_obj
                 .and_then(|r| r.get("body"))
-                .and_then(|b| b.as_str())
-                .unwrap_or("")
-                .to_string();
+                .or_else(|| req_json.get("body"))
+                .and_then(|b| {
+                    if b.is_string() {
+                        b.as_str().map(|s| s.to_string())
+                    } else {
+                        Some(b.to_string())
+                    }
+                })
+                .unwrap_or_default();
             let delay_ms = req_json
                 .get("delay_ms")
                 .and_then(|d| d.as_u64())
                 .unwrap_or(0);
-            let times = req_json
-                .get("times")
-                .and_then(|t| t.as_u64())
-                .map(|t| t as u32);
+            let times = if let Some(t_val) = req_json.get("times") {
+                if !t_val.is_null() {
+                    let t = t_val.as_i64().unwrap_or(0);
+                    if t <= 0 {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "Parameter 'times' must be greater than 0"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                    Some(t as u32)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
             let mut net = state.network.lock().await;
-            let id = format!("mock_{}", net.mocks.len() + 1);
+            let id = req_json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("mock_{}", net.mocks.len() + 1));
+            net.mocks.retain(|r| r.id != id);
             let rule = FakeMockRule {
                 id: id.clone(),
                 method: method.clone(),
@@ -1162,7 +1194,7 @@ async fn route_request(
                 Err(e) => {
                     let err = json!({
                         "error": {
-                            "code": "INVALID_JSON",
+                            "code": "BAD_REQUEST",
                             "message": format!("Invalid JSON: {e}")
                         }
                     });
@@ -1178,7 +1210,7 @@ async fn route_request(
                 None => {
                     let err = json!({
                         "error": {
-                            "code": "INVALID_ARGUMENT",
+                            "code": "BAD_REQUEST",
                             "message": "'enabled' (boolean) is required"
                         }
                     });
@@ -1207,7 +1239,7 @@ async fn route_request(
                 Err(e) => {
                     let err = json!({
                         "error": {
-                            "code": "INVALID_JSON",
+                            "code": "BAD_REQUEST",
                             "message": format!("Invalid JSON: {e}")
                         }
                     });
@@ -1228,7 +1260,7 @@ async fn route_request(
             let mut matched_rule: Option<(usize, FakeMockRule)> = None;
             if is_enabled {
                 for (i, rule) in net.mocks.iter().enumerate() {
-                    let method_match = rule.method.eq_ignore_ascii_case(&req_method);
+                    let method_match = rule.method == "*" || rule.method.eq_ignore_ascii_case(&req_method);
                     let url_match = regex::Regex::new(&rule.url_pattern)
                         .map(|re| re.is_match(&url))
                         .unwrap_or(false);
