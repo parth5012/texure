@@ -1,6 +1,8 @@
 package com.texure.gradle
 
 import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.instrumentation.FramesComputationMode
+import com.android.build.api.instrumentation.InstrumentationScope
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.variant.ApplicationVariant
 import com.android.build.api.variant.LibraryAndroidComponentsExtension
@@ -22,12 +24,15 @@ import org.gradle.api.tasks.TaskProvider
  * 2. Registers `checkTexureReleaseLeak<Variant>` verification tasks that fail the
  *    build (never warn) when bridge code resolves for a release variant
  *    (Guardrail G1, docs/lld-plugin.md §4.1).
- *
- * Nothing else: no bytecode transforms, no source edits, no release wiring.
+ * 3. In debug variants (with build-time opt-out via `texure { networkMocking = false }`),
+ *    instruments OkHttpClient via ASM to attach TexureNetworkInterceptor.
+ *    Release builds remain 100% uninstrumented (Guardrail G1).
  */
 class TexureBridgePlugin : Plugin<Project> {
 
     override fun apply(project: Project) {
+        val extension = project.extensions.create("texure", TexureExtension::class.java)
+
         val aggregate: TaskProvider<DefaultTask> = project.tasks.register(
             AGGREGATE_TASK_NAME,
             DefaultTask::class.java,
@@ -39,11 +44,15 @@ class TexureBridgePlugin : Plugin<Project> {
         )
 
         listOf(ANDROID_APPLICATION_PLUGIN, ANDROID_LIBRARY_PLUGIN).forEach { pluginId ->
-            project.pluginManager.withPlugin(pluginId) { configure(project, aggregate) }
+            project.pluginManager.withPlugin(pluginId) { configure(project, aggregate, extension) }
         }
     }
 
-    private fun configure(project: Project, aggregate: TaskProvider<DefaultTask>) {
+    private fun configure(
+        project: Project,
+        aggregate: TaskProvider<DefaultTask>,
+        extension: TexureExtension,
+    ) {
         val appComponents = project.extensions.findByType(
             ApplicationAndroidComponentsExtension::class.java,
         )
@@ -52,6 +61,12 @@ class TexureBridgePlugin : Plugin<Project> {
                 appComponents.selector().withBuildType(RELEASE_BUILD_TYPE),
                 Action<ApplicationVariant> { variant ->
                     wireReleaseVariant(project, aggregate, variant)
+                },
+            )
+            appComponents.onVariants(
+                appComponents.selector().withBuildType(DEBUG_BUILD_TYPE),
+                Action<ApplicationVariant> { variant ->
+                    wireDebugVariant(variant, extension)
                 },
             )
         } else {
@@ -66,6 +81,12 @@ class TexureBridgePlugin : Plugin<Project> {
                 libComponents.selector().withBuildType(RELEASE_BUILD_TYPE),
                 Action<LibraryVariant> { variant ->
                     wireReleaseVariant(project, aggregate, variant)
+                },
+            )
+            libComponents.onVariants(
+                libComponents.selector().withBuildType(DEBUG_BUILD_TYPE),
+                Action<LibraryVariant> { variant ->
+                    wireDebugVariant(variant, extension)
                 },
             )
         }
@@ -132,8 +153,24 @@ class TexureBridgePlugin : Plugin<Project> {
         aggregate.configure(Action { it.dependsOn(checkTask) })
     }
 
+    private fun wireDebugVariant(
+        variant: Variant,
+        extension: TexureExtension,
+    ) {
+        variant.instrumentation.transformClassesWith(
+            TexureOkHttpVisitorFactory::class.java,
+            InstrumentationScope.ALL,
+        ) { params ->
+            params.networkMocking.set(extension.networkMocking)
+        }
+        variant.instrumentation.setAsmFramesComputationMode(
+            FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS,
+        )
+    }
+
     private companion object {
         const val RELEASE_BUILD_TYPE = "release"
+        const val DEBUG_BUILD_TYPE = "debug"
         const val AGGREGATE_TASK_NAME = "checkTexureReleaseLeak"
         const val VERIFICATION_GROUP = "verification"
         const val DEBUG_ONLY_CONFIG = "debugImplementation"
