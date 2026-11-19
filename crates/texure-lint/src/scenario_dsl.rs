@@ -58,6 +58,11 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         // Group R: pairing QR & multi-transport fallback
         "pairing_qr",
         "transport_resolve",
+        // Group N: network mocking & inspection (map 14 #69)
+        "network_mock",
+        "network_request",
+        "network_history",
+        "network_mode",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 

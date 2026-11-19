@@ -161,6 +161,16 @@ config-driven fallback order); Shizuku is used only for remote lifecycle bootstr
 | Transport fallback | BB-R12 | When the reverse WS tunnel is absent, transport resolution fails over to the next configured transport (`lan_direct`). |
 | Remote single-flight | BB-R13 | Second remote tunnel connection while one is active → `BUSY` refusal with owner identity. |
 
+## 3N. In-app network interception & dynamic API mocking [N] (map 14, #69)
+
+Rows below define the contract for in-app OkHttp network request interception, dynamic regex mock rule matching, synthetic response generation, and request payload history inspection.
+
+| Behavior | Test ID | Spec |
+|---|---|---|
+| Dynamic mock response | BB-N1 | Register mock rule via `/network/mocks`, execute request, verify synthetic response is returned matching status, headers, and body. |
+| Request history capture | BB-N2 | Capture in-flight HTTP requests into rolling ring buffer and query `/network/history` with optional URL filtering. |
+| Runtime passthrough toggle | BB-N3 | Disable mocking via `/network/mode`; requests proceed via real network passthrough untouched. |
+
 ## 4. Explicit non-behaviors (v1)
 
 - No auto-wake of a powered-off screen by the in-app bridge (remote wake via Shizuku in §3R BB-R7 is an explicitly guarded remote bootstrap exception).

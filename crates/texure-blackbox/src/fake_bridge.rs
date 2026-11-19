@@ -38,6 +38,36 @@ pub struct FakeBridgeState {
     pub expected_token: String,
     pub recording: tokio::sync::Mutex<RecordingState>,
     pub tags: tokio::sync::Mutex<std::collections::HashMap<String, u64>>,
+    pub network: tokio::sync::Mutex<FakeNetworkState>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FakeNetworkState {
+    pub enabled: bool,
+    pub mocks: Vec<FakeMockRule>,
+    pub history: Vec<FakeCapturedRequest>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FakeMockRule {
+    pub id: String,
+    pub method: String,
+    pub url_pattern: String,
+    pub status: u16,
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: String,
+    pub delay_ms: u64,
+    pub times: Option<u32>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FakeCapturedRequest {
+    pub url: String,
+    pub method: String,
+    pub status: u16,
+    pub request_body: Option<String>,
+    pub latency_ms: u64,
+    pub timestamp: u64,
 }
 
 /// In-memory workflow-recording session (ticket #24 L2 mock).
@@ -89,6 +119,11 @@ impl FakeBridgeServer {
                 actions: Vec::new(),
             }),
             tags: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            network: tokio::sync::Mutex::new(FakeNetworkState {
+                enabled: true,
+                mocks: Vec::new(),
+                history: Vec::new(),
+            }),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -979,6 +1014,269 @@ async fn route_request(
                 "404 Not Found",
                 vec![("Content-Type", "application/json".to_string())],
                 serde_json::to_vec(&err).unwrap(),
+            )
+        }
+        ("POST", "/network/mocks") => {
+            let req_json: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let err = json!({
+                        "error": {
+                            "code": "INVALID_JSON",
+                            "message": format!("Invalid JSON: {e}")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+            let url_pattern = match req_json.get("url_pattern").and_then(|v| v.as_str()) {
+                Some(p) => p.to_string(),
+                None => {
+                    let err = json!({
+                        "error": {
+                            "code": "INVALID_ARGUMENT",
+                            "message": "'url_pattern' is required"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+            if let Err(e) = regex::Regex::new(&url_pattern) {
+                let err = json!({
+                    "error": {
+                        "code": "INVALID_REGEX",
+                        "message": format!("Invalid regex pattern: {e}")
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+            let method = req_json
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET")
+                .to_uppercase();
+            let resp_obj = req_json.get("response");
+            let status = resp_obj
+                .and_then(|r| r.get("status"))
+                .and_then(|s| s.as_u64())
+                .unwrap_or(200) as u16;
+            let mut headers_map = std::collections::HashMap::new();
+            if let Some(h) = resp_obj
+                .and_then(|r| r.get("headers"))
+                .and_then(|h| h.as_object())
+            {
+                for (k, v) in h {
+                    if let Some(vs) = v.as_str() {
+                        headers_map.insert(k.clone(), vs.to_string());
+                    }
+                }
+            }
+            let body_str = resp_obj
+                .and_then(|r| r.get("body"))
+                .and_then(|b| b.as_str())
+                .unwrap_or("")
+                .to_string();
+            let delay_ms = req_json
+                .get("delay_ms")
+                .and_then(|d| d.as_u64())
+                .unwrap_or(0);
+            let times = req_json
+                .get("times")
+                .and_then(|t| t.as_u64())
+                .map(|t| t as u32);
+
+            let mut net = state.network.lock().await;
+            let id = format!("mock_{}", net.mocks.len() + 1);
+            let rule = FakeMockRule {
+                id: id.clone(),
+                method: method.clone(),
+                url_pattern: url_pattern.clone(),
+                status,
+                headers: headers_map,
+                body: body_str,
+                delay_ms,
+                times,
+            };
+            net.mocks.push(rule.clone());
+            let resp = json!({
+                "ok": true,
+                "id": id,
+                "rule": rule
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("DELETE", "/network/mocks") => {
+            let mut net = state.network.lock().await;
+            net.mocks.clear();
+            let resp = json!({
+                "ok": true,
+                "cleared": true
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("GET", "/network/history") => {
+            let mut url_contains: Option<String> = None;
+            for part in query_str.split('&') {
+                if let Some(val) = part.strip_prefix("url_contains=") {
+                    url_contains = Some(val.to_string());
+                }
+            }
+            let net = state.network.lock().await;
+            let filtered: Vec<&FakeCapturedRequest> = match url_contains {
+                Some(ref sub) => net.history.iter().filter(|r| r.url.contains(sub)).collect(),
+                None => net.history.iter().collect(),
+            };
+            let resp = json!({
+                "history": filtered,
+                "count": filtered.len()
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/network/mode") => {
+            let req_json: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let err = json!({
+                        "error": {
+                            "code": "INVALID_JSON",
+                            "message": format!("Invalid JSON: {e}")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+            let enabled = match req_json.get("enabled").and_then(|v| v.as_bool()) {
+                Some(b) => b,
+                None => {
+                    let err = json!({
+                        "error": {
+                            "code": "INVALID_ARGUMENT",
+                            "message": "'enabled' (boolean) is required"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+            let mut net = state.network.lock().await;
+            net.enabled = enabled;
+            let resp = json!({
+                "ok": true,
+                "enabled": enabled
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/network/execute") => {
+            let req_json: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let err = json!({
+                        "error": {
+                            "code": "INVALID_JSON",
+                            "message": format!("Invalid JSON: {e}")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+            let url = req_json.get("url").and_then(|u| u.as_str()).unwrap_or("").to_string();
+            let req_method = req_json.get("method").and_then(|m| m.as_str()).unwrap_or("GET").to_uppercase();
+            let req_body = req_json.get("body").and_then(|b| b.as_str()).map(|s| s.to_string());
+
+            let mut net = state.network.lock().await;
+            let is_enabled = net.enabled;
+
+            let mut matched_rule: Option<(usize, FakeMockRule)> = None;
+            if is_enabled {
+                for (i, rule) in net.mocks.iter().enumerate() {
+                    let method_match = rule.method.eq_ignore_ascii_case(&req_method);
+                    let url_match = regex::Regex::new(&rule.url_pattern)
+                        .map(|re| re.is_match(&url))
+                        .unwrap_or(false);
+                    if method_match && url_match {
+                        matched_rule = Some((i, rule.clone()));
+                        break;
+                    }
+                }
+            }
+
+            let (status, resp_body, passthrough, delay_ms) = if let Some((idx, rule)) = matched_rule {
+                if let Some(t) = rule.times {
+                    if t <= 1 {
+                        net.mocks.remove(idx);
+                    } else {
+                        net.mocks[idx].times = Some(t - 1);
+                    }
+                }
+                (rule.status, rule.body, false, rule.delay_ms)
+            } else {
+                (200, "{\"passthrough\": true}".to_string(), true, 0)
+            };
+
+            let captured = FakeCapturedRequest {
+                url: url.clone(),
+                method: req_method,
+                status,
+                request_body: req_body,
+                latency_ms: delay_ms,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            };
+            net.history.push(captured);
+            if net.history.len() > 100 {
+                net.history.remove(0);
+            }
+
+            let resp = json!({
+                "status": status,
+                "body": resp_body,
+                "passthrough": passthrough
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
             )
         }
         _ => {

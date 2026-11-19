@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "network_mock_response",
+  "kind": "scenario",
+  "description": "BB-N1: Register mock rule, execute request, verify synthetic response returned",
+  "steps": [
+    {
+      "action": "network_mock",
+      "args": {
+        "method": "GET",
+        "url_pattern": "^https://api\\.example\\.com/items/.*$",
+        "response": {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Mock-Source": "Texure"
+          },
+          "body": "{\"item_id\": 42, \"name\": \"synthetic-item\"}"
+        },
+        "times": 1
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "network_request",
+      "args": {
+        "method": "GET",
+        "url": "https://api.example.com/items/100"
+      },
+      "expect": {
+        "status": 200,
+        "body": "{\"item_id\": 42, \"name\": \"synthetic-item\"}"
+      }
+    }
+  ],
+  "assertions": []
+}

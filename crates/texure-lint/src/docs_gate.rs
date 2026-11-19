@@ -50,6 +50,8 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
         // Group R: remote tunnel/gateway/Shizuku/pairing (map 9 #41, write-first)
         "BB-R1", "BB-R2", "BB-R3", "BB-R4", "BB-R5", "BB-R6", "BB-R7", "BB-R8", "BB-R9", "BB-R10",
         "BB-R11", "BB-R12", "BB-R13",
+        // Group N: in-app network mocking & inspection (map 14 #69)
+        "BB-N1", "BB-N2", "BB-N3",
     ];
 
     let mut mapped_bb_ids: std::collections::HashMap<String, usize> =
@@ -57,7 +59,7 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
     let mut behavior_rows = Vec::new();
 
     static BB_REGEX: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"BB-(?:[A-C]|R)[0-9]+").unwrap());
+        std::sync::LazyLock::new(|| Regex::new(r"BB-(?:[A-C]|R|N)[0-9]+").unwrap());
 
     let lines: Vec<&str> = content.lines().collect();
     let mut in_table = false;

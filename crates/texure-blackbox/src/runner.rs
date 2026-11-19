@@ -1970,6 +1970,184 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     return Err((steps, format!("recording_clear failed: {e}")));
                 }
             },
+            "network_mock" => match client.network_mock(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("network_mock failed: {e}")));
+                }
+            },
+            "network_request" => match client.network_request(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("network_request failed: {e}")));
+                }
+            },
+            "network_history" => {
+                let url_contains = step.args.get("url_contains").and_then(|u| u.as_str());
+                match client.network_history(url_contains).await {
+                    Ok(resp) => {
+                        last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(HttpBridgeError::StatusError { body, .. }) => {
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("network_history failed: {e}")));
+                    }
+                }
+            }
+            "network_mode" => {
+                let enabled = step
+                    .args
+                    .get("enabled")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(true);
+                match client.network_mode(enabled).await {
+                    Ok(resp) => {
+                        last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(HttpBridgeError::StatusError { body, .. }) => {
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("network_mode failed: {e}")));
+                    }
+                }
+            }
             other => {
                 server.stop();
                 return Err((
