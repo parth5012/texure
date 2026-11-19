@@ -21,7 +21,8 @@
         "url_contains": "orders"
       },
       "expect": {
-        "count": 1
+        "count": 1,
+        "history.0.request_body": "{\"order_id\": \"ord-999\", \"amount\": 49.99}"
       }
     }
   ],

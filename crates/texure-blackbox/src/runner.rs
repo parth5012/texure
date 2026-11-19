@@ -2248,6 +2248,29 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
                 continue;
             }
 
+            if k.contains('.') {
+                let parts: Vec<&str> = k.split('.').collect();
+                let mut curr = Some(actual);
+                for part in parts {
+                    curr = match curr {
+                        Some(Value::Object(map)) => map.get(part),
+                        Some(Value::Array(arr)) => {
+                            part.parse::<usize>().ok().and_then(|i| arr.get(i))
+                        }
+                        _ => None,
+                    };
+                }
+                if let Some(actual_val) = curr {
+                    if actual_val != expected_val {
+                        return Err(format!(
+                            "Expected {k} == {:?}, got {:?}",
+                            expected_val, actual_val
+                        ));
+                    }
+                    continue;
+                }
+            }
+
             if k == "ok" {
                 let actual_ok = actual
                     .get("ok")
