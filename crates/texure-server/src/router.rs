@@ -526,7 +526,7 @@ mod tests {
             let server = TunnelServer::bind_with_config(0, fast_config(), "tok")
                 .await
                 .expect("bind ephemeral port");
-            let addr: SocketAddr = server.local_addr();
+            let addr: SocketAddr = server.connect_addr();
             let url = format!("ws://{addr}{DEFAULT_TUNNEL_PATH}");
             let request = url.into_client_request().expect("client request");
             let (mut ws, _) = connect_async(request).await.expect("companion connects");
@@ -702,7 +702,7 @@ mod tests {
         let server = TunnelServer::bind_with_config(0, fast_config(), "tok")
             .await
             .expect("bind ephemeral port");
-        let url = format!("ws://{}{DEFAULT_TUNNEL_PATH}", server.local_addr());
+        let url = format!("ws://{}{DEFAULT_TUNNEL_PATH}", server.connect_addr());
         let request = url.into_client_request().expect("client request");
         let (mut ws, _) = connect_async(request).await.expect("companion connects");
         ws.send(Message::Text(
