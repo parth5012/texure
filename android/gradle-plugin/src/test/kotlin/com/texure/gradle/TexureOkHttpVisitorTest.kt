@@ -126,6 +126,74 @@ class TexureOkHttpVisitorTest {
         org.junit.Assert.assertNotNull("contains() must be invoked on interceptors list", containsCall)
     }
 
+    @Test
+    fun testRealOkHttpBytecodeWeavingAndDeduplication() {
+        // Read real okhttp3.OkHttpClient$Builder class bytes from okhttp-4.12.0.jar
+        val resourceName = "okhttp3/OkHttpClient\$Builder.class"
+        val realClassStream = okhttp3.OkHttpClient::class.java.classLoader.getResourceAsStream(resourceName)
+        org.junit.Assert.assertNotNull("Real OkHttp Builder class must exist in test classpath", realClassStream)
+        val originalBytes = realClassStream!!.readBytes()
+
+        // Transform real OkHttp Builder bytes with TexureOkHttpClassVisitor
+        val cr = ClassReader(originalBytes)
+        val targetWriter = object : ClassWriter(COMPUTE_FRAMES) {
+            override fun getClassLoader(): ClassLoader {
+                return okhttp3.OkHttpClient::class.java.classLoader
+            }
+        }
+        val visitor = TexureOkHttpClassVisitor(targetWriter)
+        cr.accept(visitor, 0)
+        val transformedBytes = targetWriter.toByteArray()
+
+        // Load transformed class into an isolated ClassLoader that intercepts all okhttp3 classes
+        val customClassLoader = object : ClassLoader(okhttp3.OkHttpClient::class.java.classLoader) {
+            override fun loadClass(name: String, resolve: Boolean): Class<*> {
+                if (name.startsWith("okhttp3.")) {
+                    val loaded = findLoadedClass(name)
+                    if (loaded != null) return loaded
+                    val bytes = if (name == "okhttp3.OkHttpClient\$Builder") {
+                        transformedBytes
+                    } else {
+                        val res = name.replace('.', '/') + ".class"
+                        getResourceAsStream(res)?.readBytes()
+                            ?: return super.loadClass(name, resolve)
+                    }
+                    val c = defineClass(name, bytes, 0, bytes.size)
+                    if (resolve) resolveClass(c)
+                    return c
+                }
+                return super.loadClass(name, resolve)
+            }
+        }
+
+        val builderClass = customClassLoader.loadClass("okhttp3.OkHttpClient\$Builder")
+        val builder = builderClass.getDeclaredConstructor().newInstance()
+        val buildMethod = builderClass.getMethod("build")
+        val client = buildMethod.invoke(builder)
+
+        // Verify that TexureNetworkInterceptor was attached to client.interceptors
+        val interceptorsMethod = client.javaClass.getMethod("interceptors")
+        val interceptors = interceptorsMethod.invoke(client) as List<*>
+        assertTrue(
+            "Woven OkHttpClient must contain TexureNetworkInterceptor",
+            interceptors.any { it?.javaClass?.name == "com.texure.bridge.network.TexureNetworkInterceptor" },
+        )
+
+        // Verify deduplication on newBuilder().build()
+        val newBuilderMethod = client.javaClass.getMethod("newBuilder")
+        val newBuilder = newBuilderMethod.invoke(client)
+        val newClient = newBuilder.javaClass.getMethod("build").invoke(newBuilder)
+        val newInterceptors = newClient.javaClass.getMethod("interceptors").invoke(newClient) as List<*>
+        val dedupeCount = newInterceptors.count {
+            it?.javaClass?.name == "com.texure.bridge.network.TexureNetworkInterceptor"
+        }
+        assertEquals(
+            "TexureNetworkInterceptor must not be duplicated on newBuilder().build()",
+            1,
+            dedupeCount,
+        )
+    }
+
     private class DummyClassData(private val name: String) : com.android.build.api.instrumentation.ClassData {
         override val className: String get() = name
         override val classAnnotations: List<String> get() = emptyList()

@@ -1068,24 +1068,42 @@ async fn route_request(
                 .unwrap_or("*")
                 .to_uppercase();
             let resp_obj = req_json.get("response");
-            let status = resp_obj
+            let raw_status = resp_obj
                 .and_then(|r| r.get("status"))
-                .or_else(|| req_json.get("status"))
-                .and_then(|s| s.as_u64())
-                .unwrap_or(200) as u16;
-            if !(100..=599).contains(&status) {
-                let err = json!({
-                    "error": {
-                        "code": "BAD_REQUEST",
-                        "message": format!("Invalid HTTP status code '{status}'")
+                .or_else(|| req_json.get("status"));
+            let status = match raw_status {
+                Some(s) if s.is_i64() || s.is_u64() => {
+                    let val = s.as_u64().unwrap_or(0) as u16;
+                    if !(200..=599).contains(&val) {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": format!("Invalid HTTP status code '{val}' (must be between 200 and 599)")
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
                     }
-                });
-                return (
-                    "400 Bad Request",
-                    vec![("Content-Type", "application/json".to_string())],
-                    serde_json::to_vec(&err).unwrap(),
-                );
-            }
+                    val
+                }
+                Some(_) => {
+                    let err = json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": "Parameter 'status' must be an integer"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+                None => 200,
+            };
 
             let mut headers_map = std::collections::HashMap::new();
             if let Some(h) = resp_obj
@@ -1110,25 +1128,67 @@ async fn route_request(
                     }
                 })
                 .unwrap_or_default();
-            let delay_ms = req_json
-                .get("delay_ms")
-                .and_then(|d| d.as_u64())
-                .unwrap_or(0);
-            if delay_ms > 30_000 {
-                let err = json!({
-                    "error": {
-                        "code": "BAD_REQUEST",
-                        "message": "Parameter 'delay_ms' cannot exceed 30000ms (30s)"
+            let delay_ms = match req_json.get("delay_ms") {
+                Some(d) if !d.is_null() => {
+                    if !d.is_i64() && !d.is_u64() {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "Parameter 'delay_ms' must be an integer number of milliseconds"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
                     }
-                });
-                return (
-                    "400 Bad Request",
-                    vec![("Content-Type", "application/json".to_string())],
-                    serde_json::to_vec(&err).unwrap(),
-                );
-            }
+                    let val = d.as_i64().unwrap_or(-1);
+                    if val < 0 {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "Parameter 'delay_ms' cannot be negative"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                    if val > 30_000 {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "Parameter 'delay_ms' cannot exceed 30000ms (30s)"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                    val as u64
+                }
+                _ => 0,
+            };
             let times = if let Some(t_val) = req_json.get("times") {
                 if !t_val.is_null() {
+                    if !t_val.is_i64() && !t_val.is_u64() {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "Parameter 'times' must be an integer"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
                     let t = t_val.as_i64().unwrap_or(0);
                     if t <= 0 {
                         let err = json!({
@@ -1157,6 +1217,19 @@ async fn route_request(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("mock_{}", net.mocks.len() + 1));
+            if net.mocks.len() >= 200 && !net.mocks.iter().any(|r| r.id == id) {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": "Maximum mock rule capacity (200) reached"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
             net.mocks.retain(|r| r.id != id);
             let rule = FakeMockRule {
                 id: id.clone(),
@@ -1193,11 +1266,24 @@ async fn route_request(
                 serde_json::to_vec(&resp).unwrap(),
             )
         }
+        ("DELETE", "/network/history") => {
+            let mut net = state.network.lock().await;
+            net.history.clear();
+            let resp = json!({
+                "ok": true,
+                "cleared": true
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
         ("GET", "/network/history") => {
             let mut url_contains: Option<String> = None;
             for part in query_str.split('&') {
                 if let Some(val) = part.strip_prefix("url_contains=") {
-                    url_contains = Some(val.to_string());
+                    url_contains = Some(decode_query_value(val));
                 }
             }
             let net = state.network.lock().await;
@@ -1381,6 +1467,31 @@ fn parse_region(q: &str) -> Option<(u32, u32)> {
         }
     }
     None
+}
+
+fn decode_query_value(input: &str) -> String {
+    let mut bytes = Vec::new();
+    let mut chars = input.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let h1 = chars.next();
+            let h2 = chars.next();
+            if let (Some(c1), Some(c2)) = (h1, h2) {
+                let hex_str = [c1, c2];
+                if let Ok(s) = std::str::from_utf8(&hex_str) {
+                    if let Ok(val) = u8::from_str_radix(s, 16) {
+                        bytes.push(val);
+                        continue;
+                    }
+                }
+            }
+        } else if b == b'+' {
+            bytes.push(b' ');
+            continue;
+        }
+        bytes.push(b);
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| input.to_string())
 }
 
 fn make_png_bytes_region(scale: f64, rw: u32, rh: u32) -> Vec<u8> {

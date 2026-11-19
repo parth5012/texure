@@ -21,6 +21,7 @@ dependencies {
     testImplementation("org.ow2.asm:asm:9.6")
     testImplementation("org.ow2.asm:asm-tree:9.6")
     testImplementation("org.ow2.asm:asm-commons:9.6")
+    testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
 }
 

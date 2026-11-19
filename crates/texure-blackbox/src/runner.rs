@@ -570,6 +570,7 @@ async fn run_mcp_real_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path
                 | "network_mock"
                 | "network_request"
                 | "network_history"
+                | "network_clear_history"
                 | "network_mode"
         )
     }) {
@@ -2104,6 +2105,35 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                         );
                         server.stop();
                         return Err((steps, format!("network_history failed: {e}")));
+                    }
+                }
+            }
+            "network_clear_history" => {
+                match client.network_clear_history().await {
+                    Ok(resp) => {
+                        last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("network_clear_history failed: {e}")));
                     }
                 }
             }

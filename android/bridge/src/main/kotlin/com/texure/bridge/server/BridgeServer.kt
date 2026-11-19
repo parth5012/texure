@@ -19,6 +19,8 @@ import com.texure.bridge.worker.BridgeWorker
 import com.texure.bridge.worker.WorkerResult
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoWSD
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -106,7 +108,9 @@ class BridgeServer(
                     method == Method.POST && uri == "/network/mocks" -> handlePostNetworkMocks(session)
                     method == Method.DELETE && uri == "/network/mocks" -> handleDeleteNetworkMocks()
                     method == Method.GET && uri == "/network/history" -> handleGetNetworkHistory(session)
+                    method == Method.DELETE && uri == "/network/history" -> handleDeleteNetworkHistory()
                     method == Method.POST && uri == "/network/mode" -> handlePostNetworkMode(session)
+                    method == Method.POST && uri == "/network/execute" -> handlePostNetworkExecute(session)
                     else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
                         put("error", JSONObject().apply {
                             put("code", "NOT_FOUND")
@@ -234,10 +238,10 @@ class BridgeServer(
         val method = body.optString("method", "*").trim().ifEmpty { "*" }
         val delayMs = if (body.has("delay_ms") && !body.isNull("delay_ms")) {
             val raw = body.get("delay_ms")
-            if (raw !is Number) {
-                return badRequest("Parameter 'delay_ms' must be a number")
+            if (raw !is Int && raw !is Long && !(raw is Number && raw.toDouble() == raw.toLong().toDouble())) {
+                return badRequest("Parameter 'delay_ms' must be an integer number of milliseconds")
             }
-            val d = raw.toLong()
+            val d = (raw as Number).toLong()
             if (d < 0L) {
                 return badRequest("Parameter 'delay_ms' cannot be negative")
             }
@@ -251,10 +255,10 @@ class BridgeServer(
 
         val times = if (body.has("times") && !body.isNull("times")) {
             val raw = body.get("times")
-            if (raw !is Number) {
+            if (raw !is Int && !(raw is Number && raw.toDouble() == raw.toInt().toDouble())) {
                 return badRequest("Parameter 'times' must be an integer")
             }
-            val t = raw.toInt()
+            val t = (raw as Number).toInt()
             if (t <= 0) {
                 return badRequest("Parameter 'times' must be greater than 0")
             }
@@ -265,9 +269,18 @@ class BridgeServer(
 
         // Response can be nested under "response" or flattened at top level
         val responseObj = body.optJSONObject("response")
-        val status = responseObj?.optInt("status", 200) ?: body.optInt("status", 200)
-        if (status !in 100..599) {
-            return badRequest("Invalid HTTP status code '$status'")
+        val rawStatus = responseObj?.opt("status") ?: body.opt("status")
+        val status = if (rawStatus != null && rawStatus != JSONObject.NULL) {
+            if (rawStatus !is Int && !(rawStatus is Number && rawStatus.toDouble() == rawStatus.toInt().toDouble())) {
+                return badRequest("Parameter 'status' must be an integer")
+            }
+            val s = (rawStatus as Number).toInt()
+            if (s !in 200..599) {
+                return badRequest("Invalid HTTP status code '$s' (must be between 200 and 599)")
+            }
+            s
+        } else {
+            200
         }
 
         val headers = mutableMapOf<String, String>()
@@ -368,6 +381,68 @@ class BridgeServer(
             put("ok", true)
             put("enabled", enabled)
         })
+    }
+
+    private fun handleDeleteNetworkHistory(): Response {
+        com.texure.bridge.network.TexureNetworkInterceptor.clearHistory()
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("cleared", true)
+        })
+    }
+
+    private fun handlePostNetworkExecute(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val url = body.optString("url")
+        if (url.isBlank()) {
+            return badRequest("Missing or blank 'url'")
+        }
+        val method = body.optString("method", "GET").uppercase()
+        val requestBodyStr = if (body.has("body") && !body.isNull("body")) body.get("body").toString() else null
+
+        return try {
+            val clientBuilder = okhttp3.OkHttpClient.Builder()
+            if (!clientBuilder.interceptors().contains(com.texure.bridge.network.TexureNetworkInterceptor)) {
+                clientBuilder.addInterceptor(com.texure.bridge.network.TexureNetworkInterceptor)
+            }
+            val client = clientBuilder.build()
+
+            val reqBody = if (requestBodyStr != null) {
+                requestBodyStr.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+            } else if (method == "POST" || method == "PUT" || method == "PATCH") {
+                ByteArray(0).toRequestBody(null)
+            } else {
+                null
+            }
+
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .method(method, reqBody)
+                .build()
+
+            val resp = client.newCall(request).execute()
+            val respBody = resp.body?.string() ?: ""
+            val respHeaders = JSONObject().apply {
+                resp.headers.names().forEach { name ->
+                    put(name, resp.header(name))
+                }
+            }
+            val isMocked = resp.header("X-Mock-Source") != null
+
+            jsonResponse(Response.Status.OK, JSONObject().apply {
+                put("status", resp.code)
+                put("headers", respHeaders)
+                put("body", respBody)
+                put("passthrough", !isMocked)
+            })
+        } catch (e: Exception) {
+            jsonResponse(Response.Status.OK, JSONObject().apply {
+                put("status", 0)
+                put("headers", JSONObject())
+                put("body", e.message ?: "Execution error")
+                put("passthrough", true)
+            })
+        }
     }
 
     private fun handleGetUiTree(session: IHTTPSession): Response {
