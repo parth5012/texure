@@ -1363,9 +1363,20 @@ async fn route_request(
                     );
                 }
             };
-            let url = req_json.get("url").and_then(|u| u.as_str()).unwrap_or("").to_string();
-            let req_method = req_json.get("method").and_then(|m| m.as_str()).unwrap_or("GET").to_uppercase();
-            let req_body = req_json.get("body").and_then(|b| b.as_str()).map(|s| s.to_string());
+            let url = req_json
+                .get("url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("")
+                .to_string();
+            let req_method = req_json
+                .get("method")
+                .and_then(|m| m.as_str())
+                .unwrap_or("GET")
+                .to_uppercase();
+            let req_body = req_json
+                .get("body")
+                .and_then(|b| b.as_str())
+                .map(|s| s.to_string());
 
             let mut net = state.network.lock().await;
             let is_enabled = net.enabled;
@@ -1373,7 +1384,8 @@ async fn route_request(
             let mut matched_rule: Option<(usize, FakeMockRule)> = None;
             if is_enabled {
                 for (i, rule) in net.mocks.iter().enumerate() {
-                    let method_match = rule.method == "*" || rule.method.eq_ignore_ascii_case(&req_method);
+                    let method_match =
+                        rule.method == "*" || rule.method.eq_ignore_ascii_case(&req_method);
                     let url_match = regex::Regex::new(&rule.url_pattern)
                         .map(|re| re.is_match(&url))
                         .unwrap_or(false);

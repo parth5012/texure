@@ -373,14 +373,13 @@ impl HttpBridgeClient {
         &self,
         url_contains: Option<&str>,
     ) -> Result<Value, HttpBridgeError> {
-        let mut req = self.client.get(format!("{}/network/history", self.base_url));
+        let mut req = self
+            .client
+            .get(format!("{}/network/history", self.base_url));
         if let Some(sub) = url_contains {
             req = req.query(&[("url_contains", sub)]);
         }
-        let resp = req
-            .headers(self.headers()?)
-            .send()
-            .await?;
+        let resp = req.headers(self.headers()?).send().await?;
         let status = resp.status().as_u16();
         let body_text = resp.text().await?;
         if status != 200 {
