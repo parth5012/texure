@@ -426,4 +426,40 @@ class BridgeServerTest {
         val (codeBadToken, _) = sendRequest("GET", "/network/history", token = "invalid-token")
         assertEquals(401, codeBadToken)
     }
+
+    @Test
+    fun testDeleteNetworkHistory() {
+        com.texure.bridge.network.TexureNetworkInterceptor.reset()
+        val mockRule = JSONObject()
+            .put("method", "GET")
+            .put("url_pattern", ".*")
+            .put("response", JSONObject().put("status", 200).put("body", "ok"))
+            .toString()
+        sendRequest("POST", "/network/mocks", mockRule)
+
+        // Execute via /network/execute
+        val execPayload = JSONObject()
+            .put("url", "https://api.example.com/test")
+            .put("method", "GET")
+            .toString()
+        val (execCode, execBody) = sendRequest("POST", "/network/execute", execPayload)
+        assertEquals(200, execCode)
+        val execJson = JSONObject(execBody)
+        assertEquals(200, execJson.getInt("status"))
+        assertEquals("ok", execJson.getString("body"))
+        assertFalse(execJson.getBoolean("passthrough"))
+
+        // History now has 1 entry
+        val (_, histBodyBefore) = sendRequest("GET", "/network/history")
+        assertEquals(1, JSONObject(histBodyBefore).getJSONArray("history").length())
+
+        // DELETE /network/history
+        val (delCode, delBody) = sendRequest("DELETE", "/network/history")
+        assertEquals(200, delCode)
+        assertTrue(JSONObject(delBody).getBoolean("cleared"))
+
+        // History now empty
+        val (_, histBodyAfter) = sendRequest("GET", "/network/history")
+        assertEquals(0, JSONObject(histBodyAfter).getJSONArray("history").length())
+    }
 }

@@ -183,7 +183,7 @@ Registers a new dynamic mock rule:
 }
 ```
 Response: `{ "ok": true, "id": "<id>", "rule": { ... } }`.
-Invalid regex, invalid status (< 100 or > 599), negative `delay_ms`, delay exceeding 30,000ms (30s), or malformed payload returns HTTP 400 with `BAD_REQUEST`.
+Invalid regex, invalid status (< 200 or > 599), negative `delay_ms`, delay exceeding 30,000ms (30s), non-integer `times`/`delay_ms`/`status`, or malformed payload returns HTTP 400 with `BAD_REQUEST`. Maximum capacity is 200 active mock rules.
 
 #### DELETE /network/mocks
 
@@ -208,13 +208,29 @@ Returns the rolling ring buffer of captured requests (last 100 requests). Accept
 }
 ```
 
+#### DELETE /network/history
+
+Clears the rolling request history buffer. Response `{ "ok": true, "cleared": true }`.
+
 #### POST /network/mode
 
 Sets runtime mocking enable/disable mode without rebuilding the app:
 ```json
 { "enabled": false }
 ```
-Response: `{ "ok": true, "enabled": false }`. When disabled, all requests pass through 100% untouched regardless of active mock rules. Missing or non-boolean `enabled` returns HTTP 400 `BAD_REQUEST`. Mock rules and captured history are reset when the bridge server stops.
+Response: `{ "ok": true, "enabled": false }`. When disabled, all requests immediately bypass interception and pass through 100% untouched with zero history or memory overhead regardless of active mock rules. Missing or non-boolean `enabled` returns HTTP 400 `BAD_REQUEST`. Mock rules and captured history are reset when the bridge server stops.
+
+#### POST /network/execute
+
+Diagnostic/test execution route that dispatches an HTTP request through the app's OkHttpClient and TexureNetworkInterceptor:
+```json
+{
+  "url": "https://api.example.com/users",
+  "method": "GET",
+  "body": "{...}"
+}
+```
+Response: `{ "status": 200, "headers": { ... }, "body": "...", "passthrough": false }`. Synthetic mock responses include the `X-Mock-Source: Texure` header.
 
 ### (tool note, agent-facing)
 

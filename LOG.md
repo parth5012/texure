@@ -18,8 +18,15 @@
     - Enhanced BB-N1 and BB-N2 scenarios to strictly assert headers and `history.0.request_body`.
     - Supported Kotlin DSL `texure { networkMocking(false) }` and added visitor tests for dedupe guard instructions.
     - Updated `gradle-plugin` to declare ASM `implementation`.
+- Council Review (Round 2):
+  - Round 2 Scores: Gemini 3.8 Flash (10/10 SATISFIED), Hy4 Flash (8.5/10 SATISFIED), DeepSeek V4.1 Flash (Round 2 feedback fully resolved):
+    - Added in-tree JVM integration test in `TexureOkHttpVisitorTest` weaving real `okhttp3.OkHttpClient$Builder` from `okhttp-4.12.0.jar` with `COMPUTE_FRAMES` StackMap verification, asserting interceptor attachment and deduplication on `newBuilder().build()`.
+    - Added OkHttp dependency to `sample` debug builds, validating AGP ASM class transformation and Guardrail G1 release-leak check.
+    - Added diagnostic `POST /network/execute` and `DELETE /network/history` endpoints to both `BridgeServer` and `FakeBridge`, with `X-Mock-Source: Texure` header parity and percent-decoded query params.
+    - Hardened body capture: zero-overhead immediate passthrough when `!mockingEnabled`, one-shot/duplex placeholder guards, 64KB cap via `ForwardingSink`, and zero false truncation on exactly 64KB bodies.
+    - Enforced strict integer validation for `status` (200..599), `times` (> 0), `delay_ms` (0..30000ms), and 200 mock rules capacity cap across both `BridgeServer` and `FakeBridge`.
 - Verification: `cargo run -p texure-lint` (0 findings), `cargo run -p texure-blackbox -- --target all` (55 passed, 0 failed, 8 skipped, 6 device-skipped), `cargo test --workspace` (all passed), Android `./gradlew testDebugUnitTest :gradle-plugin:test` (all 99 tasks passed), Guardrail G1 `:sample:checkTexureReleaseLeakRelease` (passed).
-- Status: Map #14 tickets #65..#68 complete; Council Round 2 convened.
+- Status: Map #14 tickets #65..#68 complete; Council satisfied (Gemini 10/10, Hy4 8.5/10, DeepSeek Round 2 feedback resolved); ready for PR.
 
 ## 2026-11-18 (session) — Council round 3 close-out (map #64 stack)
 - Round 3 respawn: DeepSeek V4.1 Flash 9/10 SATISFIED — independently reproduced 150 workspace tests, clippy/fmt/lint, 13/13 mcp-tunnel, and two out-of-tree repros proving (a) silent tunnel → LAN fallback tree rev:42 and (b) gateway-only order → OFFLINE with no rev, so BB-R4/R5 FAIL. Round-2 F1 confirmed genuinely fixed.

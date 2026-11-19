@@ -242,6 +242,138 @@ class TexureNetworkInterceptorTest {
         val response = TexureNetworkInterceptor.intercept(chain)
         assertTrue("When mocking is disabled, requests must pass through", proceedCalled)
         assertEquals(200, response.code)
+        // Completely untouched: no history recorded
+        assertEquals("Disabled mode must record zero history entries", 0, TexureNetworkInterceptor.getHistory().size)
+    }
+
+    @Test
+    fun testRequestBodyCaptureNormal() {
+        val payload = "{\"username\": \"test_user\", \"id\": 123}"
+        val request = Request.Builder()
+            .url("https://api.example.com/login")
+            .post(payload.toRequestBody("application/json".toMediaTypeOrNull()))
+            .build()
+
+        val chain = createTestChain(request) { req ->
+            Response.Builder()
+                .request(req)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{}".toResponseBody(null))
+                .build()
+        }
+
+        TexureNetworkInterceptor.intercept(chain)
+        val history = TexureNetworkInterceptor.getHistory()
+        assertEquals(1, history.size)
+        assertEquals(payload, history[0].requestBody)
+    }
+
+    @Test
+    fun testRequestBodyExceeds64KBOmitted() {
+        val largePayload = "a".repeat(70 * 1024)
+        val request = Request.Builder()
+            .url("https://api.example.com/upload")
+            .post(largePayload.toRequestBody("text/plain".toMediaTypeOrNull()))
+            .build()
+
+        val chain = createTestChain(request) { req ->
+            Response.Builder()
+                .request(req)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{}".toResponseBody(null))
+                .build()
+        }
+
+        TexureNetworkInterceptor.intercept(chain)
+        val history = TexureNetworkInterceptor.getHistory()
+        assertEquals(1, history.size)
+        assertTrue(
+            "Payload > 64KB must be omitted with size placeholder",
+            history[0].requestBody!!.startsWith("[body exceeds 64KB"),
+        )
+    }
+
+    @Test
+    fun testRequestBodyOneShotPlaceholder() {
+        val payload = "one-shot-data"
+        val oneShotBody = object : okhttp3.RequestBody() {
+            override fun contentType() = "text/plain".toMediaTypeOrNull()
+            override fun isOneShot() = true
+            override fun writeTo(sink: okio.BufferedSink) {
+                sink.writeUtf8(payload)
+            }
+        }
+        val request = Request.Builder()
+            .url("https://api.example.com/stream")
+            .post(oneShotBody)
+            .build()
+
+        val chain = createTestChain(request) { req ->
+            Response.Builder()
+                .request(req)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{}".toResponseBody(null))
+                .build()
+        }
+
+        TexureNetworkInterceptor.intercept(chain)
+        val history = TexureNetworkInterceptor.getHistory()
+        assertEquals(1, history.size)
+        assertEquals("[one-shot / streaming body]", history[0].requestBody)
+    }
+
+    @Test
+    fun testRequestBodyExact64KBNotTruncated() {
+        val exact64KB = "x".repeat(64 * 1024)
+        val unknownLengthBody = object : okhttp3.RequestBody() {
+            override fun contentType() = "text/plain".toMediaTypeOrNull()
+            override fun contentLength() = -1L
+            override fun writeTo(sink: okio.BufferedSink) {
+                sink.writeUtf8(exact64KB)
+            }
+        }
+        val request = Request.Builder()
+            .url("https://api.example.com/exact64")
+            .post(unknownLengthBody)
+            .build()
+
+        val chain = createTestChain(request) { req ->
+            Response.Builder()
+                .request(req)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{}".toResponseBody(null))
+                .build()
+        }
+
+        TexureNetworkInterceptor.intercept(chain)
+        val history = TexureNetworkInterceptor.getHistory()
+        assertEquals(1, history.size)
+        assertEquals(exact64KB, history[0].requestBody)
+        assertFalse(
+            "Exactly 64KB unknown-length body must NOT be marked truncated",
+            history[0].requestBody!!.endsWith("[truncated]"),
+        )
+    }
+
+    @Test
+    fun testClearHistory() {
+        val request = Request.Builder().url("https://api.example.com/test").build()
+        val chain = createTestChain(request) { req ->
+            Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK").body("".toResponseBody(null)).build()
+        }
+        TexureNetworkInterceptor.intercept(chain)
+        assertEquals(1, TexureNetworkInterceptor.getHistory().size)
+
+        TexureNetworkInterceptor.clearHistory()
+        assertEquals(0, TexureNetworkInterceptor.getHistory().size)
     }
 
     private fun createTestChain(

@@ -35,12 +35,17 @@ object TexureNetworkInterceptor : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+
+        // 0. If mocking is globally disabled, pass through 100% untouched immediately
+        if (!mockingEnabled) {
+            return chain.proceed(request)
+        }
+
         val requestBody = readRequestBody(request)
         val startTime = System.currentTimeMillis()
 
         // 1. If mocking is enabled, check for matching rule
-        if (mockingEnabled) {
-            val matchingRule = findAndConsumeMatchingRule(request.method, request.url.toString())
+        val matchingRule = findAndConsumeMatchingRule(request.method, request.url.toString())
             if (matchingRule != null) {
                 if (matchingRule.delayMs > 0) {
                     try {
@@ -63,7 +68,6 @@ object TexureNetworkInterceptor : Interceptor {
                 )
                 return response
             }
-        }
 
         // 2. Passthrough: execute real network call
         val response: Response
@@ -132,6 +136,7 @@ object TexureNetworkInterceptor : Interceptor {
             .code(rule.status)
             .message(if (rule.status in 200..299) "OK" else "Mock Response")
             .body(responseBody)
+            .header("X-Mock-Source", "Texure")
 
         rule.headers.forEach { (k, v) ->
             builder.header(k, v)
@@ -150,11 +155,15 @@ object TexureNetworkInterceptor : Interceptor {
         }
         return try {
             val buffer = Buffer()
+            var wasTruncated = false
             val limitedSink = object : okio.ForwardingSink(buffer) {
                 private var bytesWritten = 0L
                 override fun write(source: Buffer, byteCount: Long) {
                     val remaining = MAX_BODY_CAPTURE_BYTES - bytesWritten
                     if (remaining <= 0) {
+                        if (byteCount > 0) {
+                            wasTruncated = true
+                        }
                         source.skip(byteCount)
                         return
                     }
@@ -162,6 +171,7 @@ object TexureNetworkInterceptor : Interceptor {
                     super.write(source, toWrite)
                     bytesWritten += toWrite
                     if (byteCount > toWrite) {
+                        wasTruncated = true
                         source.skip(byteCount - toWrite)
                     }
                 }
@@ -171,7 +181,7 @@ object TexureNetworkInterceptor : Interceptor {
             bufferedSink.flush()
             val byteCount = minOf(buffer.size, MAX_BODY_CAPTURE_BYTES)
             val prefix = buffer.readUtf8(byteCount)
-            if (contentLength == -1L && buffer.size >= MAX_BODY_CAPTURE_BYTES) {
+            if (wasTruncated) {
                 "$prefix... [truncated]"
             } else {
                 prefix
