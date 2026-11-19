@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "name": "network_mode_passthrough",
+  "kind": "scenario",
+  "description": "BB-N3: Disable mocking via /network/mode, verify passthrough",
+  "steps": [
+    {
+      "action": "network_mock",
+      "args": {
+        "method": "GET",
+        "url_pattern": "^https://api\\.example\\.com/status$",
+        "response": {
+          "status": 500,
+          "body": "{\"mock\": \"failure\"}"
+        }
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "network_mode",
+      "args": {
+        "enabled": false
+      },
+      "expect": {
+        "ok": true,
+        "enabled": false
+      }
+    },
+    {
+      "action": "network_request",
+      "args": {
+        "method": "GET",
+        "url": "https://api.example.com/status"
+      },
+      "expect": {
+        "passthrough": true
+      }
+    },
+    {
+      "action": "network_mode",
+      "args": {
+        "enabled": true
+      },
+      "expect": {
+        "ok": true,
+        "enabled": true
+      }
+    }
+  ],
+  "assertions": []
+}

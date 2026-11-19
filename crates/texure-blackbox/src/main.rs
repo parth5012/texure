@@ -524,6 +524,31 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: true,
         },
+        // Group N: in-app network mocking & inspection (map 14 #69)
+        TestDef {
+            id: "BB-N1".to_string(),
+            name: "Register mock rule, execute request, verify synthetic response".to_string(),
+            scenario_file: "network_mock_response.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-N2".to_string(),
+            name: "Query /network/history to verify request payload assertion".to_string(),
+            scenario_file: "network_history.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-N3".to_string(),
+            name: "Disable mocking via /network/mode, verify passthrough".to_string(),
+            scenario_file: "network_mode_passthrough.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
     ]
 }
 

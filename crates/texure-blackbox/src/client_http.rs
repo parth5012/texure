@@ -323,4 +323,123 @@ impl HttpBridgeClient {
     pub async fn recording_clear(&self) -> Result<Value, HttpBridgeError> {
         self.recording_request("DELETE", "/recording", None).await
     }
+
+    pub async fn network_mock(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/network/mocks", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn network_clear_mocks(&self) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/network/mocks", self.base_url);
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn network_history(
+        &self,
+        url_contains: Option<&str>,
+    ) -> Result<Value, HttpBridgeError> {
+        let mut url = format!("{}/network/history", self.base_url);
+        if let Some(sub) = url_contains {
+            url.push_str(&format!("?url_contains={}", sub));
+        }
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn network_mode(&self, enabled: bool) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/network/mode", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(&json!({ "enabled": enabled }))
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn network_request(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/network/execute", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
 }

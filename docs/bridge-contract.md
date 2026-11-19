@@ -162,6 +162,60 @@ Returns the buffered trace (works while recording or stopped):
 
 Clears the buffered trace. Response `{ "ok": true, "count": 0 }`.
 
+### In-app Network Interception & Dynamic API Mocking (map #69)
+
+In debug builds, OkHttpClient is instrumented via AGP ASM to attach TexureNetworkInterceptor. All real network requests pass through 100% untouched by default unless an active mock rule matches. Control routes are authenticated with Bearer token:
+
+#### POST /network/mocks
+
+Registers a new dynamic mock rule:
+```json
+{
+  "method": "GET",
+  "url_pattern": "^https://api\\.example\\.com/users/.*$",
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"mocked\": true}"
+  },
+  "times": 1,
+  "delay_ms": 50
+}
+```
+Response: `{ "ok": true, "id": "<id>", "rule": { ... } }`.
+Invalid regex or malformed payload returns HTTP 400 with `BAD_REQUEST`.
+
+#### DELETE /network/mocks
+
+Clears all registered mock rules. Response `{ "ok": true, "cleared": true }`.
+
+#### GET /network/history
+
+Returns the rolling ring buffer of captured requests (last 100 requests). Accepts optional query parameter `?url_contains=<string>` to filter results.
+```json
+{
+  "history": [
+    {
+      "url": "https://api.example.com/users/1",
+      "method": "GET",
+      "status": 200,
+      "request_body": null,
+      "latency_ms": 12,
+      "timestamp": 1700000000000
+    }
+  ],
+  "count": 1
+}
+```
+
+#### POST /network/mode
+
+Sets runtime mocking enable/disable mode without rebuilding the app:
+```json
+{ "enabled": false }
+```
+Response: `{ "ok": true, "enabled": false }`. When disabled, all requests pass through 100% untouched regardless of active mock rules.
+
 ### (tool note, agent-facing)
 
 MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`.

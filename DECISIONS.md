@@ -339,3 +339,16 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
    - *Why:* Ticket #61 asks for an *optional* lifecycle trigger, but inventing a state-reporting wire shape would change the frozen gateway contract without companion consensus. Keeping the probe behind a flag preserves the 6-tool freeze (G7) and avoids a 750 ms penalty on every call for companions that cannot answer it.
    - *Alternatives rejected:* enabling the probe by default (adds latency and sends unsupported RPCs); implementing `device_state` in the companion as part of this server-scoped ticket (out of scope).
    - *Follow-up:* [#121](https://github.com/parth5012/texure/issues/121) tracks adding `device_state` to the companion gateway and flipping the probe on by default.
+
+---
+
+## 2026-11-19 (Wayfinder Map #14 / #69: In-app network interception & dynamic API mocking)
+
+1. **Group N Naming & Capability Elevation for Network Mocking & Inspection.**
+   - *What:* Added Group N (`BB-N1..BB-N3`) representing in-app network mocking, request history inspection, and runtime passthrough toggle. Updated `docs_gate` linter regex to `BB-(?:[A-C]|R|N)[0-9]+` and registered `BB-N1..N3` in the expected blackbox test suite list.
+   - *Why:* In-app OkHttp bytecode transformation and dynamic API mocking constitutes an additive control-plane capability distinct from core UI interactions (Group B) and remote tunnels (Group R).
+   - *Endpoints:* Additive HTTP routes `/network/mocks`, `/network/history`, and `/network/mode` authenticated with Bearer token; `schema_version` stays 1.
+
+2. **AGP ASM Transformation in Debug Builds with Build-time and Runtime Toggles.**
+   - *What:* Zero-code OkHttp bytecode instrumentation applies exclusively to debug variants (`onVariants.withBuildType("debug")`), leaving release builds 100% uninstrumented (Guardrail G1). Build-time opt-out provided via `texure { networkMocking = false }` in `TexureExtension`. Runtime mode toggle provided via `POST /network/mode` (`{ "enabled": false }`).
+   - *Why:* Guarantees production release APKs remain completely free of interceptors and bridge artifacts while giving developers full control to disable mocking at build time or runtime.
