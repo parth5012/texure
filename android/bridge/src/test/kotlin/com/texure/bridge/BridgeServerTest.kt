@@ -283,4 +283,147 @@ class BridgeServerTest {
         assertTrue(pngWidth(bytes) in 1..500)
         assertTrue(pngHeight(bytes) in 1..500)
     }
+
+    @Test
+    fun testNetworkMocksPostAndClear() {
+        com.texure.bridge.network.TexureNetworkInterceptor.reset()
+
+        val mockPayload = JSONObject().apply {
+            put("method", "GET")
+            put("url_pattern", "^https://api\\.example\\.com/items/.*$")
+            put("response", JSONObject().apply {
+                put("status", 200)
+                put("headers", JSONObject().put("X-Custom", "val"))
+                put("body", "{\"items\": []}")
+            })
+            put("times", 2)
+            put("delay_ms", 10)
+        }.toString()
+
+        val (postCode, postBody) = sendRequest("POST", "/network/mocks", mockPayload)
+        assertEquals(200, postCode)
+        val postJson = JSONObject(postBody)
+        assertTrue(postJson.optBoolean("ok"))
+        assertEquals(1, com.texure.bridge.network.TexureNetworkInterceptor.getMocks().size)
+
+        // DELETE /network/mocks
+        val (delCode, delBody) = sendRequest("DELETE", "/network/mocks")
+        assertEquals(200, delCode)
+        assertTrue(JSONObject(delBody).optBoolean("ok"))
+        assertEquals(0, com.texure.bridge.network.TexureNetworkInterceptor.getMocks().size)
+    }
+
+    @Test
+    fun testNetworkMocksInvalidRegexReturns400() {
+        val invalidRegexPayload = JSONObject().apply {
+            put("url_pattern", "[a-z(unclosed")
+            put("response", JSONObject().put("status", 200))
+        }.toString()
+
+        val (code, body) = sendRequest("POST", "/network/mocks", invalidRegexPayload)
+        assertEquals(400, code)
+        val json = JSONObject(body)
+        assertEquals("BAD_REQUEST", json.getJSONObject("error").getString("code"))
+        assertTrue(json.getJSONObject("error").getString("message").contains("regex", ignoreCase = true))
+    }
+
+    @Test
+    fun testNetworkMocksMalformedPayloadReturns400() {
+        val missingUrlPattern = JSONObject().apply {
+            put("method", "POST")
+        }.toString()
+
+        val (code, body) = sendRequest("POST", "/network/mocks", missingUrlPattern)
+        assertEquals(400, code)
+        assertEquals("BAD_REQUEST", JSONObject(body).getJSONObject("error").getString("code"))
+    }
+
+    @Test
+    fun testNetworkHistoryGetWithFilter() {
+        com.texure.bridge.network.TexureNetworkInterceptor.reset()
+        val interceptor = com.texure.bridge.network.TexureNetworkInterceptor
+
+        // Mock 2 captured requests directly via reflection/interceptor for test
+        interceptor.intercept(
+            object : okhttp3.Interceptor.Chain {
+                override fun request(): okhttp3.Request = okhttp3.Request.Builder().url("https://api.example.com/users").build()
+                override fun proceed(request: okhttp3.Request): okhttp3.Response =
+                    okhttp3.Response.Builder()
+                        .request(request)
+                        .protocol(okhttp3.Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(okhttp3.ResponseBody.Companion.create(null, "ok"))
+                        .build()
+                override fun connection(): okhttp3.Connection? = null
+                override fun call(): okhttp3.Call = throw UnsupportedOperationException()
+                override fun connectTimeoutMillis(): Int = 1000
+                override fun withConnectTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): okhttp3.Interceptor.Chain = this
+                override fun readTimeoutMillis(): Int = 1000
+                override fun withReadTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): okhttp3.Interceptor.Chain = this
+                override fun writeTimeoutMillis(): Int = 1000
+                override fun withWriteTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): okhttp3.Interceptor.Chain = this
+            }
+        )
+        interceptor.intercept(
+            object : okhttp3.Interceptor.Chain {
+                override fun request(): okhttp3.Request = okhttp3.Request.Builder().url("https://api.example.com/orders").build()
+                override fun proceed(request: okhttp3.Request): okhttp3.Response =
+                    okhttp3.Response.Builder()
+                        .request(request)
+                        .protocol(okhttp3.Protocol.HTTP_1_1)
+                        .code(201)
+                        .message("Created")
+                        .body(okhttp3.ResponseBody.Companion.create(null, "ok"))
+                        .build()
+                override fun connection(): okhttp3.Connection? = null
+                override fun call(): okhttp3.Call = throw UnsupportedOperationException()
+                override fun connectTimeoutMillis(): Int = 1000
+                override fun withConnectTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): okhttp3.Interceptor.Chain = this
+                override fun readTimeoutMillis(): Int = 1000
+                override fun withReadTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): okhttp3.Interceptor.Chain = this
+                override fun writeTimeoutMillis(): Int = 1000
+                override fun withWriteTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): okhttp3.Interceptor.Chain = this
+            }
+        )
+
+        // GET all history
+        val (codeAll, bodyAll) = sendRequest("GET", "/network/history")
+        assertEquals(200, codeAll)
+        val jsonAll = JSONObject(bodyAll)
+        assertEquals(2, jsonAll.getJSONArray("history").length())
+
+        // GET filtered history
+        val (codeFiltered, bodyFiltered) = sendRequest("GET", "/network/history?url_contains=orders")
+        assertEquals(200, codeFiltered)
+        val jsonFiltered = JSONObject(bodyFiltered)
+        assertEquals(1, jsonFiltered.getJSONArray("history").length())
+        assertEquals("https://api.example.com/orders", jsonFiltered.getJSONArray("history").getJSONObject(0).getString("url"))
+    }
+
+    @Test
+    fun testNetworkModeToggle() {
+        com.texure.bridge.network.TexureNetworkInterceptor.reset()
+
+        val disablePayload = JSONObject().put("enabled", false).toString()
+        val (code1, body1) = sendRequest("POST", "/network/mode", disablePayload)
+        assertEquals(200, code1)
+        assertFalse(JSONObject(body1).getBoolean("enabled"))
+        assertFalse(com.texure.bridge.network.TexureNetworkInterceptor.isMockingEnabled())
+
+        val enablePayload = JSONObject().put("enabled", true).toString()
+        val (code2, body2) = sendRequest("POST", "/network/mode", enablePayload)
+        assertEquals(200, code2)
+        assertTrue(JSONObject(body2).getBoolean("enabled"))
+        assertTrue(com.texure.bridge.network.TexureNetworkInterceptor.isMockingEnabled())
+    }
+
+    @Test
+    fun testNetworkEndpointsRequireAuth() {
+        val (code, _) = sendRequest("GET", "/network/history", token = null)
+        assertEquals(401, code)
+
+        val (codeBadToken, _) = sendRequest("GET", "/network/history", token = "invalid-token")
+        assertEquals(401, codeBadToken)
+    }
 }

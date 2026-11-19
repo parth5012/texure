@@ -89,6 +89,29 @@ class BridgeServer(
                 })
             }
         }
+        if (isNetworkRoute(uri)) {
+            return try {
+                when {
+                    method == Method.POST && uri == "/network/mocks" -> handlePostNetworkMocks(session)
+                    method == Method.DELETE && uri == "/network/mocks" -> handleDeleteNetworkMocks()
+                    method == Method.GET && uri == "/network/history" -> handleGetNetworkHistory(session)
+                    method == Method.POST && uri == "/network/mode" -> handlePostNetworkMode(session)
+                    else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", "NOT_FOUND")
+                            put("message", "Route not found: ${method.name} $uri")
+                        })
+                    })
+                }
+            } catch (e: Exception) {
+                jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
+                    put("error", JSONObject().apply {
+                        put("code", "INTERNAL_ERROR")
+                        put("message", e.message ?: "network endpoint error")
+                    })
+                })
+            }
+        }
         val lockResponse = checkSingleFlightLock(clientHandle)
         if (lockResponse != null) {
             return lockResponse
@@ -168,6 +191,136 @@ class BridgeServer(
         return jsonResponse(Response.Status.OK, JSONObject().apply {
             put("ok", true)
             put("count", 0)
+        })
+    }
+
+    // --- In-app network mocking & history routes (map #69) ---
+
+    private fun isNetworkRoute(uri: String): Boolean =
+        uri.startsWith("/network/")
+
+    private fun handlePostNetworkMocks(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+
+        val urlPatternStr = body.optString("url_pattern").takeIf { it.isNotBlank() }
+            ?: return badRequest("Missing url_pattern parameter")
+
+        val regex = try {
+            Regex(urlPatternStr)
+        } catch (e: Exception) {
+            return badRequest("Invalid regex pattern '$urlPatternStr': ${e.message}")
+        }
+
+        val method = body.optString("method", "*").trim().ifEmpty { "*" }
+        val delayMs = body.optLong("delay_ms", 0L)
+        val times = if (body.has("times") && !body.isNull("times")) body.getInt("times") else null
+
+        // Response can be nested under "response" or flattened at top level
+        val responseObj = body.optJSONObject("response")
+        val status = responseObj?.optInt("status", 200) ?: body.optInt("status", 200)
+
+        val headers = mutableMapOf<String, String>()
+        val headersObj = responseObj?.optJSONObject("headers") ?: body.optJSONObject("headers")
+        headersObj?.let { obj ->
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                headers[key] = obj.optString(key)
+            }
+        }
+
+        val responseBody = when {
+            responseObj != null -> {
+                if (responseObj.has("body")) {
+                    val b = responseObj.get("body")
+                    if (b is JSONObject || b is JSONArray) b.toString() else b.toString()
+                } else {
+                    ""
+                }
+            }
+            body.has("body") -> {
+                val b = body.get("body")
+                if (b is JSONObject || b is JSONArray) b.toString() else b.toString()
+            }
+            else -> ""
+        }
+
+        val id = body.optString("id").takeIf { it.isNotBlank() }
+            ?: "mock-${java.util.UUID.randomUUID().toString().take(8)}"
+
+        val rule = com.texure.bridge.network.MockRule(
+            id = id,
+            method = method,
+            urlPattern = regex,
+            status = status,
+            headers = headers,
+            body = responseBody,
+            delayMs = delayMs,
+            times = times,
+        )
+
+        com.texure.bridge.network.TexureNetworkInterceptor.addMock(rule)
+
+        val resultJson = JSONObject().apply {
+            put("ok", true)
+            put("id", id)
+            put("rule", JSONObject().apply {
+                put("id", id)
+                put("method", method)
+                put("url_pattern", urlPatternStr)
+                put("status", status)
+                times?.let { put("times", it) }
+                put("delay_ms", delayMs)
+            })
+        }
+        return jsonResponse(Response.Status.OK, resultJson)
+    }
+
+    private fun handleDeleteNetworkMocks(): Response {
+        com.texure.bridge.network.TexureNetworkInterceptor.clearMocks()
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("cleared", true)
+        })
+    }
+
+    private fun handleGetNetworkHistory(session: IHTTPSession): Response {
+        val urlContains = session.parms["url_contains"]?.takeIf { it.isNotBlank() }
+        val captured = com.texure.bridge.network.TexureNetworkInterceptor.getHistory(urlContains)
+
+        val historyArray = JSONArray()
+        for (item in captured) {
+            historyArray.put(JSONObject().apply {
+                put("url", item.url)
+                put("method", item.method)
+                put("status", item.status)
+                if (item.requestBody != null) {
+                    put("request_body", item.requestBody)
+                } else {
+                    put("request_body", JSONObject.NULL)
+                }
+                put("latency_ms", item.latencyMs)
+                put("timestamp", item.timestamp)
+            })
+        }
+
+        val json = JSONObject().apply {
+            put("history", historyArray)
+            put("count", historyArray.length())
+        }
+        return jsonResponse(Response.Status.OK, json)
+    }
+
+    private fun handlePostNetworkMode(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        if (!body.has("enabled")) {
+            return badRequest("Missing 'enabled' parameter")
+        }
+        val enabled = body.getBoolean("enabled")
+        com.texure.bridge.network.TexureNetworkInterceptor.setMockingEnabled(enabled)
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("enabled", enabled)
         })
     }
 
