@@ -328,6 +328,25 @@ impl TunnelServer {
         self.addr
     }
 
+    /// Address suitable for local clients to connect to this server.
+    /// If bound to `0.0.0.0` or `::`, returns loopback (`127.0.0.1` or `::1`) with the bound port.
+    pub fn connect_addr(&self) -> SocketAddr {
+        if self.addr.ip().is_unspecified() {
+            match self.addr {
+                SocketAddr::V4(v4) => SocketAddr::new(
+                    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                    v4.port(),
+                ),
+                SocketAddr::V6(v6) => SocketAddr::new(
+                    std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+                    v6.port(),
+                ),
+            }
+        } else {
+            self.addr
+        }
+    }
+
     /// Cloneable in-process handle.
     pub fn handle(&self) -> TunnelHandle {
         TunnelHandle {
@@ -578,6 +597,14 @@ mod tests {
         token: &str,
         header: Option<&str>,
     ) -> Result<Client, Box<dyn std::error::Error + Send + Sync>> {
+        let addr = if addr.ip().is_unspecified() {
+            SocketAddr::new(
+                std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                addr.port(),
+            )
+        } else {
+            addr
+        };
         let url = format!("ws://{addr}{}", crate::pair::DEFAULT_TUNNEL_PATH);
         let mut request = url.into_client_request()?;
         if let Some(bearer) = header {
@@ -705,7 +732,7 @@ mod tests {
             .expect("bind ephemeral port");
         let url = format!(
             "ws://{}{}",
-            server.local_addr(),
+            server.connect_addr(),
             crate::pair::DEFAULT_TUNNEL_PATH
         );
         let mut request = url.into_client_request().expect("request");
