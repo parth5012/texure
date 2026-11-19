@@ -22,6 +22,12 @@ class TexureOkHttpVisitorTest {
 
         extension.networkMocking.set(false)
         assertFalse(extension.networkMocking.get())
+
+        // Test Kotlin DSL invocation syntax
+        extension.networkMocking(true)
+        assertTrue(extension.networkMocking.get())
+        extension.networkMocking(false)
+        assertFalse(extension.networkMocking.get())
     }
 
     @Test
@@ -101,6 +107,23 @@ class TexureOkHttpVisitorTest {
                 it.desc == "(Lokhttp3/Interceptor;)Lokhttp3/OkHttpClient\$Builder;"
         }
         org.junit.Assert.assertNotNull("addInterceptor must be called", addInterceptorCall)
+
+        // Check for interceptors() dedupe list check
+        val interceptorsCall = buildMethod.instructions.toArray().filterIsInstance<MethodInsnNode>().find {
+            it.opcode == Opcodes.INVOKEVIRTUAL &&
+                it.owner == "okhttp3/OkHttpClient\$Builder" &&
+                it.name == "interceptors" &&
+                it.desc == "()Ljava/util/List;"
+        }
+        org.junit.Assert.assertNotNull("interceptors() must be called for dedupe guard", interceptorsCall)
+
+        val containsCall = buildMethod.instructions.toArray().filterIsInstance<MethodInsnNode>().find {
+            it.opcode == Opcodes.INVOKEINTERFACE &&
+                it.owner == "java/util/List" &&
+                it.name == "contains" &&
+                it.desc == "(Ljava/lang/Object;)Z"
+        }
+        org.junit.Assert.assertNotNull("contains() must be invoked on interceptors list", containsCall)
     }
 
     private class DummyClassData(private val name: String) : com.android.build.api.instrumentation.ClassData {

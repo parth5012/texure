@@ -1073,6 +1073,20 @@ async fn route_request(
                 .or_else(|| req_json.get("status"))
                 .and_then(|s| s.as_u64())
                 .unwrap_or(200) as u16;
+            if !(100..=599).contains(&status) {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": format!("Invalid HTTP status code '{status}'")
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+
             let mut headers_map = std::collections::HashMap::new();
             if let Some(h) = resp_obj
                 .and_then(|r| r.get("headers"))
@@ -1100,6 +1114,19 @@ async fn route_request(
                 .get("delay_ms")
                 .and_then(|d| d.as_u64())
                 .unwrap_or(0);
+            if delay_ms > 30_000 {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": "Parameter 'delay_ms' cannot exceed 30000ms (30s)"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
             let times = if let Some(t_val) = req_json.get("times") {
                 if !t_val.is_null() {
                     let t = t_val.as_i64().unwrap_or(0);
@@ -1271,18 +1298,25 @@ async fn route_request(
                 }
             }
 
-            let (status, resp_body, passthrough, delay_ms) = if let Some((idx, rule)) = matched_rule {
-                if let Some(t) = rule.times {
-                    if t <= 1 {
-                        net.mocks.remove(idx);
-                    } else {
-                        net.mocks[idx].times = Some(t - 1);
+            let (status, resp_headers, resp_body, passthrough, delay_ms) =
+                if let Some((idx, rule)) = matched_rule {
+                    if let Some(t) = rule.times {
+                        if t <= 1 {
+                            net.mocks.remove(idx);
+                        } else {
+                            net.mocks[idx].times = Some(t - 1);
+                        }
                     }
-                }
-                (rule.status, rule.body, false, rule.delay_ms)
-            } else {
-                (200, "{\"passthrough\": true}".to_string(), true, 0)
-            };
+                    (rule.status, rule.headers, rule.body, false, rule.delay_ms)
+                } else {
+                    (
+                        200,
+                        std::collections::HashMap::new(),
+                        "{\"passthrough\": true}".to_string(),
+                        true,
+                        0,
+                    )
+                };
 
             let captured = FakeCapturedRequest {
                 url: url.clone(),
@@ -1302,6 +1336,7 @@ async fn route_request(
 
             let resp = json!({
                 "status": status,
+                "headers": resp_headers,
                 "body": resp_body,
                 "passthrough": passthrough
             });

@@ -1,5 +1,26 @@
 # Log
 
+## 2026-11-19 (session) — Wayfinder map 14 (#69) In-app network interception & dynamic API mocking
+- Scope: 4 AFK tickets (#65, #66, #67, #68) in single-PR mode on branch `wf/69-network-mocking`.
+- Ticket #65: AGP ASM bytecode weaver for OkHttpClient in debug builds with build-time opt-out toggle (`texure { networkMocking = false }` or `networkMocking(false)`). ASM visitor targets `OkHttpClient.Builder.build()` with idempotency guard. Closed #65.
+- Ticket #66: Core `TexureNetworkInterceptor` and dynamic regex mock rule engine in `android/bridge`. Passthrough by default, synthetic responses with delay and times expiration, 100-request synchronized ring buffer. Closed #66.
+- Ticket #67: Bridge HTTP endpoints `POST /network/mocks`, `DELETE /network/mocks`, `GET /network/history`, `POST /network/mode`. Closed #67.
+- Ticket #68: Blackbox scenario suite & FakeBridge mocks for network mocking. Added Group N behavior rows BB-N1, BB-N2, BB-N3 in `behavior-spec.md`, documented contract in `bridge-contract.md`, created scenarios `network_mock_response.json`, `network_history.json`, `network_mode_passthrough.json`. Closed #68.
+- Council Review (Round 1): Convened 3-member Council (Gemini 3.8 Flash, Hy4 Flash, DeepSeek V4.1 Flash):
+  - Round 1 Scores: Gemini 3.8 Flash (7/10), Hy4 Flash (6.5/10), DeepSeek V4.1 Flash (6.5/10) — Verdict: REQUESTING CHANGES.
+  - Concrete fixes applied:
+    - Fixed full blackbox suite runner skip filter in `runner.rs` for `network_*` actions on `mcp-real` target (`cargo run -p texure-blackbox -- --target all` now passes 55/55 non-skipped tests).
+    - Hardened request body capture in `TexureNetworkInterceptor`: stream safety for `isOneShot()`/`isDuplex()`, capped capture at 64 KB via BoundedSink without memory blowup, immediate omission for bodies exceeding 64 KB.
+    - Added classpath safety in `BridgeServer.kt`: `isOkHttpAvailable()` check preventing unhandled `NoClassDefFoundError` when OkHttp is absent.
+    - Added validation for `status` (100..599), `delay_ms` (0..30000ms), and `times` (> 0 integer) returning 400 `BAD_REQUEST`.
+    - Added reset of mock rules and request history on `BridgeServer.stop()`.
+    - Aligned FakeBridge error codes to `BAD_REQUEST`, supported wildcard `*` method matching, added payload flat/nested body parsing, and echoed headers in mock responses.
+    - Enhanced BB-N1 and BB-N2 scenarios to strictly assert headers and `history.0.request_body`.
+    - Supported Kotlin DSL `texure { networkMocking(false) }` and added visitor tests for dedupe guard instructions.
+    - Updated `gradle-plugin` to declare ASM `implementation`.
+- Verification: `cargo run -p texure-lint` (0 findings), `cargo run -p texure-blackbox -- --target all` (55 passed, 0 failed, 8 skipped, 6 device-skipped), `cargo test --workspace` (all passed), Android `./gradlew testDebugUnitTest :gradle-plugin:test` (all 99 tasks passed), Guardrail G1 `:sample:checkTexureReleaseLeakRelease` (passed).
+- Status: Map #14 tickets #65..#68 complete; Council Round 2 convened.
+
 ## 2026-11-18 (session) — Council round 3 close-out (map #64 stack)
 - Round 3 respawn: DeepSeek V4.1 Flash 9/10 SATISFIED — independently reproduced 150 workspace tests, clippy/fmt/lint, 13/13 mcp-tunnel, and two out-of-tree repros proving (a) silent tunnel → LAN fallback tree rev:42 and (b) gateway-only order → OFFLINE with no rev, so BB-R4/R5 FAIL. Round-2 F1 confirmed genuinely fixed.
 - GLM 5.3 Flash unavailable (model no longer advertised by any provider); Gemini 3.8 Flash unavailable (Antigravity quota + provider-session open failure). No substitution or invented scores.

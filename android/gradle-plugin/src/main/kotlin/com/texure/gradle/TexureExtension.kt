@@ -22,4 +22,11 @@ open class TexureExtension @Inject constructor(objects: ObjectFactory) {
     fun setNetworkMocking(enabled: Boolean) {
         networkMocking.set(enabled)
     }
+
+    /**
+     * Kotlin DSL function invocation support: `texure { networkMocking(false) }`.
+     */
+    fun networkMocking(enabled: Boolean) {
+        networkMocking.set(enabled)
+    }
 }
