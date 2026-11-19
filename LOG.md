@@ -26,7 +26,9 @@
     - Hardened body capture: zero-overhead immediate passthrough when `!mockingEnabled`, one-shot/duplex placeholder guards, 64KB cap via `ForwardingSink`, and zero false truncation on exactly 64KB bodies.
     - Enforced strict integer validation for `status` (200..599), `times` (> 0), `delay_ms` (0..30000ms), and 200 mock rules capacity cap across both `BridgeServer` and `FakeBridge`.
 - Verification: `cargo run -p texure-lint` (0 findings), `cargo run -p texure-blackbox -- --target all` (55 passed, 0 failed, 8 skipped, 6 device-skipped), `cargo test --workspace` (all passed), Android `./gradlew testDebugUnitTest :gradle-plugin:test` (all 99 tasks passed), Guardrail G1 `:sample:checkTexureReleaseLeakRelease` (passed).
-- Status: Map #14 tickets #65..#68 complete; Council satisfied (Gemini 10/10, Hy4 8.5/10, DeepSeek Round 2 feedback resolved); ready for PR.
+- Cross-platform Windows Fix: Fixed `0.0.0.0` connection failure on Windows Winsock (10049 WSAEADDRNOTAVAIL) in `crates/texure-server` by introducing `TunnelServer::connect_addr()` mapping unspecified addresses to localhost loopback for client test connections.
+- CI Status: PR #125 opened and linked; all CI checks passing green (`Lint & Quality Gates`, `Rust Tests (ubuntu-latest)`, `Rust Tests (windows-latest)`, `Android Build & Leak Probe`, `GitGuardian Security Checks`).
+- Status: Map #14 tickets #65..#68 complete; Council satisfied (Gemini 10/10, Hy4 8.5/10, DeepSeek Round 2 feedback resolved); PR #125 open and green.
 
 ## 2026-11-18 (session) — Council round 3 close-out (map #64 stack)
 - Round 3 respawn: DeepSeek V4.1 Flash 9/10 SATISFIED — independently reproduced 150 workspace tests, clippy/fmt/lint, 13/13 mcp-tunnel, and two out-of-tree repros proving (a) silent tunnel → LAN fallback tree rev:42 and (b) gateway-only order → OFFLINE with no rev, so BB-R4/R5 FAIL. Round-2 F1 confirmed genuinely fixed.
