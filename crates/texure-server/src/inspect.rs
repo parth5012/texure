@@ -626,10 +626,9 @@ mod tests {
                                             let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
                                             let _ = stream.write_all(resp.as_bytes()).await;
                                         }
-                                    } else if req.starts_with("POST /type") {
-                                        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
-                                        let _ = stream.write_all(resp.as_bytes()).await;
-                                    } else if req.starts_with("POST /keypress") {
+                                    } else if req.starts_with("POST /type")
+                                        || req.starts_with("POST /keypress")
+                                    {
                                         let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
                                         let _ = stream.write_all(resp.as_bytes()).await;
                                     } else {
