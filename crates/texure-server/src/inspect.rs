@@ -190,6 +190,58 @@ impl Drop for InspectorServer {
     }
 }
 
+/// CLI runner for `texure-server inspect`.
+pub async fn run_inspect(
+    config_path: Option<&std::path::Path>,
+    profile_override: Option<&str>,
+    port: u16,
+    no_open: bool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let resolved = crate::config::load_resolved_config_async(config_path, profile_override)
+        .await
+        .map_err(|(code, msg)| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "{code}: {}",
+                    msg.unwrap_or_else(|| code.default_message().to_string())
+                ),
+            )
+        })?;
+
+    eprintln!("Connecting to target device at {}...", resolved.url);
+    let bridge = BridgeClient::new(resolved.clone())
+        .map_err(|e| std::io::Error::other(e.message))?;
+    let supervisor = WsSupervisor::new(resolved);
+    let supervisor_handle = supervisor.spawn();
+
+    let server = InspectorServer::bind(port, bridge, Some(supervisor)).await?;
+    let inspect_url = format!("http://localhost:{}/inspect", server.local_addr().port());
+    eprintln!("Texure Live Web Inspector running at {}", inspect_url);
+
+    if !no_open {
+        open_browser(&inspect_url);
+    }
+
+    eprintln!("Press Ctrl+C to stop.");
+    tokio::signal::ctrl_c().await?;
+    eprintln!("Shutting down inspector...");
+    server.stop();
+    supervisor_handle.abort();
+    Ok(())
+}
+
+fn open_browser(url: &str) {
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
 async fn serve_connection(
     mut stream: TcpStream,
     _peer: SocketAddr,

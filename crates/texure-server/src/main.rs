@@ -68,6 +68,16 @@ enum Command {
         #[arg(long)]
         tunnel_url: Option<String>,
     },
+    /// Launch the Live Web Inspector (Chrome DevTools for Android)
+    Inspect {
+        /// Port to bind the inspector web server (default 8765)
+        #[arg(long, default_value = "8765")]
+        port: u16,
+
+        /// Do not automatically open the default web browser
+        #[arg(long)]
+        no_open: bool,
+    },
 }
 
 #[tokio::main]
@@ -90,6 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match args.command {
         Some(Command::Pair { tunnel_url }) => {
             pair::run_pair(config.as_deref(), profile.as_deref(), tunnel_url.as_deref())
+        }
+        Some(Command::Inspect { port, no_open }) => {
+            inspect::run_inspect(config.as_deref(), profile.as_deref(), port, no_open).await
         }
         None => {
             // Opt-in only. With neither flag, this stays the plain stdio MCP
@@ -127,6 +140,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 server = server.with_lifecycle_probe();
             }
             server.run_stdio().await
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_inspect_subcommand_parsing() {
+        let args = Args::try_parse_from(["texure-server", "inspect"]).expect("parse inspect");
+        match args.command {
+            Some(Command::Inspect { port, no_open }) => {
+                assert_eq!(port, 8765);
+                assert!(!no_open);
+            }
+            _ => panic!("Expected Command::Inspect"),
+        }
+
+        let custom_args = Args::try_parse_from([
+            "texure-server",
+            "inspect",
+            "--port",
+            "9999",
+            "--no-open",
+        ])
+        .expect("parse inspect custom");
+        match custom_args.command {
+            Some(Command::Inspect { port, no_open }) => {
+                assert_eq!(port, 9999);
+                assert!(no_open);
+            }
+            _ => panic!("Expected Command::Inspect"),
         }
     }
 }
