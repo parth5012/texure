@@ -39,7 +39,8 @@ class BridgeServer(
     private val crashHandler: BridgeCrashHandler? = null,
     private val treeExtractor: BridgeTreeExtractor = BridgeTreeExtractor(),
     private val worker: BridgeWorker = BridgeWorker(activityProvider, treeExtractor),
-    val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor)
+    val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor),
+    val statePrefs: com.texure.bridge.state.BridgeStatePrefs = com.texure.bridge.state.BridgeStatePrefs(context)
 ) : NanoWSD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -123,6 +124,27 @@ class BridgeServer(
                     put("error", JSONObject().apply {
                         put("code", "INTERNAL_ERROR")
                         put("message", t.message ?: "network endpoint error")
+                    })
+                })
+            }
+        }
+        if (isStateRoute(uri)) {
+            return try {
+                when {
+                    method == Method.GET && uri == "/state/prefs" -> handleGetStatePrefs(session)
+                    method == Method.POST && uri == "/state/prefs" -> handlePostStatePrefs(session)
+                    else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", "NOT_FOUND")
+                            put("message", "Route not found: ${method.name} $uri")
+                        })
+                    })
+                }
+            } catch (t: Throwable) {
+                jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
+                    put("error", JSONObject().apply {
+                        put("code", "INTERNAL_ERROR")
+                        put("message", t.message ?: "state endpoint error")
                     })
                 })
             }
@@ -443,6 +465,28 @@ class BridgeServer(
                 put("passthrough", true)
             })
         }
+    }
+
+    // --- State inspection, seeding, reset & snapshot routes (contract: /state/*, map #74) ---
+
+    private fun isStateRoute(uri: String): Boolean = uri.startsWith("/state/")
+
+    private fun handleGetStatePrefs(session: IHTTPSession): Response {
+        val name = session.parms["name"] ?: session.parms["file"]
+        val result = statePrefs.inspect(name)
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handlePostStatePrefs(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val result = statePrefs.mutate(body) {
+            treeExtractor.bumpRev()
+            broadcastTreeChanged(treeExtractor.getRev())
+        }
+        if (result.has("error")) {
+            return jsonResponse(Response.Status.INTERNAL_ERROR, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
     }
 
     private fun handleGetUiTree(session: IHTTPSession): Response {
