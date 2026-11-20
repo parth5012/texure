@@ -39,6 +39,58 @@ pub struct FakeBridgeState {
     pub recording: tokio::sync::Mutex<RecordingState>,
     pub tags: tokio::sync::Mutex<std::collections::HashMap<String, u64>>,
     pub network: tokio::sync::Mutex<FakeNetworkState>,
+    pub app_state: tokio::sync::Mutex<FakeAppState>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FakeAppState {
+    pub prefs: std::collections::HashMap<String, std::collections::HashMap<String, Value>>,
+    pub tables: std::collections::HashMap<String, Vec<Value>>,
+    pub query_rows: std::collections::HashMap<String, Vec<Value>>,
+    pub snapshots: std::collections::HashMap<String, FakeSnapshotArchive>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FakeSnapshotArchive {
+    pub prefs: std::collections::HashMap<String, std::collections::HashMap<String, Value>>,
+    pub tables: std::collections::HashMap<String, Vec<Value>>,
+    pub query_rows: std::collections::HashMap<String, Vec<Value>>,
+}
+
+impl Default for FakeAppState {
+    fn default() -> Self {
+        let mut prefs = std::collections::HashMap::new();
+        let mut default_entries = std::collections::HashMap::new();
+        default_entries.insert("user_id".to_string(), json!("u123"));
+        default_entries.insert("is_logged_in".to_string(), json!(true));
+        default_entries.insert("login_count".to_string(), json!(5));
+        prefs.insert("default".to_string(), default_entries);
+
+        let mut tables = std::collections::HashMap::new();
+        tables.insert(
+            "app_db".to_string(),
+            vec![json!({
+                "name": "users",
+                "columns": [
+                    { "name": "id", "type": "INTEGER" },
+                    { "name": "email", "type": "TEXT" }
+                ]
+            })],
+        );
+
+        let mut query_rows = std::collections::HashMap::new();
+        query_rows.insert(
+            "app_db".to_string(),
+            vec![json!({ "id": 1, "email": "test@example.com" })],
+        );
+
+        Self {
+            prefs,
+            tables,
+            query_rows,
+            snapshots: std::collections::HashMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -124,6 +176,7 @@ impl FakeBridgeServer {
                 mocks: Vec::new(),
                 history: Vec::new(),
             }),
+            app_state: tokio::sync::Mutex::new(FakeAppState::default()),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -1444,6 +1497,210 @@ async fn route_request(
                 serde_json::to_vec(&resp).unwrap(),
             )
         }
+        ("GET", "/state/prefs") => {
+            let file_name = query_str
+                .split('&')
+                .find_map(|p| p.strip_prefix("name="))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("default");
+
+            let app_st = state.app_state.lock().await;
+            let entries = app_st.prefs.get(file_name).cloned().unwrap_or_default();
+            let resp = json!({
+                "file": file_name,
+                "entries": entries
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/state/prefs") => {
+            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
+            let file_name = req_json
+                .get("file")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default")
+                .to_string();
+
+            let mut app_st = state.app_state.lock().await;
+            let file_entries = app_st
+                .prefs
+                .entry(file_name)
+                .or_insert_with(std::collections::HashMap::new);
+
+            if let Some(set_obj) = req_json.get("set").and_then(|v| v.as_object()) {
+                for (k, v) in set_obj {
+                    file_entries.insert(k.clone(), v.clone());
+                }
+            }
+            if let Some(remove_arr) = req_json.get("remove").and_then(|v| v.as_array()) {
+                for k in remove_arr {
+                    if let Some(s) = k.as_str() {
+                        file_entries.remove(s);
+                    }
+                }
+            }
+
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state
+                .ws_sender
+                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&json!({ "ok": true })).unwrap(),
+            )
+        }
+        ("GET", "/state/db/tables") => {
+            let db_name = query_str
+                .split('&')
+                .find_map(|p| p.strip_prefix("db="))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("app_db");
+
+            let app_st = state.app_state.lock().await;
+            let tables = app_st.tables.get(db_name).cloned().unwrap_or_default();
+            let resp = json!({
+                "db": db_name,
+                "tables": tables
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/state/db/query") => {
+            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
+            let db_name = req_json
+                .get("db")
+                .and_then(|v| v.as_str())
+                .unwrap_or("app_db");
+
+            let app_st = state.app_state.lock().await;
+            let rows = app_st.query_rows.get(db_name).cloned().unwrap_or_default();
+            let resp = json!({
+                "rows": rows,
+                "count": rows.len()
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/state/db/exec") => {
+            let resp = json!({
+                "ok": true,
+                "affected_rows": 1
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/state/reset") => {
+            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
+            let scope = req_json
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .unwrap_or("all");
+
+            let mut app_st = state.app_state.lock().await;
+            if scope == "all" || scope == "prefs" {
+                app_st.prefs.clear();
+            }
+            if scope == "all" || scope == "db" {
+                app_st.tables.clear();
+                app_st.query_rows.clear();
+            }
+
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state
+                .ws_sender
+                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&json!({ "ok": true, "reset": scope })).unwrap(),
+            )
+        }
+        ("POST", "/state/snapshots/save") => {
+            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
+            let name = req_json
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("snapshot");
+
+            let mut app_st = state.app_state.lock().await;
+            let snap = FakeSnapshotArchive {
+                prefs: app_st.prefs.clone(),
+                tables: app_st.tables.clone(),
+                query_rows: app_st.query_rows.clone(),
+            };
+            app_st.snapshots.insert(name.to_string(), snap);
+
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&json!({ "ok": true, "name": name })).unwrap(),
+            )
+        }
+        ("POST", "/state/snapshots/restore") => {
+            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
+            let name = req_json
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            let mut app_st = state.app_state.lock().await;
+            if let Some(snap) = app_st.snapshots.get(name).cloned() {
+                app_st.prefs = snap.prefs;
+                app_st.tables = snap.tables;
+                app_st.query_rows = snap.query_rows;
+
+                let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+                let _ = state
+                    .ws_sender
+                    .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+
+                (
+                    "200 OK",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&json!({ "ok": true, "name": name })).unwrap(),
+                )
+            } else {
+                let err = json!({
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": format!("Snapshot '{name}' not found")
+                    }
+                });
+                (
+                    "404 Not Found",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                )
+            }
+        }
+        ("GET", "/state/snapshots") => {
+            let app_st = state.app_state.lock().await;
+            let mut names: Vec<String> = app_st.snapshots.keys().cloned().collect();
+            names.sort();
+            let resp = json!({
+                "snapshots": names
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
         _ => {
             let err = json!({
                 "error": {
@@ -1781,6 +2038,165 @@ mod tests {
         let export_json: Value = export.json().await.expect("json");
         assert_eq!(export_json["count"], 0);
         assert_eq!(export_json["actions"].as_array().expect("actions").len(), 0);
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn test_fake_bridge_state_endpoints() {
+        let mut server = FakeBridgeServer::start(FakeBridgeConfig {
+            scenario_name: "test_state".to_string(),
+            root_dir: ".".to_string(),
+            port: 0,
+            token: "test-token".to_string(),
+        })
+        .await
+        .expect("start fake bridge");
+
+        let url = format!("http://127.0.0.1:{}", server.addr.port());
+        let client = reqwest::Client::new();
+
+        // 1. GET /state/prefs default
+        let get_prefs = client
+            .get(format!("{url}/state/prefs"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("get prefs");
+        assert_eq!(get_prefs.status(), 200);
+        let prefs_json: Value = get_prefs.json().await.expect("json");
+        assert_eq!(prefs_json["file"], "default");
+        assert_eq!(prefs_json["entries"]["user_id"], "u123");
+
+        // 2. POST /state/prefs mutate
+        let mutate = client
+            .post(format!("{url}/state/prefs"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({
+                "file": "test_prefs",
+                "set": { "token": "abc", "count": 42 },
+                "remove": []
+            }))
+            .send()
+            .await
+            .expect("mutate prefs");
+        assert_eq!(mutate.status(), 200);
+
+        let get_test_prefs = client
+            .get(format!("{url}/state/prefs?name=test_prefs"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("get test prefs");
+        assert_eq!(get_test_prefs.status(), 200);
+        let test_prefs_json: Value = get_test_prefs.json().await.expect("json");
+        assert_eq!(test_prefs_json["entries"]["token"], "abc");
+        assert_eq!(test_prefs_json["entries"]["count"], 42);
+
+        // 3. GET /state/db/tables
+        let tables = client
+            .get(format!("{url}/state/db/tables?db=app_db"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("get tables");
+        assert_eq!(tables.status(), 200);
+        let tables_json: Value = tables.json().await.expect("json");
+        assert_eq!(tables_json["db"], "app_db");
+        assert_eq!(tables_json["tables"][0]["name"], "users");
+
+        // 4. POST /state/db/query
+        let query = client
+            .post(format!("{url}/state/db/query"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({ "db": "app_db", "sql": "SELECT * FROM users" }))
+            .send()
+            .await
+            .expect("query");
+        assert_eq!(query.status(), 200);
+        let query_json: Value = query.json().await.expect("json");
+        assert_eq!(query_json["count"], 1);
+
+        // 5. POST /state/db/exec
+        let exec = client
+            .post(format!("{url}/state/db/exec"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({ "db": "app_db", "sql": "UPDATE users SET email = ?", "params": ["x"] }))
+            .send()
+            .await
+            .expect("exec");
+        assert_eq!(exec.status(), 200);
+
+        // 6. Snapshot save
+        let save = client
+            .post(format!("{url}/state/snapshots/save"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({ "name": "snap1" }))
+            .send()
+            .await
+            .expect("save snapshot");
+        assert_eq!(save.status(), 200);
+
+        // 7. Snapshots list
+        let list = client
+            .get(format!("{url}/state/snapshots"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("list snapshots");
+        assert_eq!(list.status(), 200);
+        let list_json: Value = list.json().await.expect("json");
+        assert_eq!(list_json["snapshots"][0], "snap1");
+
+        // 8. State reset
+        let reset = client
+            .post(format!("{url}/state/reset"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({ "scope": "all" }))
+            .send()
+            .await
+            .expect("reset");
+        assert_eq!(reset.status(), 200);
+
+        let get_after_reset = client
+            .get(format!("{url}/state/prefs?name=test_prefs"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("get after reset");
+        assert_eq!(get_after_reset.status(), 200);
+        let after_reset_json: Value = get_after_reset.json().await.expect("json");
+        assert_eq!(after_reset_json["entries"], json!({}));
+
+        // 9. Snapshot restore
+        let restore = client
+            .post(format!("{url}/state/snapshots/restore"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({ "name": "snap1" }))
+            .send()
+            .await
+            .expect("restore");
+        assert_eq!(restore.status(), 200);
+
+        let get_after_restore = client
+            .get(format!("{url}/state/prefs?name=test_prefs"))
+            .header("Authorization", "Bearer test-token")
+            .send()
+            .await
+            .expect("get after restore");
+        assert_eq!(get_after_restore.status(), 200);
+        let after_restore_json: Value = get_after_restore.json().await.expect("json");
+        assert_eq!(after_restore_json["entries"]["token"], "abc");
+
+        // 10. Snapshot restore not found
+        let restore_missing = client
+            .post(format!("{url}/state/snapshots/restore"))
+            .header("Authorization", "Bearer test-token")
+            .json(&json!({ "name": "non_existent" }))
+            .send()
+            .await
+            .expect("restore missing");
+        assert_eq!(restore_missing.status(), 404);
 
         server.stop();
     }

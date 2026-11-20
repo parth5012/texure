@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "state_reset",
+  "kind": "scenario",
+  "description": "BB-S1: Trigger POST /state/reset, verify clean-slate preferences",
+  "steps": [
+    {
+      "action": "state_prefs_get",
+      "args": {
+        "name": "default"
+      },
+      "expect": {
+        "entries.user_id": "u123"
+      }
+    },
+    {
+      "action": "state_reset",
+      "args": {
+        "scope": "all"
+      },
+      "expect": {
+        "ok": true,
+        "reset": "all"
+      }
+    },
+    {
+      "action": "state_prefs_get",
+      "args": {
+        "name": "default"
+      },
+      "expect": {
+        "file": "default",
+        "entries": {}
+      }
+    }
+  ],
+  "assertions": []
+}

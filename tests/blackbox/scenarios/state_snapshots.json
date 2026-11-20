@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "name": "state_snapshots",
+  "kind": "scenario",
+  "description": "BB-S3: Save snapshot, mutate state, restore snapshot, verify reverted state",
+  "steps": [
+    {
+      "action": "state_prefs",
+      "args": {
+        "file": "onboarding_prefs",
+        "set": {
+          "stage": "completed",
+          "step_num": 5
+        }
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "state_snapshot_save",
+      "args": {
+        "name": "post_onboarding"
+      },
+      "expect": {
+        "ok": true,
+        "name": "post_onboarding"
+      }
+    },
+    {
+      "action": "state_snapshots_list",
+      "args": {},
+      "expect": {
+        "snapshots.0": "post_onboarding"
+      }
+    },
+    {
+      "action": "state_prefs",
+      "args": {
+        "file": "onboarding_prefs",
+        "set": {
+          "stage": "corrupted",
+          "step_num": 99
+        }
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "state_prefs_get",
+      "args": {
+        "name": "onboarding_prefs"
+      },
+      "expect": {
+        "entries.stage": "corrupted",
+        "entries.step_num": 99
+      }
+    },
+    {
+      "action": "state_snapshot_restore",
+      "args": {
+        "name": "post_onboarding"
+      },
+      "expect": {
+        "ok": true,
+        "name": "post_onboarding"
+      }
+    },
+    {
+      "action": "state_prefs_get",
+      "args": {
+        "name": "onboarding_prefs"
+      },
+      "expect": {
+        "entries.stage": "completed",
+        "entries.step_num": 5
+      }
+    }
+  ],
+  "assertions": []
+}

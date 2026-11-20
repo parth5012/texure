@@ -96,6 +96,16 @@ impl Scenario {
             "network_request",
             "network_history",
             "network_mode",
+            // Group S: application state seeding & snapshots (map 15 #74)
+            "state_reset",
+            "state_prefs",
+            "state_prefs_get",
+            "state_db_tables",
+            "state_db_query",
+            "state_db_exec",
+            "state_snapshot_save",
+            "state_snapshot_restore",
+            "state_snapshots_list",
         ];
 
         for step in &self.steps {
