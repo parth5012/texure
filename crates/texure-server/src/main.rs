@@ -159,14 +159,9 @@ mod tests {
             _ => panic!("Expected Command::Inspect"),
         }
 
-        let custom_args = Args::try_parse_from([
-            "texure-server",
-            "inspect",
-            "--port",
-            "9999",
-            "--no-open",
-        ])
-        .expect("parse inspect custom");
+        let custom_args =
+            Args::try_parse_from(["texure-server", "inspect", "--port", "9999", "--no-open"])
+                .expect("parse inspect custom");
         match custom_args.command {
             Some(Command::Inspect { port, no_open }) => {
                 assert_eq!(port, 9999);

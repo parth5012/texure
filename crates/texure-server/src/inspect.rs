@@ -210,8 +210,8 @@ pub async fn run_inspect(
         })?;
 
     eprintln!("Connecting to target device at {}...", resolved.url);
-    let bridge = BridgeClient::new(resolved.clone())
-        .map_err(|e| std::io::Error::other(e.message))?;
+    let bridge =
+        BridgeClient::new(resolved.clone()).map_err(|e| std::io::Error::other(e.message))?;
     let supervisor = WsSupervisor::new(resolved);
     let supervisor_handle = supervisor.spawn();
 
@@ -355,7 +355,10 @@ async fn serve_connection(
     Ok(())
 }
 
-async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(stream: S, shared: Arc<InspectorShared>) {
+async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: S,
+    shared: Arc<InspectorShared>,
+) {
     let mut ws = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {
@@ -541,11 +544,11 @@ mod tests {
 
     // Minimal 1x1 valid PNG bytes (67 bytes)
     const MOCK_PNG: &[u8] = &[
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
-        0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
-        0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78,
-        0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
-        0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
     ];
 
     struct MockBridgeServer {
@@ -792,7 +795,12 @@ mod tests {
             "index": 0,
             "rev": 42
         });
-        let resp = client.post(&action_url).json(&tap_body).send().await.unwrap();
+        let resp = client
+            .post(&action_url)
+            .json(&tap_body)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), reqwest::StatusCode::OK);
 
         // 2. Outdated rev tap action -> expects 409 Conflict with NODE_OUTDATED
@@ -801,7 +809,12 @@ mod tests {
             "index": 0,
             "rev": 999
         });
-        let resp = client.post(&action_url).json(&outdated_tap).send().await.unwrap();
+        let resp = client
+            .post(&action_url)
+            .json(&outdated_tap)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), reqwest::StatusCode::CONFLICT);
         let err_json: serde_json::Value = resp.json().await.unwrap();
         assert_eq!(err_json["error"], "NODE_OUTDATED");
@@ -813,7 +826,12 @@ mod tests {
             "text": "Hello World",
             "rev": 42
         });
-        let resp = client.post(&action_url).json(&type_body).send().await.unwrap();
+        let resp = client
+            .post(&action_url)
+            .json(&type_body)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), reqwest::StatusCode::OK);
 
         // 4. Remote keypress action
@@ -821,7 +839,12 @@ mod tests {
             "action": "keypress",
             "key": "enter"
         });
-        let resp = client.post(&action_url).json(&key_body).send().await.unwrap();
+        let resp = client
+            .post(&action_url)
+            .json(&key_body)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), reqwest::StatusCode::OK);
     }
 }
