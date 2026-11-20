@@ -8,6 +8,27 @@
 - Ticket #73: Blackbox scenario suite & FakeBridge mocks for state manipulation in `crates/texure-blackbox`. Implemented in-memory state endpoints in `fake_bridge.rs`, client methods in `client_http.rs`, scenario execution in `runner.rs`, added Section 3S and BB-S1..BB-S3 in `behavior-spec.md` and `texure-lint`, authored scenarios `state_reset.json`, `state_prefs.json`, `state_snapshots.json`. Unit and blackbox tests pass 100%. Closed #73.
 - Verification: `./gradlew :bridge:testDebugUnitTest` (all 37 tasks pass), `cargo test --workspace` (all 147 tests pass), `cargo run -p texure-lint` (0 findings), `cargo run -p texure-blackbox -- --target all` (58 passed, 0 failed, 11 skipped, 6 device-skipped).
 - Status: Map #74 tickets #70..#73 complete; all tickets closed; ready for single-PR filing and babysitting.
+- Council Review (Round 1): Convened 3-member Council (Gemini 3.8 Flash, Hy4 Flash, DeepSeek V4.1 Flash):
+  - Round 1 Scores: Gemini 3.8 Flash (7.5/10), Hy4 Flash (7/10), DeepSeek V4.1 Flash (6/10) — Verdict: REQUESTING CHANGES.
+  - Concrete fixes applied:
+    - Fixed non-atomic snapshot restore: staged extraction and integrity validation in temporary cache directory before touching live state; preserves application data if archive is corrupted.
+    - Fixed non-atomic snapshot save: writes to `.tmp` file and atomically renames; prevents clobbering pre-existing snapshots.
+    - Sanitized database names in `BridgeStateDb.kt` via regex matching (`^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)?$`), rejecting path traversal (`../`) and absolute paths with HTTP 400 `BAD_REQUEST`.
+    - Added explicit SQLite transaction boundaries (`beginTransaction()`, `setTransactionSuccessful()`, `endTransaction()`) and WAL mode in `BridgeStateDb.exec`.
+    - Serialized snapshot engine operations with `@Synchronized` on `reset`, `saveSnapshot`, `restoreSnapshot`, `listSnapshots`.
+    - Hardened reset body parsing against malformed JSON or empty bodies, returning HTTP 400 `BAD_REQUEST` with scope validation.
+    - Fixed `.bak` suffix trimming order in `BridgeStateSnapshot.kt`.
+    - Documented state error codes in `docs/bridge-contract.md` authority table.
+    - Aligned FakeBridge WebSocket event shape to `"type": "tree_changed"` and error codes.
+    - Expanded blackbox scenario `BB-S3` (`state_snapshots.json`) to exercise database table creation, insertion, query, mutation, restore, and verification.
+    - Applied percent-encoding for query parameters via reqwest `.query()`.
+- Council Review (Round 2):
+  - Round 2 Scores: Gemini 3.8 Flash (9.8/10 SATISFIED), Hy4 Flash (8/10 SATISFIED), DeepSeek V4.1 Flash (7/10 -> addressed B1 and B2):
+    - Resolved B1: updated `state_snapshots.json` with explicit `sql` query and real column names (`username`, `role`), with table creation step.
+    - Resolved B2: aligned `SNAPSHOT_ERROR` and `RESTORE_ERROR` HTTP status in `bridge-contract.md` authority table to HTTP 400 matching handlers and unit tests.
+    - Cleaned `validScopes` in `BridgeServer.kt` to match engine scopes with `Locale.ROOT`.
+- Verification: `./gradlew :bridge:testDebugUnitTest` (all 99 tests pass), `:sample:checkTexureReleaseLeakRelease` (BUILD SUCCESSFUL, G1 clean), `cargo test --workspace` (all tests pass), `cargo run -p texure-lint` (0 findings), `cargo run -p texure-blackbox -- --target mcp-fake` (23/23 pass).
+- Status: Council satisfied; PR #126 open and ready for merge.
 
 ## 2026-11-19 (session) — Wayfinder map 14 (#69) In-app network interception & dynamic API mocking
 - Scope: 4 AFK tickets (#65, #66, #67, #68) in single-PR mode on branch `wf/69-network-mocking`.

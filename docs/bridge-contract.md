@@ -396,8 +396,8 @@ MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `scree
 | `DB_NOT_FOUND` | bridge | 404 | target database does not exist | verify database name via `GET /state/db/tables` |
 | `SQL_ERROR` | bridge | 400 | SQL syntax or execution error | verify SQL statement syntax and parameters |
 | `SNAPSHOT_NOT_FOUND` | bridge | 404 | snapshot archive does not exist | verify snapshot name via `GET /state/snapshots` |
-| `SNAPSHOT_ERROR` | bridge | 500 | snapshot creation failure | verify storage space and permissions |
-| `RESTORE_ERROR` | bridge | 500 | snapshot restoration failure | verify snapshot integrity |
+| `SNAPSHOT_ERROR` | bridge | 400 | snapshot creation failure | verify storage space and permissions |
+| `RESTORE_ERROR` | bridge | 400 | snapshot restoration failure | verify snapshot integrity |
 | `COMMIT_FAILED` | bridge | 500 | preference commit failure | retry mutation |
 
 **Non-error row (separate so lint's code sweep doesn't false-positive):** `WAIT_TIMEOUT` — `wait_for` expiry returns `{ "ok": false, "last_rev": N }` plus the re-plan hint, NOT the error envelope. Removed: `APP_BUSY` (was the draft alias of the single-flight refusal; `BUSY` is the one name).

@@ -21,6 +21,16 @@
       "action": "state_db_exec",
       "args": {
         "db": "profile_db",
+        "sql": "CREATE TABLE IF NOT EXISTS profile (username TEXT, role TEXT)"
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "state_db_exec",
+      "args": {
+        "db": "profile_db",
         "sql": "INSERT INTO profile (username, role) VALUES (?, ?)",
         "params": ["alice", "admin"]
       },
@@ -32,11 +42,13 @@
     {
       "action": "state_db_query",
       "args": {
-        "db": "profile_db"
+        "db": "profile_db",
+        "sql": "SELECT username, role FROM profile"
       },
       "expect": {
         "count": 1,
-        "rows.0.col_0": "alice"
+        "rows.0.username": "alice",
+        "rows.0.role": "admin"
       }
     },
     {
@@ -94,7 +106,8 @@
     {
       "action": "state_db_query",
       "args": {
-        "db": "profile_db"
+        "db": "profile_db",
+        "sql": "SELECT username, role FROM profile"
       },
       "expect": {
         "count": 2
@@ -123,11 +136,13 @@
     {
       "action": "state_db_query",
       "args": {
-        "db": "profile_db"
+        "db": "profile_db",
+        "sql": "SELECT username, role FROM profile"
       },
       "expect": {
         "count": 1,
-        "rows.0.col_0": "alice"
+        "rows.0.username": "alice",
+        "rows.0.role": "admin"
       }
     }
   ],
