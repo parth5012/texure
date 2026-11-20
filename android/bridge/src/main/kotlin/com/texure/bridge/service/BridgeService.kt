@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.texure.bridge.crash.BridgeCrashHandler
+import com.texure.bridge.logcat.BridgeLogcatReader
 import com.texure.bridge.model.BridgeError
 import com.texure.bridge.model.BridgeState
 import com.texure.bridge.recording.RecordingController
@@ -28,6 +29,7 @@ class BridgeService : Service() {
     private var server: BridgeServer? = null
     private var tokenManager: BridgeTokenManager? = null
     private var crashHandler: BridgeCrashHandler? = null
+    private var logcatReader: BridgeLogcatReader? = null
 
     private var currentPort = DEFAULT_PORT
     private var isPortInUse = false
@@ -64,6 +66,8 @@ class BridgeService : Service() {
 
         val tm = tokenManager ?: BridgeTokenManager(this).also { tokenManager = it }
         val ch = crashHandler ?: BridgeCrashHandler(this).also { crashHandler = it }
+        val lr = logcatReader ?: BridgeLogcatReader().also { logcatReader = it }
+        lr.start()
 
         activeActivity = activity ?: activeActivity
 
@@ -72,7 +76,8 @@ class BridgeService : Service() {
             port = currentPort,
             tokenManager = tm,
             activityProvider = { activeActivity },
-            crashHandler = ch
+            crashHandler = ch,
+            logcatReader = lr
         )
 
         try {
@@ -94,6 +99,8 @@ class BridgeService : Service() {
 
     fun stopBridge() {
         unregisterMdns()
+        logcatReader?.stop()
+        logcatReader = null
         server?.stop()
         server = null
     }

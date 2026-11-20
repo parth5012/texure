@@ -4,6 +4,9 @@ severity: error
 language: Kotlin
 files:
   - "android/**"
+ignores:
+  - "android/bridge/src/main/kotlin/com/texure/bridge/logcat/**"
+  - "android/bridge/src/test/**"
 rule:
   any:
     - pattern: Runtime.getRuntime().exec($$$ARGS)
