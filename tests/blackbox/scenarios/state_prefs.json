@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "name": "state_prefs",
+  "kind": "scenario",
+  "description": "BB-S2: Seed preferences via POST /state/prefs, verify updated key values",
+  "steps": [
+    {
+      "action": "state_prefs",
+      "args": {
+        "file": "app_prefs",
+        "set": {
+          "user_id": "u456",
+          "theme": "dark",
+          "login_count": 10
+        }
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "state_prefs_get",
+      "args": {
+        "name": "app_prefs"
+      },
+      "expect": {
+        "file": "app_prefs",
+        "entries.user_id": "u456",
+        "entries.theme": "dark",
+        "entries.login_count": 10
+      }
+    },
+    {
+      "action": "state_prefs",
+      "args": {
+        "file": "app_prefs",
+        "remove": [
+          "theme"
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "state_prefs_get",
+      "args": {
+        "name": "app_prefs"
+      },
+      "expect": {
+        "file": "app_prefs",
+        "entries.user_id": "u456",
+        "entries.login_count": 10
+      }
+    }
+  ],
+  "assertions": []
+}

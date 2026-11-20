@@ -549,6 +549,31 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: false,
         },
+        // Group S: application state seeding & snapshot engine (map 15 #74)
+        TestDef {
+            id: "BB-S1".to_string(),
+            name: "Trigger /state/reset, verify clean-slate preferences".to_string(),
+            scenario_file: "state_reset.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-S2".to_string(),
+            name: "Seed preferences via /state/prefs, verify updated values".to_string(),
+            scenario_file: "state_prefs.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-S3".to_string(),
+            name: "Save snapshot, mutate state, restore snapshot, verify reverted state".to_string(),
+            scenario_file: "state_snapshots.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
     ]
 }
 

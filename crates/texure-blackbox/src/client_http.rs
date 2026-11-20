@@ -461,4 +461,216 @@ impl HttpBridgeClient {
             body: format!("Invalid JSON response: {e}"),
         })
     }
+
+    pub async fn state_reset(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/reset", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_prefs(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/prefs", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_prefs_get(&self, name: Option<&str>) -> Result<Value, HttpBridgeError> {
+        let url = if let Some(n) = name {
+            format!("{}/state/prefs?name={n}", self.base_url)
+        } else {
+            format!("{}/state/prefs", self.base_url)
+        };
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_db_tables(&self, db: Option<&str>) -> Result<Value, HttpBridgeError> {
+        let url = if let Some(d) = db {
+            format!("{}/state/db/tables?db={d}", self.base_url)
+        } else {
+            format!("{}/state/db/tables", self.base_url)
+        };
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_db_query(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/db/query", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_db_exec(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/db/exec", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_snapshot_save(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/snapshots/save", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_snapshot_restore(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/snapshots/restore", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn state_snapshots_list(&self) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/state/snapshots", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
 }

@@ -572,11 +572,20 @@ async fn run_mcp_real_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path
                 | "network_history"
                 | "network_clear_history"
                 | "network_mode"
+                | "state_reset"
+                | "state_prefs"
+                | "state_prefs_get"
+                | "state_db_tables"
+                | "state_db_query"
+                | "state_db_exec"
+                | "state_snapshot_save"
+                | "state_snapshot_restore"
+                | "state_snapshots_list"
         )
     }) {
         return Err((
             steps,
-            "SKIP: tag, recording_*, and network_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
+            "SKIP: tag, recording_*, network_*, and state_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
                 .to_string(),
         ));
     }
@@ -2184,6 +2193,394 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     }
                 }
             }
+            "state_reset" => match client.state_reset(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_reset failed: {e}")));
+                }
+            },
+            "state_prefs" => match client.state_prefs(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_prefs failed: {e}")));
+                }
+            },
+            "state_prefs_get" => {
+                let name = step
+                    .args
+                    .get("name")
+                    .or_else(|| step.args.get("file"))
+                    .and_then(|v| v.as_str());
+                match client.state_prefs_get(name).await {
+                    Ok(resp) => {
+                        last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(HttpBridgeError::StatusError { body, .. }) => {
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("state_prefs_get failed: {e}")));
+                    }
+                }
+            }
+            "state_db_tables" => {
+                let db = step.args.get("db").and_then(|v| v.as_str());
+                match client.state_db_tables(db).await {
+                    Ok(resp) => {
+                        last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(HttpBridgeError::StatusError { body, .. }) => {
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("state_db_tables failed: {e}")));
+                    }
+                }
+            }
+            "state_db_query" => match client.state_db_query(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_db_query failed: {e}")));
+                }
+            },
+            "state_db_exec" => match client.state_db_exec(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_db_exec failed: {e}")));
+                }
+            },
+            "state_snapshot_save" => match client.state_snapshot_save(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_snapshot_save failed: {e}")));
+                }
+            },
+            "state_snapshot_restore" => match client.state_snapshot_restore(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_snapshot_restore failed: {e}")));
+                }
+            },
+            "state_snapshots_list" => match client.state_snapshots_list().await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("state_snapshots_list failed: {e}")));
+                }
+            },
             other => {
                 server.stop();
                 return Err((
