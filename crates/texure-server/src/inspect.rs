@@ -554,7 +554,28 @@ mod tests {
                                         let _ = stream.write_all(resp.as_bytes()).await;
                                         let _ = stream.write_all(MOCK_PNG).await;
                                     } else if req.starts_with("POST /tap") {
-                                        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"success\": true}";
+                                        if req.contains("\"rev\":999") || req.contains("\"rev\": 999") {
+                                            let err_resp = serde_json::json!({
+                                                "error": {
+                                                    "code": "NODE_OUTDATED",
+                                                    "message": "Node revision outdated"
+                                                }
+                                            }).to_string();
+                                            let resp = format!(
+                                                "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                                err_resp.len(),
+                                                err_resp
+                                            );
+                                            let _ = stream.write_all(resp.as_bytes()).await;
+                                        } else {
+                                            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                                            let _ = stream.write_all(resp.as_bytes()).await;
+                                        }
+                                    } else if req.starts_with("POST /type") {
+                                        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                                        let _ = stream.write_all(resp.as_bytes()).await;
+                                    } else if req.starts_with("POST /keypress") {
+                                        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
                                         let _ = stream.write_all(resp.as_bytes()).await;
                                     } else {
                                         let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
@@ -697,5 +718,58 @@ mod tests {
         // Wait for cleanup
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert_eq!(server.active_connections(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_action_handlers_and_rev_validation() {
+        let mock_bridge = MockBridgeServer::start().await;
+        let config = ResolvedDeviceConfig {
+            url: format!("http://{}", mock_bridge.addr),
+            token: "tok".to_string(),
+            timeout_secs: 2,
+        };
+        let bridge = BridgeClient::new(config.clone()).unwrap();
+        let server = InspectorServer::bind(0, bridge, None).await.unwrap();
+
+        let client = reqwest::Client::new();
+        let action_url = format!("http://{}/inspect/action", server.local_addr());
+
+        // 1. Valid tap action
+        let tap_body = serde_json::json!({
+            "action": "tap",
+            "index": 0,
+            "rev": 42
+        });
+        let resp = client.post(&action_url).json(&tap_body).send().await.unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+        // 2. Outdated rev tap action -> expects 409 Conflict with NODE_OUTDATED
+        let outdated_tap = serde_json::json!({
+            "action": "tap",
+            "index": 0,
+            "rev": 999
+        });
+        let resp = client.post(&action_url).json(&outdated_tap).send().await.unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::CONFLICT);
+        let err_json: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(err_json["error"], "NODE_OUTDATED");
+
+        // 3. Remote keyboard type action
+        let type_body = serde_json::json!({
+            "action": "type",
+            "index": 0,
+            "text": "Hello World",
+            "rev": 42
+        });
+        let resp = client.post(&action_url).json(&type_body).send().await.unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+        // 4. Remote keypress action
+        let key_body = serde_json::json!({
+            "action": "keypress",
+            "key": "enter"
+        });
+        let resp = client.post(&action_url).json(&key_body).send().await.unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
     }
 }
