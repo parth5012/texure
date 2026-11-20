@@ -171,7 +171,7 @@ Rows below define the contract for in-app OkHttp network request interception, d
 | Request history capture | BB-N2 | Capture in-flight HTTP requests into rolling ring buffer and query `/network/history` with optional URL filtering. |
 | Runtime passthrough toggle | BB-N3 | Disable mocking via `/network/mode`; requests proceed via real network passthrough untouched. |
 
-## 3S. Application state seeding, inspection & snapshot engine [S] (map 15, #74)
+## 3S. Application state seeding, inspection & snapshot engine [S] (map #74)
 
 Rows below define the contract for debug-only state inspection, direct seeding of SharedPreferences and SQLite/Room databases, Day-0 clean-slate resets, and named state snapshots.
 

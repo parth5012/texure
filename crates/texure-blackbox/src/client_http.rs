@@ -509,17 +509,14 @@ impl HttpBridgeClient {
     }
 
     pub async fn state_prefs_get(&self, name: Option<&str>) -> Result<Value, HttpBridgeError> {
-        let url = if let Some(n) = name {
-            format!("{}/state/prefs?name={n}", self.base_url)
-        } else {
-            format!("{}/state/prefs", self.base_url)
-        };
-        let resp = self
+        let mut req = self
             .client
-            .get(&url)
-            .headers(self.headers()?)
-            .send()
-            .await?;
+            .get(format!("{}/state/prefs", self.base_url))
+            .headers(self.headers()?);
+        if let Some(n) = name {
+            req = req.query(&[("name", n)]);
+        }
+        let resp = req.send().await?;
         let status = resp.status().as_u16();
         let body_text = resp.text().await?;
         if status != 200 {
@@ -535,17 +532,14 @@ impl HttpBridgeClient {
     }
 
     pub async fn state_db_tables(&self, db: Option<&str>) -> Result<Value, HttpBridgeError> {
-        let url = if let Some(d) = db {
-            format!("{}/state/db/tables?db={d}", self.base_url)
-        } else {
-            format!("{}/state/db/tables", self.base_url)
-        };
-        let resp = self
+        let mut req = self
             .client
-            .get(&url)
-            .headers(self.headers()?)
-            .send()
-            .await?;
+            .get(format!("{}/state/db/tables", self.base_url))
+            .headers(self.headers()?);
+        if let Some(d) = db {
+            req = req.query(&[("db", d)]);
+        }
+        let resp = req.send().await?;
         let status = resp.status().as_u16();
         let body_text = resp.text().await?;
         if status != 200 {

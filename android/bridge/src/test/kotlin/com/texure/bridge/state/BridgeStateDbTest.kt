@@ -232,4 +232,21 @@ class BridgeStateDbTest {
         val error = JSONObject(resp).getJSONObject("error")
         assertEquals("DB_NOT_FOUND", error.getString("code"))
     }
+
+    @Test
+    fun pathTraversalDatabaseNameReturnsBadRequest() {
+        val (code, resp) = sendRequest("GET", "/state/db/tables?db=../../etc/passwd")
+        assertEquals(400, code)
+        val error = JSONObject(resp).getJSONObject("error")
+        assertEquals("BAD_REQUEST", error.getString("code"))
+
+        val execPayload = JSONObject().apply {
+            put("db", "/data/data/com.texure.sample/secret.db")
+            put("sql", "CREATE TABLE leak (id INT)")
+        }
+        val (execCode, execResp) = sendRequest("POST", "/state/db/exec", body = execPayload.toString())
+        assertEquals(400, execCode)
+        val execError = JSONObject(execResp).getJSONObject("error")
+        assertEquals("BAD_REQUEST", execError.getString("code"))
+    }
 }

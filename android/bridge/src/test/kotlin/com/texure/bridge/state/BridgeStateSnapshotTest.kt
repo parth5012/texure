@@ -216,4 +216,38 @@ class BridgeStateSnapshotTest {
         val error = JSONObject(resp).getJSONObject("error")
         assertEquals("SNAPSHOT_NOT_FOUND", error.getString("code"))
     }
+
+    @Test
+    fun corruptedSnapshotRestoreDoesNotWipeExistingData() {
+        val sp = activity.getSharedPreferences("keep_me", Context.MODE_PRIVATE)
+        sp.edit().putString("important", "safe_value").commit()
+
+        // Create a corrupted zip file
+        val snapshotsDir = File(activity.filesDir, "texure_snapshots")
+        snapshotsDir.mkdirs()
+        val corruptZip = File(snapshotsDir, "corrupted_snap.zip")
+        corruptZip.writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x7f, 0x7f)) // invalid truncated zip
+
+        val (code, resp) = sendRequest("POST", "/state/snapshots/restore", body = "{\"name\":\"corrupted_snap\"}")
+        assertEquals(400, code)
+        val error = JSONObject(resp).getJSONObject("error")
+        assertEquals("RESTORE_ERROR", error.getString("code"))
+
+        // Verify existing state was preserved intact!
+        assertEquals("safe_value", sp.getString("important", null))
+    }
+
+    @Test
+    fun malformedResetBodyReturnsBadRequestWithoutWiping() {
+        val sp = activity.getSharedPreferences("keep_me_too", Context.MODE_PRIVATE)
+        sp.edit().putString("key", "value").commit()
+
+        val (code, resp) = sendRequest("POST", "/state/reset", body = "{\"scope\": \"prefs\" unclosed")
+        assertEquals(400, code)
+        val error = JSONObject(resp).getJSONObject("error")
+        assertEquals("BAD_REQUEST", error.getString("code"))
+
+        // Verify data was NOT wiped
+        assertEquals("value", sp.getString("key", null))
+    }
 }

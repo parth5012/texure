@@ -6,9 +6,7 @@
   "steps": [
     {
       "action": "state_prefs_get",
-      "args": {
-        "name": "default"
-      },
+      "args": {},
       "expect": {
         "entries.user_id": "u123"
       }
@@ -25,11 +23,8 @@
     },
     {
       "action": "state_prefs_get",
-      "args": {
-        "name": "default"
-      },
+      "args": {},
       "expect": {
-        "file": "default",
         "entries": {}
       }
     }

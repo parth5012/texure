@@ -25,6 +25,9 @@ class BridgeStateDb(private val context: Context) {
     }
 
     fun resolveDatabasePath(name: String): File {
+        if (!name.matches(Regex("^[a-zA-Z0-9_-]+(\\.[a-zA-Z0-9_-]+)?$"))) {
+            throw IllegalArgumentException("Invalid database name '$name'. Use alphanumeric, underscore, hyphen.")
+        }
         val directPath = context.getDatabasePath(name)
         if (directPath.exists()) {
             return directPath
@@ -47,7 +50,16 @@ class BridgeStateDb(private val context: Context) {
                 put("tables", JSONArray())
             }
 
-        val dbPath = resolveDatabasePath(name)
+        val dbPath = try {
+            resolveDatabasePath(name)
+        } catch (e: IllegalArgumentException) {
+            return JSONObject().apply {
+                put("error", JSONObject().apply {
+                    put("code", "BAD_REQUEST")
+                    put("message", e.message ?: "Invalid database name")
+                })
+            }
+        }
         if (!dbPath.exists()) {
             return JSONObject().apply {
                 put("error", JSONObject().apply {
@@ -79,7 +91,8 @@ class BridgeStateDb(private val context: Context) {
                 }
                 val columnsArray = JSONArray()
 
-                val infoCursor = db.rawQuery("PRAGMA table_info(\"$tableName\")", null)
+                val escapedTableName = tableName.replace("\"", "\"\"")
+                val infoCursor = db.rawQuery("PRAGMA table_info(\"$escapedTableName\")", null)
                 infoCursor.use {
                     while (it.moveToNext()) {
                         val colName = it.getString(it.getColumnIndexOrThrow("name"))
@@ -134,7 +147,16 @@ class BridgeStateDb(private val context: Context) {
                 })
             }
 
-        val dbPath = resolveDatabasePath(dbName)
+        val dbPath = try {
+            resolveDatabasePath(dbName)
+        } catch (e: IllegalArgumentException) {
+            return JSONObject().apply {
+                put("error", JSONObject().apply {
+                    put("code", "BAD_REQUEST")
+                    put("message", e.message ?: "Invalid database name")
+                })
+            }
+        }
         if (!dbPath.exists()) {
             return JSONObject().apply {
                 put("error", JSONObject().apply {
@@ -213,7 +235,16 @@ class BridgeStateDb(private val context: Context) {
                 })
             }
 
-        val dbPath = resolveDatabasePath(dbName)
+        val dbPath = try {
+            resolveDatabasePath(dbName)
+        } catch (e: IllegalArgumentException) {
+            return JSONObject().apply {
+                put("error", JSONObject().apply {
+                    put("code", "BAD_REQUEST")
+                    put("message", e.message ?: "Invalid database name")
+                })
+            }
+        }
         dbPath.parentFile?.mkdirs()
 
         val paramsArray = payload.optJSONArray("params")
@@ -224,6 +255,8 @@ class BridgeStateDb(private val context: Context) {
         var db: SQLiteDatabase? = null
         try {
             db = SQLiteDatabase.openOrCreateDatabase(dbPath, null)
+            db.enableWriteAheadLogging()
+            db.beginTransaction()
             val affectedRows: Int
 
             if (bindArgs != null && bindArgs.isNotEmpty()) {
@@ -246,7 +279,7 @@ class BridgeStateDb(private val context: Context) {
                             else -> stmt.bindString(index, arg.toString())
                         }
                     }
-                    val upper = sql.trim().uppercase()
+                    val upper = sql.trim().uppercase(java.util.Locale.ROOT)
                     affectedRows = if (upper.startsWith("UPDATE") || upper.startsWith("DELETE")) {
                         stmt.executeUpdateDelete()
                     } else if (upper.startsWith("INSERT")) {
@@ -265,6 +298,7 @@ class BridgeStateDb(private val context: Context) {
                 }
             }
 
+            db.setTransactionSuccessful()
             onMutated?.invoke()
             return JSONObject().apply {
                 put("ok", true)
@@ -278,6 +312,9 @@ class BridgeStateDb(private val context: Context) {
                 })
             }
         } finally {
+            if (db?.inTransaction() == true) {
+                db.endTransaction()
+            }
             db?.close()
         }
     }

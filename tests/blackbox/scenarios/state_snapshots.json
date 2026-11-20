@@ -18,6 +18,28 @@
       }
     },
     {
+      "action": "state_db_exec",
+      "args": {
+        "db": "profile_db",
+        "sql": "INSERT INTO profile (username, role) VALUES (?, ?)",
+        "params": ["alice", "admin"]
+      },
+      "expect": {
+        "ok": true,
+        "affected_rows": 1
+      }
+    },
+    {
+      "action": "state_db_query",
+      "args": {
+        "db": "profile_db"
+      },
+      "expect": {
+        "count": 1,
+        "rows.0.col_0": "alice"
+      }
+    },
+    {
       "action": "state_snapshot_save",
       "args": {
         "name": "post_onboarding"
@@ -58,6 +80,27 @@
       }
     },
     {
+      "action": "state_db_exec",
+      "args": {
+        "db": "profile_db",
+        "sql": "INSERT INTO profile (username, role) VALUES (?, ?)",
+        "params": ["bob", "guest"]
+      },
+      "expect": {
+        "ok": true,
+        "affected_rows": 1
+      }
+    },
+    {
+      "action": "state_db_query",
+      "args": {
+        "db": "profile_db"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
       "action": "state_snapshot_restore",
       "args": {
         "name": "post_onboarding"
@@ -75,6 +118,16 @@
       "expect": {
         "entries.stage": "completed",
         "entries.step_num": 5
+      }
+    },
+    {
+      "action": "state_db_query",
+      "args": {
+        "db": "profile_db"
+      },
+      "expect": {
+        "count": 1,
+        "rows.0.col_0": "alice"
       }
     }
   ],
