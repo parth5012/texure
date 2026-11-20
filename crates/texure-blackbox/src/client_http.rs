@@ -667,4 +667,50 @@ impl HttpBridgeClient {
             body: format!("Invalid JSON response: {e}"),
         })
     }
+
+    pub async fn get_inspect(&self) -> Result<String, HttpBridgeError> {
+        let url = format!("{}/inspect", self.base_url);
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError { status, body });
+        }
+        Ok(body)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn test_blackbox_get_inspect_integration() {
+        use tokio::io::AsyncReadExt;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf).await;
+                let html = "<!DOCTYPE html><html><head><title>Texure Live Web Inspector</title></head><body><div id=\"screen-canvas\"></div></body></html>";
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    html.len(),
+                    html
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+                let _ = stream.flush().await;
+            }
+        });
+
+        let client = HttpBridgeClient::new(format!("http://{addr}"), None);
+        let body = client.get_inspect().await.expect("GET /inspect succeeds");
+        assert!(body.contains("<!DOCTYPE html>"));
+        assert!(body.contains("Texure Live Web Inspector"));
+        assert!(body.contains("screen-canvas"));
+    }
 }
