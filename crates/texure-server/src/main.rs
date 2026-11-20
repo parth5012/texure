@@ -1,5 +1,6 @@
 pub mod bridge_client;
 pub mod config;
+pub mod inspect;
 pub mod mdns;
 pub mod pair;
 pub mod router;
