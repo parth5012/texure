@@ -1,5 +1,14 @@
 # Log
 
+## 2026-11-20 (session) — Wayfinder map 15 (#74) State seeding, Prefs/DB inspector & snapshot engine
+- Scope: 4 AFK tickets (#70, #71, #72, #73) in single-PR mode on branch `wf/74-state-seeding-inspector`.
+- Ticket #70: Direct read/write SharedPreferences inspector and synchronous mutation seeder in `android/bridge`. Implemented `BridgeStatePrefs.kt` and wired `GET /state/prefs` and `POST /state/prefs` with tree revision bumps. Unit tests in `BridgeStatePrefsTest.kt` pass 100%. Closed #70.
+- Ticket #71: SQLite/Room database inspector, parameterized query runner, and DDL/DML executor in `android/bridge`. Implemented `BridgeStateDb.kt` and wired `GET /state/db/tables`, `POST /state/db/query`, `POST /state/db/exec` with safe resource closing, type coercion, and syntax error handling. Unit tests in `BridgeStateDbTest.kt` pass 100%. Closed #71.
+- Ticket #72: Day-0 clean-slate reset (`POST /state/reset`) and named state snapshot archive/restore engine (`POST /state/snapshots/save`, `POST /state/snapshots/restore`, `GET /state/snapshots`) in `android/bridge`. Implemented `BridgeStateSnapshot.kt`, preserving pairing tokens in `texure_bridge_pairing`, path traversal guards, zip compression, and memory cache sync via `mutate()`. Unit tests in `BridgeStateSnapshotTest.kt` pass 100%. Closed #72.
+- Ticket #73: Blackbox scenario suite & FakeBridge mocks for state manipulation in `crates/texure-blackbox`. Implemented in-memory state endpoints in `fake_bridge.rs`, client methods in `client_http.rs`, scenario execution in `runner.rs`, added Section 3S and BB-S1..BB-S3 in `behavior-spec.md` and `texure-lint`, authored scenarios `state_reset.json`, `state_prefs.json`, `state_snapshots.json`. Unit and blackbox tests pass 100%. Closed #73.
+- Verification: `./gradlew :bridge:testDebugUnitTest` (all 37 tasks pass), `cargo test --workspace` (all 147 tests pass), `cargo run -p texure-lint` (0 findings), `cargo run -p texure-blackbox -- --target all` (58 passed, 0 failed, 11 skipped, 6 device-skipped).
+- Status: Map #74 tickets #70..#73 complete; all tickets closed; ready for single-PR filing and babysitting.
+
 ## 2026-11-19 (session) — Wayfinder map 14 (#69) In-app network interception & dynamic API mocking
 - Scope: 4 AFK tickets (#65, #66, #67, #68) in single-PR mode on branch `wf/69-network-mocking`.
 - Ticket #65: AGP ASM bytecode weaver for OkHttpClient in debug builds with build-time opt-out toggle (`texure { networkMocking = false }` or `networkMocking(false)`). ASM visitor targets `OkHttpClient.Builder.build()` with idempotency guard. Closed #65.
