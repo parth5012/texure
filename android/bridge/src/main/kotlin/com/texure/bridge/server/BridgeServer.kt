@@ -26,6 +26,9 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import com.texure.bridge.state.BridgeStateDb
+import com.texure.bridge.state.BridgeStatePrefs
+import com.texure.bridge.state.BridgeStateSnapshot
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -40,9 +43,9 @@ class BridgeServer(
     private val treeExtractor: BridgeTreeExtractor = BridgeTreeExtractor(),
     private val worker: BridgeWorker = BridgeWorker(activityProvider, treeExtractor),
     val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor),
-    val statePrefs: com.texure.bridge.state.BridgeStatePrefs = com.texure.bridge.state.BridgeStatePrefs(context),
-    val stateDb: com.texure.bridge.state.BridgeStateDb = com.texure.bridge.state.BridgeStateDb(context),
-    val stateSnapshot: com.texure.bridge.state.BridgeStateSnapshot = com.texure.bridge.state.BridgeStateSnapshot(context)
+    val statePrefs: BridgeStatePrefs = BridgeStatePrefs(context),
+    val stateDb: BridgeStateDb = BridgeStateDb(context),
+    val stateSnapshot: BridgeStateSnapshot = BridgeStateSnapshot(context)
 ) : NanoWSD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -535,8 +538,23 @@ class BridgeServer(
     }
 
     private fun handlePostStateReset(session: IHTTPSession): Response {
-        val body = parseBodyAsJson(session) ?: JSONObject()
+        val map = HashMap<String, String>()
+        session.parseBody(map)
+        val postData = map["postData"]
+        val body = if (postData.isNullOrBlank()) {
+            JSONObject()
+        } else {
+            try {
+                JSONObject(postData)
+            } catch (_: Exception) {
+                return badRequest("Invalid JSON body")
+            }
+        }
         val scope = body.optString("scope", "all")
+        val validScopes = setOf("all", "prefs", "db", "databases", "cache")
+        if (scope.lowercase() !in validScopes) {
+            return badRequest("Invalid scope '$scope'. Valid scopes: all, prefs, db, cache")
+        }
         val result = stateSnapshot.reset(scope) {
             treeExtractor.bumpRev()
             broadcastTreeChanged(treeExtractor.getRev())

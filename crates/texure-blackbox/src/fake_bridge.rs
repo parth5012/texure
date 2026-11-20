@@ -1546,7 +1546,7 @@ async fn route_request(
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = state
                 .ws_sender
-                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+                .send(json!({ "type": "tree_changed", "rev": new_rev }).to_string());
 
             (
                 "200 OK",
@@ -1593,14 +1593,33 @@ async fn route_request(
             )
         }
         ("POST", "/state/db/exec") => {
-            let resp = json!({
-                "ok": true,
-                "affected_rows": 1
-            });
+            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
+            let db_name = req_json
+                .get("db")
+                .and_then(|v| v.as_str())
+                .unwrap_or("app_db");
+            let params = req_json.get("params").and_then(|v| v.as_array());
+
+            let mut app_st = state.app_state.lock().await;
+            if let Some(params) = params {
+                let mut map = serde_json::Map::new();
+                for (i, p) in params.iter().enumerate() {
+                    map.insert(format!("col_{i}"), p.clone());
+                }
+                app_st
+                    .query_rows
+                    .entry(db_name.to_string())
+                    .or_default()
+                    .push(Value::Object(map));
+            }
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state
+                .ws_sender
+                .send(json!({ "type": "tree_changed", "rev": new_rev }).to_string());
             (
                 "200 OK",
                 vec![("Content-Type", "application/json".to_string())],
-                serde_json::to_vec(&resp).unwrap(),
+                serde_json::to_vec(&json!({ "ok": true, "affected_rows": 1 })).unwrap(),
             )
         }
         ("POST", "/state/reset") => {
@@ -1622,7 +1641,7 @@ async fn route_request(
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = state
                 .ws_sender
-                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+                .send(json!({ "type": "tree_changed", "rev": new_rev }).to_string());
 
             (
                 "200 OK",
@@ -1631,11 +1650,32 @@ async fn route_request(
             )
         }
         ("POST", "/state/snapshots/save") => {
-            let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
-            let name = req_json
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("snapshot");
+            let req_json: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => {
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&json!({
+                            "error": { "code": "BAD_REQUEST", "message": "Invalid JSON" }
+                        }))
+                        .unwrap(),
+                    );
+                }
+            };
+            let name = match req_json.get("name").and_then(|v| v.as_str()) {
+                Some(n) if !n.is_empty() => n,
+                _ => {
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&json!({
+                            "error": { "code": "BAD_REQUEST", "message": "Missing snapshot name" }
+                        }))
+                        .unwrap(),
+                    );
+                }
+            };
 
             let mut app_st = state.app_state.lock().await;
             let snap = FakeSnapshotArchive {
@@ -1664,7 +1704,7 @@ async fn route_request(
                 let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
                 let _ = state
                     .ws_sender
-                    .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+                    .send(json!({ "type": "tree_changed", "rev": new_rev }).to_string());
 
                 (
                     "200 OK",
@@ -1674,7 +1714,7 @@ async fn route_request(
             } else {
                 let err = json!({
                     "error": {
-                        "code": "NOT_FOUND",
+                        "code": "SNAPSHOT_NOT_FOUND",
                         "message": format!("Snapshot '{name}' not found")
                     }
                 });

@@ -58,71 +58,80 @@ class BridgeStatePrefs(private val context: Context) {
      * Supports String, Boolean, Int, Long, Float, StringSet.
      */
     fun mutate(payload: JSONObject, onMutated: (() -> Unit)? = null): JSONObject {
-        val fileName = payload.optString("file").takeIf { it.isNotBlank() }
-        val resolvedName = fileName ?: getDefaultPrefsName()
-        val prefs = getSharedPreferences(resolvedName)
-        val editor = prefs.edit()
+        try {
+            val fileName = payload.optString("file").takeIf { it.isNotBlank() }
+            val resolvedName = fileName ?: getDefaultPrefsName()
+            val prefs = getSharedPreferences(resolvedName)
+            val editor = prefs.edit()
 
-        val setObj = payload.optJSONObject("set")
-        if (setObj != null) {
-            val keys = setObj.keys()
-            val existing = prefs.all
+            val setObj = payload.optJSONObject("set")
+            if (setObj != null) {
+                val keys = setObj.keys()
+                val existing = prefs.all
 
-            while (keys.hasNext()) {
-                val key = keys.next()
-                val value = setObj.get(key)
-                val existingVal = existing[key]
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = setObj.get(key)
+                    val existingVal = existing[key]
 
-                if (existingVal is Long && value is Number) {
-                    editor.putLong(key, value.toLong())
-                } else if (existingVal is Float && value is Number) {
-                    editor.putFloat(key, value.toFloat())
-                } else if (existingVal is Int && value is Number) {
-                    editor.putInt(key, value.toInt())
-                } else {
-                    when (value) {
-                        is Boolean -> editor.putBoolean(key, value)
-                        is Int -> editor.putInt(key, value)
-                        is Long -> editor.putLong(key, value)
-                        is Double -> editor.putFloat(key, value.toFloat())
-                        is Float -> editor.putFloat(key, value)
-                        is String -> editor.putString(key, value)
-                        is JSONArray -> {
-                            val set = mutableSetOf<String>()
-                            for (i in 0 until value.length()) {
-                                set.add(value.getString(i))
+                    if (existingVal is Long && value is Number) {
+                        editor.putLong(key, value.toLong())
+                    } else if (existingVal is Float && value is Number) {
+                        editor.putFloat(key, value.toFloat())
+                    } else if (existingVal is Int && value is Number) {
+                        editor.putInt(key, value.toInt())
+                    } else {
+                        when (value) {
+                            is Boolean -> editor.putBoolean(key, value)
+                            is Int -> editor.putInt(key, value)
+                            is Long -> editor.putLong(key, value)
+                            is Double -> editor.putFloat(key, value.toFloat())
+                            is Float -> editor.putFloat(key, value)
+                            is String -> editor.putString(key, value)
+                            is JSONArray -> {
+                                val set = mutableSetOf<String>()
+                                for (i in 0 until value.length()) {
+                                    set.add(value.getString(i))
+                                }
+                                editor.putStringSet(key, set)
                             }
-                            editor.putStringSet(key, set)
-                        }
-                        else -> {
-                            editor.putString(key, value.toString())
+                            else -> {
+                                editor.putString(key, value.toString())
+                            }
                         }
                     }
                 }
             }
-        }
 
-        val removeArr = payload.optJSONArray("remove")
-        if (removeArr != null) {
-            for (i in 0 until removeArr.length()) {
-                val keyToRemove = removeArr.getString(i)
-                editor.remove(keyToRemove)
+            val removeArr = payload.optJSONArray("remove")
+            if (removeArr != null) {
+                for (i in 0 until removeArr.length()) {
+                    val keyToRemove = removeArr.getString(i)
+                    editor.remove(keyToRemove)
+                }
             }
-        }
 
-        val committed = editor.commit()
-        if (!committed) {
+            val committed = editor.commit()
+            if (!committed) {
+                return JSONObject().apply {
+                    put("error", JSONObject().apply {
+                        put("code", "COMMIT_FAILED")
+                        put("message", "Failed to commit SharedPreferences changes synchronously")
+                    })
+                }
+            }
+
+            onMutated?.invoke()
+            return JSONObject().apply {
+                put("ok", true)
+            }
+        } catch (e: Exception) {
             return JSONObject().apply {
                 put("error", JSONObject().apply {
-                    put("code", "COMMIT_FAILED")
-                    put("message", "Failed to commit SharedPreferences changes synchronously")
+                    put("code", "BAD_REQUEST")
+                    put("message", e.message ?: "Failed to process SharedPreferences mutation")
                 })
             }
-        }
-
-        onMutated?.invoke()
-        return JSONObject().apply {
-            put("ok", true)
         }
     }
 }
