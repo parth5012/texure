@@ -40,7 +40,8 @@ class BridgeServer(
     private val treeExtractor: BridgeTreeExtractor = BridgeTreeExtractor(),
     private val worker: BridgeWorker = BridgeWorker(activityProvider, treeExtractor),
     val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor),
-    val statePrefs: com.texure.bridge.state.BridgeStatePrefs = com.texure.bridge.state.BridgeStatePrefs(context)
+    val statePrefs: com.texure.bridge.state.BridgeStatePrefs = com.texure.bridge.state.BridgeStatePrefs(context),
+    val stateDb: com.texure.bridge.state.BridgeStateDb = com.texure.bridge.state.BridgeStateDb(context)
 ) : NanoWSD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -133,6 +134,9 @@ class BridgeServer(
                 when {
                     method == Method.GET && uri == "/state/prefs" -> handleGetStatePrefs(session)
                     method == Method.POST && uri == "/state/prefs" -> handlePostStatePrefs(session)
+                    method == Method.GET && uri == "/state/db/tables" -> handleGetStateDbTables(session)
+                    method == Method.POST && uri == "/state/db/query" -> handlePostStateDbQuery(session)
+                    method == Method.POST && uri == "/state/db/exec" -> handlePostStateDbExec(session)
                     else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
                         put("error", JSONObject().apply {
                             put("code", "NOT_FOUND")
@@ -485,6 +489,42 @@ class BridgeServer(
         }
         if (result.has("error")) {
             return jsonResponse(Response.Status.INTERNAL_ERROR, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handleGetStateDbTables(session: IHTTPSession): Response {
+        val dbName = session.parms["db"]
+        val result = stateDb.getTables(dbName)
+        if (result.has("error")) {
+            val code = result.getJSONObject("error").optString("code")
+            val status = if (code == "DB_NOT_FOUND") Response.Status.NOT_FOUND else Response.Status.BAD_REQUEST
+            return jsonResponse(status, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handlePostStateDbQuery(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val result = stateDb.query(body)
+        if (result.has("error")) {
+            val code = result.getJSONObject("error").optString("code")
+            val status = if (code == "DB_NOT_FOUND") Response.Status.NOT_FOUND else Response.Status.BAD_REQUEST
+            return jsonResponse(status, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handlePostStateDbExec(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val result = stateDb.exec(body) {
+            treeExtractor.bumpRev()
+            broadcastTreeChanged(treeExtractor.getRev())
+        }
+        if (result.has("error")) {
+            val code = result.getJSONObject("error").optString("code")
+            val status = if (code == "DB_NOT_FOUND") Response.Status.NOT_FOUND else Response.Status.BAD_REQUEST
+            return jsonResponse(status, result)
         }
         return jsonResponse(Response.Status.OK, result)
     }
