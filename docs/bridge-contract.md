@@ -232,6 +232,135 @@ Diagnostic/test execution route that dispatches an HTTP request through the app'
 ```
 Response: `{ "status": 200, "headers": { ... }, "body": "...", "passthrough": false }`. Synthetic mock responses include the `X-Mock-Source: Texure` header.
 
+### State Inspection, Seeding, Reset & Snapshots (map #74)
+
+In debug builds, the bridge provides direct read/write access to SharedPreferences and SQLite/Room databases, Day-0 clean-slate resets, and named state snapshots to bypass repetitive setup flows. Control routes are authenticated with Bearer token:
+
+#### GET /state/prefs
+
+Returns all key-value entries across default or named preferences:
+Query parameter: `?name=<file_name>` (optional; if omitted or empty, inspects default shared preferences).
+Response:
+```json
+{
+  "file": "app_prefs",
+  "entries": {
+    "user_id": "u123",
+    "is_logged_in": true,
+    "login_count": 5,
+    "balance": 10000000000,
+    "rating": 4.5,
+    "tags": ["alpha", "beta"]
+  }
+}
+```
+
+#### POST /state/prefs
+
+Mutates SharedPreferences synchronously via `SharedPreferences.Editor.commit()`:
+```json
+{
+  "file": "app_prefs",
+  "set": {
+    "user_id": "u456",
+    "is_logged_in": true,
+    "login_count": 6
+  },
+  "remove": ["guest_mode"]
+}
+```
+Response: `{ "ok": true }`.
+Supported types in `set`: String, Boolean, Int, Long, Float, StringSet (JSON Array of strings).
+Bumps tree revision on mutation to trigger UI invalidation and WebSocket `tree_changed` notification.
+
+#### GET /state/db/tables
+
+Discovers `.db` files in `/data/data/<package>/databases/` and returns table names and column schemas:
+Query parameter: `?db=<name>`
+Response:
+```json
+{
+  "db": "app_db",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        { "name": "id", "type": "INTEGER" },
+        { "name": "email", "type": "TEXT" }
+      ]
+    }
+  ]
+}
+```
+
+#### POST /state/db/query
+
+Executes read-only SQL queries and returns row objects:
+```json
+{
+  "db": "app_db",
+  "sql": "SELECT id, email FROM users WHERE id = ?",
+  "params": [1]
+}
+```
+Response:
+```json
+{
+  "rows": [
+    { "id": 1, "email": "test@example.com" }
+  ],
+  "count": 1
+}
+```
+
+#### POST /state/db/exec
+
+Executes DDL/DML statements:
+```json
+{
+  "db": "app_db",
+  "sql": "UPDATE users SET email = ? WHERE id = ?",
+  "params": ["new@example.com", 1]
+}
+```
+Response: `{ "ok": true, "affected_rows": 1 }`.
+SQL syntax or execution errors return HTTP 400 with `BAD_REQUEST`.
+
+#### POST /state/reset
+
+Clean-slate reset simulating a fresh Day-0 install:
+```json
+{ "scope": "all" }
+```
+`scope` options: `"all"`, `"prefs"`, `"db"`, `"cache"`.
+Response: `{ "ok": true, "reset": "all" }`.
+
+#### POST /state/snapshots/save
+
+Creates a compressed snapshot archive of current `shared_prefs` and `databases` in app-private storage:
+```json
+{ "name": "post_onboarding" }
+```
+Response: `{ "ok": true, "name": "post_onboarding" }`.
+
+#### POST /state/snapshots/restore
+
+Restores an archived snapshot:
+```json
+{ "name": "post_onboarding" }
+```
+Response: `{ "ok": true, "name": "post_onboarding" }`.
+
+#### GET /state/snapshots
+
+Lists available snapshots:
+Response:
+```json
+{
+  "snapshots": ["post_onboarding"]
+}
+```
+
 ### (tool note, agent-facing)
 
 MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`.
