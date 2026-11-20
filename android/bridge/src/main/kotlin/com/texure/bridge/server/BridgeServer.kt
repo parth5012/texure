@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import com.texure.bridge.crash.BridgeCrashHandler
+import com.texure.bridge.logcat.BridgeLogcatReader
 import com.texure.bridge.model.BridgeError
 import com.texure.bridge.model.BridgeState
 import com.texure.bridge.model.Key
@@ -45,7 +46,8 @@ class BridgeServer(
     val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor),
     val statePrefs: BridgeStatePrefs = BridgeStatePrefs(context),
     val stateDb: BridgeStateDb = BridgeStateDb(context),
-    val stateSnapshot: BridgeStateSnapshot = BridgeStateSnapshot(context)
+    val stateSnapshot: BridgeStateSnapshot = BridgeStateSnapshot(context),
+    val logcatReader: BridgeLogcatReader = BridgeLogcatReader()
 ) : NanoWSD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -1001,6 +1003,7 @@ class BridgeServer(
     }
 
     override fun stop() {
+        try { logcatReader.stop() } catch (_: Exception) {}
         try { recordingController.stop() } catch (_: Exception) {}
         try { com.texure.bridge.network.TexureNetworkInterceptor.reset() } catch (_: Throwable) {}
         worker.shutdown()
