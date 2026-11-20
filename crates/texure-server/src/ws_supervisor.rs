@@ -41,6 +41,14 @@ impl WsSupervisor {
         self.sender.subscribe()
     }
 
+    /// Notify subscribers of a tree change event (used for manual refresh or testing).
+    pub fn notify(
+        &self,
+        event: TreeChangedEvent,
+    ) -> Result<usize, broadcast::error::SendError<TreeChangedEvent>> {
+        self.sender.send(event)
+    }
+
     /// Spawn the background supervisor loop.
     pub fn spawn(&self) -> tokio::task::JoinHandle<()> {
         let connected = Arc::clone(&self.connected);
