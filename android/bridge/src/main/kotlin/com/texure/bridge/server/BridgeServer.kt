@@ -41,7 +41,8 @@ class BridgeServer(
     private val worker: BridgeWorker = BridgeWorker(activityProvider, treeExtractor),
     val recordingController: RecordingController = RecordingController(activityProvider, treeExtractor),
     val statePrefs: com.texure.bridge.state.BridgeStatePrefs = com.texure.bridge.state.BridgeStatePrefs(context),
-    val stateDb: com.texure.bridge.state.BridgeStateDb = com.texure.bridge.state.BridgeStateDb(context)
+    val stateDb: com.texure.bridge.state.BridgeStateDb = com.texure.bridge.state.BridgeStateDb(context),
+    val stateSnapshot: com.texure.bridge.state.BridgeStateSnapshot = com.texure.bridge.state.BridgeStateSnapshot(context)
 ) : NanoWSD(port) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -137,6 +138,10 @@ class BridgeServer(
                     method == Method.GET && uri == "/state/db/tables" -> handleGetStateDbTables(session)
                     method == Method.POST && uri == "/state/db/query" -> handlePostStateDbQuery(session)
                     method == Method.POST && uri == "/state/db/exec" -> handlePostStateDbExec(session)
+                    method == Method.POST && uri == "/state/reset" -> handlePostStateReset(session)
+                    method == Method.POST && uri == "/state/snapshots/save" -> handlePostStateSnapshotSave(session)
+                    method == Method.POST && uri == "/state/snapshots/restore" -> handlePostStateSnapshotRestore(session)
+                    method == Method.GET && uri == "/state/snapshots" -> handleGetStateSnapshots()
                     else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
                         put("error", JSONObject().apply {
                             put("code", "NOT_FOUND")
@@ -526,6 +531,49 @@ class BridgeServer(
             val status = if (code == "DB_NOT_FOUND") Response.Status.NOT_FOUND else Response.Status.BAD_REQUEST
             return jsonResponse(status, result)
         }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handlePostStateReset(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: JSONObject()
+        val scope = body.optString("scope", "all")
+        val result = stateSnapshot.reset(scope) {
+            treeExtractor.bumpRev()
+            broadcastTreeChanged(treeExtractor.getRev())
+        }
+        if (result.has("error")) {
+            return jsonResponse(Response.Status.BAD_REQUEST, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handlePostStateSnapshotSave(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val name = body.optString("name")
+        val result = stateSnapshot.saveSnapshot(name)
+        if (result.has("error")) {
+            return jsonResponse(Response.Status.BAD_REQUEST, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handlePostStateSnapshotRestore(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        val name = body.optString("name")
+        val result = stateSnapshot.restoreSnapshot(name) {
+            treeExtractor.bumpRev()
+            broadcastTreeChanged(treeExtractor.getRev())
+        }
+        if (result.has("error")) {
+            val code = result.getJSONObject("error").optString("code")
+            val status = if (code == "SNAPSHOT_NOT_FOUND") Response.Status.NOT_FOUND else Response.Status.BAD_REQUEST
+            return jsonResponse(status, result)
+        }
+        return jsonResponse(Response.Status.OK, result)
+    }
+
+    private fun handleGetStateSnapshots(): Response {
+        val result = stateSnapshot.listSnapshots()
         return jsonResponse(Response.Status.OK, result)
     }
 
