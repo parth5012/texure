@@ -1,5 +1,20 @@
 # Log
 
+## 2026-11-20 (session) — Wayfinder map 16 (#79) Live Web Inspector (`texure inspect`)
+- Scope: 4 AFK tickets (#75, #76, #77, #78), single-PR mode (4 < 5), branch `wf/79-live-web-inspector`, PR #127 (`main` ← branch).
+- #75: embedded zero-dependency single-page inspector HTML in `crates/texure-server/assets/inspect.html` via `include_str!` — hover bounding-box overlays, node detail drawer, one-click MCP/Python/Bash tool-call copy.
+- #76: inspector HTTP server on `GET /inspect` + live WebSocket stream on `/inspect/ws`, pushing screenshots/trees on `tree_changed` with clean connection lifecycle.
+- #77: interactive Live Drive `POST /inspect/action` — click-to-tap, remote typing, keypress, single-flight mutex, 409 `NODE_OUTDATED` handling.
+- #78: `texure-server inspect` subcommand with `--port` (8765) / `--no-open`, plus blackbox `get_inspect` integration test.
+- TDD red evidence: `tmp/evidence/75..78/red-run.txt` (all four tickets authored failing tests first).
+- Self-review fixes pushed: `276998c` (rustfmt across inspect implementation), `99d993c` (combine identical if branches in mock bridge, clippy).
+- VERIFY: PR #127 CI on `99d993c` — Lint & Quality Gates, Rust Tests (ubuntu/windows), Android Build & Leak Probe, GitGuardian all SUCCESS; Release Assets + CodeRabbit SKIPPED. Mergeable, `behindBy: 0`, no inline review threads.
+- Babysit: CodeRabbit auto-review skipped (repo < 10 stars); first `@coderabbitai review` raced the head commit ("Head commit changed") — retried on stable HEAD. parthpr `/review` posted with no bot response.
+- CodeRabbit round-1: 8 inline findings. Applied 7 concrete fixes: XSS-safe DOM rendering via `textContent` for device strings; selection rebound by semantic hash (or cleared) on tree replacement; type input retained until success with error toast; Refresh reconnects WS to re-acquire paired screenshot + tree; canvases scaled to fit pane preserving backing pixels; inspector server validates Host/Origin before WS upgrade and action dispatch and requires `application/json` content type; broadcast subscription moved before initial snapshot.
+- Parked verbatim on #75: dp→screenshot-pixel overlay/hit-scan conversion — requires bridge to publish density/scale via a `schema_version`-bumping contract change, out of babysit scope.
+- VERIFY after fixes: `cargo test --workspace` green (75 server tests incl. 3 new boundary tests) · `cargo clippy --workspace --all-targets -- -D warnings` clean · `cargo fmt --check` clean · `cargo run -p texure-lint` 0 findings. Live browser check skipped — no desktop browser connected to this session.
+- Status: NOT MERGED — hand off to `merge-pr` after review lanes settle.
+
 ## 2026-11-20 (session) — Wayfinder map 15 (#74) State seeding, Prefs/DB inspector & snapshot engine
 - Scope: 4 AFK tickets (#70, #71, #72, #73) in single-PR mode on branch `wf/74-state-seeding-inspector`.
 - Ticket #70: Direct read/write SharedPreferences inspector and synchronous mutation seeder in `android/bridge`. Implemented `BridgeStatePrefs.kt` and wired `GET /state/prefs` and `POST /state/prefs` with tree revision bumps. Unit tests in `BridgeStatePrefsTest.kt` pass 100%. Closed #70.
