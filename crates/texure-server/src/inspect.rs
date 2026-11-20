@@ -94,9 +94,31 @@ pub struct InspectActionRequest {
 struct InspectorShared {
     bridge: BridgeClient,
     supervisor: Option<WsSupervisor>,
+    port: u16,
     active_connections: AtomicUsize,
     shutdown: broadcast::Sender<()>,
     single_flight: Mutex<()>,
+}
+
+fn header_value<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
+    headers.lines().skip(1).find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.trim().eq_ignore_ascii_case(name).then(|| value.trim())
+    })
+}
+
+fn is_allowed_host(host: &str, port: u16) -> bool {
+    let suffix = format!(":{port}");
+    host.strip_suffix(&suffix)
+        .is_some_and(|h| matches!(h, "localhost" | "127.0.0.1" | "[::1]"))
+}
+
+fn is_allowed_origin(origin: &str, port: u16) -> bool {
+    let suffix = format!(":{port}");
+    origin
+        .strip_prefix("http://")
+        .and_then(|rest| rest.strip_suffix(&suffix))
+        .is_some_and(|h| matches!(h, "localhost" | "127.0.0.1" | "[::1]"))
 }
 
 /// Live Inspector web server serving HTTP assets and live WebSocket stream.
@@ -120,6 +142,7 @@ impl InspectorServer {
         let shared = Arc::new(InspectorShared {
             bridge,
             supervisor,
+            port: addr.port(),
             active_connections: AtomicUsize::new(0),
             shutdown,
             single_flight: Mutex::new(()),
@@ -275,6 +298,18 @@ async fn serve_connection(
     let path_and_query = parts.next().unwrap_or("");
     let path = path_and_query.split('?').next().unwrap_or("");
 
+    // Only the local inspector page may observe the device or dispatch actions.
+    let host_ok =
+        header_value(&header_str, "host").is_none_or(|host| is_allowed_host(host, shared.port));
+    let origin_ok = header_value(&header_str, "origin")
+        .is_none_or(|origin| is_allowed_origin(origin, shared.port));
+    if !host_ok || !origin_ok {
+        let resp = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        stream.write_all(resp.as_bytes()).await?;
+        stream.flush().await?;
+        return Ok(());
+    }
+
     // WebSocket upgrade check
     let is_ws = path == "/inspect/ws" || header_str.to_lowercase().contains("upgrade: websocket");
     if is_ws {
@@ -328,6 +363,25 @@ async fn serve_connection(
 
     // Live Drive action handler
     if method == "POST" && path == "/inspect/action" {
+        let content_type = header_value(&header_str, "content-type").unwrap_or("");
+        if !content_type
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .eq_ignore_ascii_case("application/json")
+        {
+            let err_body = r#"{"error":"UNSUPPORTED_MEDIA_TYPE"}"#;
+            let resp = format!(
+                "HTTP/1.1 415 Unsupported Media Type\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                err_body.len(),
+                err_body
+            );
+            stream.write_all(resp.as_bytes()).await?;
+            stream.flush().await?;
+            return Ok(());
+        }
+
         let content_length: usize = lines
             .find(|l| l.to_lowercase().starts_with("content-length:"))
             .and_then(|l| l.split(':').nth(1))
@@ -370,6 +424,10 @@ async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
     shared.active_connections.fetch_add(1, Ordering::SeqCst);
     debug!("Inspector WebSocket client connected");
 
+    // Subscribe before acquiring the initial snapshot so changes during acquisition are queued.
+    let mut tree_rx = shared.supervisor.as_ref().map(|s| s.subscribe());
+    let mut shutdown_rx = shared.shutdown.subscribe();
+
     // Push initial snapshot
     let tree_res = shared.bridge.get_ui_tree(None, None).await;
     let shot_res = shared.bridge.screenshot(Some(0.5)).await;
@@ -381,9 +439,6 @@ async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
         });
         let _ = ws.send(Message::Text(payload.to_string())).await;
     }
-
-    let mut tree_rx = shared.supervisor.as_ref().map(|s| s.subscribe());
-    let mut shutdown_rx = shared.shutdown.subscribe();
 
     loop {
         tokio::select! {
@@ -841,6 +896,85 @@ mod tests {
         let resp = client
             .post(&action_url)
             .json(&key_body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_rejects_foreign_origin_and_host() {
+        let dummy_config = ResolvedDeviceConfig {
+            url: "http://127.0.0.1:9".to_string(),
+            token: "tok".to_string(),
+            timeout_secs: 1,
+        };
+        let bridge = BridgeClient::new(dummy_config).unwrap();
+        let server = InspectorServer::bind(0, bridge, None).await.unwrap();
+        let client = reqwest::Client::new();
+
+        let action_url = format!("http://{}/inspect/action", server.local_addr());
+        let resp = client
+            .post(&action_url)
+            .header("Origin", "http://evil.example")
+            .header("Content-Type", "application/json")
+            .body(r#"{"action":"keypress","key":"enter"}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
+
+        let inspect_url = format!("http://{}/inspect", server.local_addr());
+        let resp = client
+            .get(&inspect_url)
+            .header("Host", "evil.example")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_action_requires_json_content_type() {
+        let dummy_config = ResolvedDeviceConfig {
+            url: "http://127.0.0.1:9".to_string(),
+            token: "tok".to_string(),
+            timeout_secs: 1,
+        };
+        let bridge = BridgeClient::new(dummy_config).unwrap();
+        let server = InspectorServer::bind(0, bridge, None).await.unwrap();
+        let client = reqwest::Client::new();
+
+        let action_url = format!("http://{}/inspect/action", server.local_addr());
+        let resp = client
+            .post(&action_url)
+            .header("Content-Type", "text/plain")
+            .body(r#"{"action":"keypress","key":"enter"}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[tokio::test]
+    async fn test_inspect_allows_same_origin_action() {
+        let mock_bridge = MockBridgeServer::start().await;
+        let config = ResolvedDeviceConfig {
+            url: format!("http://{}", mock_bridge.addr),
+            token: "tok".to_string(),
+            timeout_secs: 2,
+        };
+        let bridge = BridgeClient::new(config).unwrap();
+        let server = InspectorServer::bind(0, bridge, None).await.unwrap();
+        let origin = format!("http://localhost:{}", server.local_addr().port());
+        let client = reqwest::Client::new();
+
+        let action_url = format!("http://{}/inspect/action", server.local_addr());
+        let resp = client
+            .post(&action_url)
+            .header("Origin", &origin)
+            .header("Content-Type", "application/json; charset=utf-8")
+            .body(r#"{"action":"keypress","key":"enter"}"#)
             .send()
             .await
             .unwrap();

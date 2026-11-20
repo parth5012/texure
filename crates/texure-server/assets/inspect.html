@@ -205,6 +205,21 @@
       pointer-events: none;
     }
 
+    .action-toast {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      max-width: 360px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background-color: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger-color);
+      color: var(--danger-color);
+      font-size: 12px;
+      z-index: 200;
+      display: none;
+    }
+
     .tooltip {
       position: absolute;
       background-color: rgba(24, 24, 27, 0.95);
@@ -468,6 +483,7 @@
         <canvas id="overlay-canvas" width="360" height="780"></canvas>
       </div>
       <div id="hover-tooltip" class="tooltip"></div>
+      <div id="action-toast" class="action-toast"></div>
     </div>
 
     <!-- Center: Hierarchy / Elements Tree -->
@@ -713,13 +729,18 @@
           item.style.paddingLeft = `${depth * 14 + 8}px`;
 
           const tag = node.cls ? node.cls.split('.').pop() : (node.id ? 'View' : 'Node');
-          item.innerHTML = `
-            <span class="node-tag">&lt;${tag}</span>
-            ${node.id ? `<span class="node-id">#${node.id}</span>` : ''}
-            ${node.text ? `<span class="node-text">"${node.text}"</span>` : ''}
-            <span class="node-tag">&gt;</span>
-            <span class="node-index-badge">${node.index !== undefined ? '#' + node.index : ''}</span>
-          `;
+          // Device-provided strings must be text, never markup (CWE-79).
+          const appendSpan = (className, text) => {
+            const span = document.createElement('span');
+            span.className = className;
+            span.textContent = text;
+            item.appendChild(span);
+          };
+          appendSpan('node-tag', `<${tag}`);
+          if (node.id) appendSpan('node-id', `#${node.id}`);
+          if (node.text) appendSpan('node-text', `"${node.text}"`);
+          appendSpan('node-tag', '>');
+          appendSpan('node-index-badge', node.index !== undefined ? `#${node.index}` : '');
 
           item.addEventListener('mouseenter', () => {
             hoveredNode = node;
@@ -742,7 +763,15 @@
       }
 
       buildTree(tree.nodes, treeView);
-      redrawOverlay();
+
+      // A selection belongs to the tree it came from. Rebind by semantic hash or
+      // drop it so the index, hash and rev used by actions always describe one tree.
+      if (selectedNode) {
+        selectedNode = selectedNode.hash
+          ? flatNodes.find(n => n.hash && n.hash === selectedNode.hash) || null
+          : null;
+      }
+      selectNode(selectedNode);
     }
 
     function redrawOverlay() {
@@ -874,8 +903,11 @@
         rev: currentTree.rev || 0,
         hash: selectedNode ? selectedNode.hash : undefined
       };
-      sendAction(body);
-      input.value = '';
+      sendAction(body).then(ok => {
+        // Keep unsent text on failure (including NODE_OUTDATED); never auto-retry
+        // an action whose device effect may be unknown.
+        if (ok && input.value === text) input.value = '';
+      });
     }
 
     function dispatchKeypress(key) {
@@ -885,27 +917,67 @@
       });
     }
 
+    function showActionError(message) {
+      const toast = document.getElementById('action-toast');
+      toast.textContent = message;
+      toast.style.display = 'block';
+      clearTimeout(toast._hideTimer);
+      toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, 4000);
+    }
+
     function sendAction(actionData) {
-      fetch('/inspect/action', {
+      return fetch('/inspect/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(actionData)
       }).then(res => {
-        if (!res.ok) {
-          return res.json().then(err => {
-            if (err.error === 'NODE_OUTDATED') {
-              triggerRefresh();
-            }
-          });
-        }
-      }).catch(console.error);
+        if (res.ok) return true;
+        return res.json().then(err => {
+          if (err.error === 'NODE_OUTDATED') {
+            triggerRefresh();
+          }
+          showActionError(err.message || err.error || 'Action failed');
+          return false;
+        }).catch(() => {
+          showActionError('Action failed');
+          return false;
+        });
+      }).catch(err => {
+        console.error(err);
+        showActionError('Action failed: ' + err.message);
+        return false;
+      });
     }
 
     function triggerRefresh() {
-      fetch('/ui-tree')
-        .then(r => r.json())
-        .then(tree => renderTree(tree))
-        .catch(console.error);
+      // Reconnecting makes the server acquire a fresh, paired tree + screenshot.
+      // The existing view stays in place until the new snapshot arrives.
+      if (!socket || socket.readyState === WebSocket.CLOSED) {
+        connectWebSocket();
+      } else if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+      // CONNECTING/CLOSING already deliver an initial snapshot when ready.
+    }
+
+    // Keep backing pixels untouched for drawing; scale only the displayed size so
+    // the screenshot fits the pane without clipping or changing hit-test math.
+    function fitCanvases() {
+      const pane = document.getElementById('screen-pane');
+      const style = getComputedStyle(pane);
+      const availWidth = pane.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const availHeight = pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      if (availWidth <= 0 || availHeight <= 0) return;
+      const scale = Math.min(availWidth / imgNaturalWidth, availHeight / imgNaturalHeight, 1);
+      const width = Math.max(1, Math.floor(imgNaturalWidth * scale));
+      const height = Math.max(1, Math.floor(imgNaturalHeight * scale));
+      const container = document.getElementById('canvas-container');
+      container.style.width = `${width}px`;
+      container.style.height = `${height}px`;
+      screenCanvas.style.width = `${width}px`;
+      screenCanvas.style.height = `${height}px`;
+      overlayCanvas.style.width = `${width}px`;
+      overlayCanvas.style.height = `${height}px`;
     }
 
     // Live WebSocket Synchronizer
@@ -945,6 +1017,7 @@
               screenCanvas.height = imgNaturalHeight;
               overlayCanvas.width = imgNaturalWidth;
               overlayCanvas.height = imgNaturalHeight;
+              fitCanvases();
               screenCtx.drawImage(screenshotImage, 0, 0);
               redrawOverlay();
             };
@@ -969,6 +1042,8 @@
     }
 
     initPlaceholder();
+    fitCanvases();
+    window.addEventListener('resize', fitCanvases);
     connectWebSocket();
   </script>
 </body>
