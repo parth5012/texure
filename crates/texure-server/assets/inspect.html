@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Texure Live Web Inspector</title>
+  <style>
+    :root {
+      --bg-primary: #18181b;
+      --bg-secondary: #27272a;
+      --bg-tertiary: #3f3f46;
+      --border-color: #52525b;
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --accent-color: #06b6d4;
+      --accent-hover: #0891b2;
+      --highlight-border: #38bdf8;
+      --highlight-fill: rgba(56, 189, 248, 0.25);
+      --selected-border: #f59e0b;
+      --selected-fill: rgba(245, 158, 11, 0.35);
+      --success-color: #10b981;
+      --danger-color: #ef4444;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.02em;
+      color: var(--accent-color);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 500;
+      background-color: var(--bg-tertiary);
+      color: var(--text-secondary);
+    }
+
+    .badge.connected {
+      background-color: rgba(16, 185, 129, 0.15);
+      color: var(--success-color);
+    }
+
+    .badge.connected::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--success-color);
+    }
+
+    .badge.disconnected {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: var(--danger-color);
+    }
+
+    .badge.disconnected::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--danger-color);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mode-switch {
+      display: flex;
+      background-color: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 2px;
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-mode {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-mode.active {
+      background-color: var(--accent-color);
+      color: #000;
+    }
+
+    .btn {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background-color: var(--border-color);
+    }
+
+    .btn-primary {
+      background-color: var(--accent-color);
+      color: #000;
+      border-color: var(--accent-color);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    #main-container {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Left: Screen Canvas view */
+    #screen-pane {
+      flex: 0 0 420px;
+      background-color: #09090b;
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    #canvas-container {
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7);
+      border-radius: 12px;
+      overflow: hidden;
+      background-color: #000;
+      border: 2px solid var(--border-color);
+    }
+
+    #screen-canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    #overlay-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+    }
+
+    .tooltip {
+      position: absolute;
+      background-color: rgba(24, 24, 27, 0.95);
+      border: 1px solid var(--highlight-border);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      display: none;
+    }
+
+    /* Center: Tree View Hierarchy */
+    #tree-pane {
+      flex: 1;
+      background-color: var(--bg-primary);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      min-width: 250px;
+      overflow: hidden;
+    }
+
+    .pane-header {
+      padding: 8px 12px;
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #tree-view {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .tree-node {
+      padding: 3px 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      border-left: 3px solid transparent;
+    }
+
+    .tree-node:hover {
+      background-color: var(--bg-secondary);
+      border-left-color: var(--highlight-border);
+    }
+
+    .tree-node.selected {
+      background-color: var(--bg-tertiary);
+      border-left-color: var(--selected-border);
+      color: #fff;
+    }
+
+    .node-tag {
+      color: #f43f5e;
+      font-weight: 600;
+    }
+
+    .node-id {
+      color: #38bdf8;
+    }
+
+    .node-text {
+      color: #34d399;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+    }
+
+    .node-index-badge {
+      font-size: 9px;
+      background-color: var(--bg-tertiary);
+      color: var(--text-secondary);
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-left: auto;
+    }
+
+    /* Right: Node detail drawer */
+    #detail-pane {
+      flex: 0 0 340px;
+      background-color: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      border-left: 1px solid var(--border-color);
+    }
+
+    .drawer-content {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .detail-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .detail-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .detail-value {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background-color: var(--bg-primary);
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      word-break: break-all;
+    }
+
+    .boolean-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .boolean-badge.true {
+      background-color: rgba(16, 185, 129, 0.2);
+      color: var(--success-color);
+    }
+
+    .boolean-badge.false {
+      background-color: rgba(239, 68, 68, 0.2);
+      color: var(--danger-color);
+    }
+
+    .live-drive-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background-color: var(--bg-primary);
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      margin-top: 8px;
+    }
+
+    .input-field {
+      width: 100%;
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 6px 8px;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: var(--accent-color);
+    }
+
+    /* Bottom: Action preview with Copy Tool Call */
+    #action-preview-pane {
+      background-color: var(--bg-secondary);
+      border-top: 1px solid var(--border-color);
+      padding: 10px 16px;
+      flex-shrink: 0;
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .preview-tabs {
+      display: flex;
+      gap: 6px;
+    }
+
+    .preview-tab {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .preview-tab.active {
+      background-color: var(--bg-tertiary);
+      border-color: var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .code-box {
+      background-color: #000;
+      color: #38bdf8;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      white-space: pre;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header / Bar -->
+  <header>
+    <div class="brand">
+      <span>⚡ Texure Live Web Inspector</span>
+      <span id="connection-badge" class="badge disconnected">Disconnected</span>
+      <span id="device-window" class="badge">No active device window</span>
+    </div>
+
+    <div class="toolbar-actions">
+      <div class="mode-switch">
+        <button id="mode-inspect" class="btn-mode active" onclick="setMode('inspect')">Inspect</button>
+        <button id="mode-drive" class="btn-mode" onclick="setMode('drive')">Live Drive</button>
+      </div>
+      <button class="btn" id="btn-refresh" onclick="triggerRefresh()">
+        ↻ Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- Main View Area -->
+  <div id="main-container">
+
+    <!-- Left: Screen Canvas Rendering -->
+    <div id="screen-pane">
+      <div id="canvas-container">
+        <canvas id="screen-canvas" width="360" height="780"></canvas>
+        <canvas id="overlay-canvas" width="360" height="780"></canvas>
+      </div>
+      <div id="hover-tooltip" class="tooltip"></div>
+    </div>
+
+    <!-- Center: Hierarchy / Elements Tree -->
+    <div id="tree-pane">
+      <div class="pane-header">
+        <span>UiTree Elements</span>
+        <span id="tree-rev-badge">rev: 0</span>
+      </div>
+      <div id="tree-view"></div>
+    </div>
+
+    <!-- Right: Node detail drawer -->
+    <div id="detail-pane">
+      <div class="pane-header">
+        <span>Node detail</span>
+      </div>
+      <div class="drawer-content" id="node-detail-drawer">
+        <div class="detail-group">
+          <span class="detail-label">index</span>
+          <span class="detail-value" id="detail-index">-</span>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">resource-id</span>
+          <span class="detail-value" id="detail-resource-id">-</span>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">tag</span>
+          <span class="detail-value" id="detail-tag">-</span>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">text</span>
+          <span class="detail-value" id="detail-text">-</span>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">cd</span>
+          <span class="detail-value" id="detail-cd">-</span>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">bounds</span>
+          <span class="detail-value" id="detail-bounds">-</span>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">clickable</span>
+          <div><span class="boolean-badge false" id="detail-clickable">false</span></div>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">editable</span>
+          <div><span class="boolean-badge false" id="detail-editable">false</span></div>
+        </div>
+        <div class="detail-group">
+          <span class="detail-label">semantic hash</span>
+          <span class="detail-value" id="detail-hash">-</span>
+        </div>
+
+        <!-- Live Drive Action Controls -->
+        <div class="live-drive-controls" id="drive-controls" style="display: none;">
+          <span class="detail-label">Live Drive Actions</span>
+          <button class="btn btn-primary" onclick="dispatchTapCurrent()">Tap Node</button>
+          <div style="display: flex; gap: 4px; margin-top: 4px;">
+            <input type="text" id="drive-text-input" class="input-field" placeholder="Type text...">
+            <button class="btn" onclick="dispatchTypeCurrent()">Type</button>
+          </div>
+          <div style="display: flex; gap: 4px; margin-top: 4px;">
+            <button class="btn" onclick="dispatchKeypress('enter')">Enter</button>
+            <button class="btn" onclick="dispatchKeypress('back')">Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom: Action preview with Copy Tool Call -->
+  <div id="action-preview-pane">
+    <div class="preview-header">
+      <div class="preview-tabs">
+        <button class="preview-tab active" id="tab-mcp" onclick="setPreviewFormat('mcp')">MCP JSON</button>
+        <button class="preview-tab" id="tab-python" onclick="setPreviewFormat('python')">Python</button>
+        <button class="preview-tab" id="tab-bash" onclick="setPreviewFormat('bash')">Bash</button>
+      </div>
+      <button class="btn btn-primary" id="copy-tool-call" onclick="copyToolCall()">
+        Copy Tool Call
+      </button>
+    </div>
+    <div class="code-box" id="code-preview">// Select a node to generate tool call</div>
+  </div>
+
+  <script>
+    // State
+    let currentMode = 'inspect'; // 'inspect' | 'drive'
+    let previewFormat = 'mcp'; // 'mcp' | 'python' | 'bash'
+    let currentTree = { rev: 0, window: '', nodes: [] };
+    let flatNodes = [];
+    let selectedNode = null;
+    let hoveredNode = null;
+    let socket = null;
+    let screenshotImage = new Image();
+    let imgNaturalWidth = 360;
+    let imgNaturalHeight = 780;
+
+    const screenCanvas = document.getElementById('screen-canvas');
+    const overlayCanvas = document.getElementById('overlay-canvas');
+    const screenCtx = screenCanvas.getContext('2d');
+    const overlayCtx = overlayCanvas.getContext('2d');
+    const tooltip = document.getElementById('hover-tooltip');
+
+    // Flatten tree nodes into linear list for bounds & index lookups
+    function flattenNodes(nodes) {
+      let list = [];
+      function recurse(items) {
+        if (!items) return;
+        for (const item of items) {
+          list.push(item);
+          if (item.children && item.children.length > 0) {
+            recurse(item.children);
+          }
+        }
+      }
+      recurse(nodes);
+      return list;
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('mode-inspect').classList.toggle('active', mode === 'inspect');
+      document.getElementById('mode-drive').classList.toggle('active', mode === 'drive');
+      document.getElementById('drive-controls').style.display = mode === 'drive' ? 'flex' : 'none';
+      screenCanvas.style.cursor = mode === 'drive' ? 'pointer' : 'crosshair';
+      redrawOverlay();
+    }
+
+    function setPreviewFormat(fmt) {
+      previewFormat = fmt;
+      document.getElementById('tab-mcp').classList.toggle('active', fmt === 'mcp');
+      document.getElementById('tab-python').classList.toggle('active', fmt === 'python');
+      document.getElementById('tab-bash').classList.toggle('active', fmt === 'bash');
+      updateActionPreview();
+    }
+
+    function updateActionPreview() {
+      const codeBox = document.getElementById('code-preview');
+      if (!selectedNode) {
+        codeBox.textContent = '// Select a node to generate tool call';
+        return;
+      }
+
+      const rev = currentTree.rev || 0;
+      const index = selectedNode.index !== undefined ? selectedNode.index : 0;
+      const hash = selectedNode.hash || undefined;
+
+      if (previewFormat === 'mcp') {
+        const mcpCall = {
+          name: "tap",
+          arguments: {
+            node: index,
+            rev: rev,
+            ...(hash ? { hash: hash } : {})
+          }
+        };
+        codeBox.textContent = JSON.stringify(mcpCall, null, 2);
+      } else if (previewFormat === 'python') {
+        const hashArg = hash ? `, "hash": "${hash}"` : "";
+        codeBox.textContent = `await client.call_tool("tap", {"node": ${index}, "rev": ${rev}${hashArg}})`;
+      } else if (previewFormat === 'bash') {
+        const hashJson = hash ? `,"hash":"${hash}"` : "";
+        codeBox.textContent = `echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"tap","arguments":{"node":${index},"rev":${rev}${hashJson}}}}' | texure-server`;
+      }
+    }
+
+    function copyToolCall() {
+      const codeBox = document.getElementById('code-preview');
+      const text = codeBox.textContent;
+      if (!text || text.startsWith('//')) return;
+
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-tool-call');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
+    function selectNode(node) {
+      selectedNode = node;
+      document.querySelectorAll('.tree-node').forEach(el => el.classList.remove('selected'));
+      if (node && node.index !== undefined) {
+        const treeEl = document.getElementById(`tree-item-${node.index}`);
+        if (treeEl) {
+          treeEl.classList.add('selected');
+          treeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+
+      // Populate Node detail drawer
+      if (node) {
+        document.getElementById('detail-index').textContent = node.index !== undefined ? node.index : '-';
+        document.getElementById('detail-resource-id').textContent = node.id || '-';
+        document.getElementById('detail-tag').textContent = node.id || node.tag || '-';
+        document.getElementById('detail-text').textContent = node.text || '-';
+        document.getElementById('detail-cd').textContent = node.cd || node.contentDescription || '-';
+        document.getElementById('detail-bounds').textContent = node.bounds ? `[${node.bounds.join(', ')}]` : '-';
+        
+        const clickEl = document.getElementById('detail-clickable');
+        clickEl.textContent = node.clickable ? 'true' : 'false';
+        clickEl.className = `boolean-badge ${node.clickable ? 'true' : 'false'}`;
+
+        const editEl = document.getElementById('detail-editable');
+        editEl.textContent = node.editable ? 'true' : 'false';
+        editEl.className = `boolean-badge ${node.editable ? 'true' : 'false'}`;
+
+        document.getElementById('detail-hash').textContent = node.hash || '-';
+      } else {
+        ['index', 'resource-id', 'tag', 'text', 'cd', 'bounds', 'hash'].forEach(id => {
+          document.getElementById(`detail-${id}`).textContent = '-';
+        });
+        document.getElementById('detail-clickable').textContent = 'false';
+        document.getElementById('detail-clickable').className = 'boolean-badge false';
+        document.getElementById('detail-editable').textContent = 'false';
+        document.getElementById('detail-editable').className = 'boolean-badge false';
+      }
+
+      updateActionPreview();
+      redrawOverlay();
+    }
+
+    function renderTree(tree) {
+      currentTree = tree;
+      flatNodes = flattenNodes(tree.nodes);
+      document.getElementById('tree-rev-badge').textContent = `rev: ${tree.rev || 0}`;
+      document.getElementById('device-window').textContent = tree.window || 'Unknown window';
+
+      const treeView = document.getElementById('tree-view');
+      treeView.innerHTML = '';
+
+      function buildTree(nodes, container, depth = 0) {
+        if (!nodes) return;
+        for (const node of nodes) {
+          const item = document.createElement('div');
+          item.className = 'tree-node';
+          if (node.index !== undefined) {
+            item.id = `tree-item-${node.index}`;
+          }
+          item.style.paddingLeft = `${depth * 14 + 8}px`;
+
+          const tag = node.cls ? node.cls.split('.').pop() : (node.id ? 'View' : 'Node');
+          item.innerHTML = `
+            <span class="node-tag">&lt;${tag}</span>
+            ${node.id ? `<span class="node-id">#${node.id}</span>` : ''}
+            ${node.text ? `<span class="node-text">"${node.text}"</span>` : ''}
+            <span class="node-tag">&gt;</span>
+            <span class="node-index-badge">${node.index !== undefined ? '#' + node.index : ''}</span>
+          `;
+
+          item.addEventListener('mouseenter', () => {
+            hoveredNode = node;
+            redrawOverlay();
+          });
+          item.addEventListener('mouseleave', () => {
+            hoveredNode = null;
+            redrawOverlay();
+          });
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectNode(node);
+          });
+
+          container.appendChild(item);
+          if (node.children && node.children.length > 0) {
+            buildTree(node.children, container, depth + 1);
+          }
+        }
+      }
+
+      buildTree(tree.nodes, treeView);
+      redrawOverlay();
+    }
+
+    function redrawOverlay() {
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      const scaleX = overlayCanvas.width / imgNaturalWidth;
+      const scaleY = overlayCanvas.height / imgNaturalHeight;
+
+      // Draw all clickable/interactive node outlines subtly in inspect mode
+      if (currentMode === 'inspect') {
+        overlayCtx.lineWidth = 1;
+        overlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        for (const node of flatNodes) {
+          if (node.bounds && node.bounds.length === 4) {
+            const [x, y, w, h] = node.bounds;
+            if (w > 0 && h > 0) {
+              overlayCtx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+            }
+          }
+        }
+      }
+
+      // Draw hovered node
+      if (hoveredNode && hoveredNode.bounds && hoveredNode.bounds.length === 4) {
+        const [x, y, w, h] = hoveredNode.bounds;
+        overlayCtx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        overlayCtx.strokeStyle = '#38bdf8';
+        overlayCtx.lineWidth = 2;
+        overlayCtx.fillRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+        overlayCtx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+      }
+
+      // Draw selected node
+      if (selectedNode && selectedNode.bounds && selectedNode.bounds.length === 4) {
+        const [x, y, w, h] = selectedNode.bounds;
+        overlayCtx.fillStyle = 'rgba(245, 158, 11, 0.35)';
+        overlayCtx.strokeStyle = '#f59e0b';
+        overlayCtx.lineWidth = 2;
+        overlayCtx.fillRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+        overlayCtx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+      }
+    }
+
+    // Canvas Mouse interaction
+    screenCanvas.addEventListener('mousemove', (e) => {
+      const rect = screenCanvas.getBoundingClientRect();
+      const mouseX = (e.clientX - rect.left) * (screenCanvas.width / rect.width);
+      const mouseY = (e.clientY - rect.top) * (screenCanvas.height / rect.height);
+
+      const scaleX = screenCanvas.width / imgNaturalWidth;
+      const scaleY = screenCanvas.height / imgNaturalHeight;
+
+      // Find deepest node covering mouse coordinate
+      let hit = null;
+      let minArea = Infinity;
+      for (const node of flatNodes) {
+        if (node.bounds && node.bounds.length === 4) {
+          const [bx, by, bw, bh] = node.bounds;
+          const left = bx * scaleX;
+          const top = by * scaleY;
+          const right = left + bw * scaleX;
+          const bottom = top + bh * scaleY;
+          if (mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom) {
+            const area = bw * bh;
+            if (area <= minArea) {
+              minArea = area;
+              hit = node;
+            }
+          }
+        }
+      }
+
+      hoveredNode = hit;
+      if (hit) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = `${e.clientX + 12}px`;
+        tooltip.style.top = `${e.clientY + 12}px`;
+        const label = hit.id || hit.tag || (hit.cls ? hit.cls.split('.').pop() : 'Node');
+        tooltip.textContent = `[#${hit.index !== undefined ? hit.index : '?'}] ${label}${hit.text ? ` "${hit.text}"` : ''}`;
+
+        // Scroll node into view in tree
+        if (hit.index !== undefined) {
+          const treeEl = document.getElementById(`tree-item-${hit.index}`);
+          if (treeEl) {
+            treeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+      } else {
+        tooltip.style.display = 'none';
+      }
+
+      redrawOverlay();
+    });
+
+    screenCanvas.addEventListener('mouseleave', () => {
+      hoveredNode = null;
+      tooltip.style.display = 'none';
+      redrawOverlay();
+    });
+
+    screenCanvas.addEventListener('click', (e) => {
+      if (hoveredNode) {
+        selectNode(hoveredNode);
+        if (currentMode === 'drive') {
+          dispatchTapCurrent();
+        }
+      }
+    });
+
+    // Remote Actions Dispatch
+    function dispatchTapCurrent() {
+      if (!selectedNode) return;
+      const body = {
+        action: "tap",
+        index: selectedNode.index,
+        rev: currentTree.rev || 0,
+        hash: selectedNode.hash || undefined
+      };
+      sendAction(body);
+    }
+
+    function dispatchTypeCurrent() {
+      const input = document.getElementById('drive-text-input');
+      const text = input.value;
+      if (!text) return;
+      const body = {
+        action: "type",
+        index: selectedNode ? selectedNode.index : undefined,
+        text: text,
+        rev: currentTree.rev || 0,
+        hash: selectedNode ? selectedNode.hash : undefined
+      };
+      sendAction(body);
+      input.value = '';
+    }
+
+    function dispatchKeypress(key) {
+      sendAction({
+        action: "keypress",
+        key: key
+      });
+    }
+
+    function sendAction(actionData) {
+      fetch('/inspect/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(actionData)
+      }).then(res => {
+        if (!res.ok) {
+          return res.json().then(err => {
+            if (err.error === 'NODE_OUTDATED') {
+              triggerRefresh();
+            }
+          });
+        }
+      }).catch(console.error);
+    }
+
+    function triggerRefresh() {
+      fetch('/ui-tree')
+        .then(r => r.json())
+        .then(tree => renderTree(tree))
+        .catch(console.error);
+    }
+
+    // Live WebSocket Synchronizer
+    function connectWebSocket() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${location.host}/inspect/ws`;
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        const badge = document.getElementById('connection-badge');
+        badge.textContent = 'Connected';
+        badge.className = 'badge connected';
+      };
+
+      socket.onclose = () => {
+        const badge = document.getElementById('connection-badge');
+        badge.textContent = 'Disconnected';
+        badge.className = 'badge disconnected';
+        setTimeout(connectWebSocket, 2000);
+      };
+
+      socket.onerror = (e) => {
+        console.warn('Inspector WebSocket error', e);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.tree) {
+            renderTree(data.tree);
+          }
+          if (data.screenshot) {
+            screenshotImage.onload = () => {
+              imgNaturalWidth = screenshotImage.naturalWidth || 360;
+              imgNaturalHeight = screenshotImage.naturalHeight || 780;
+              screenCanvas.width = imgNaturalWidth;
+              screenCanvas.height = imgNaturalHeight;
+              overlayCanvas.width = imgNaturalWidth;
+              overlayCanvas.height = imgNaturalHeight;
+              screenCtx.drawImage(screenshotImage, 0, 0);
+              redrawOverlay();
+            };
+            screenshotImage.src = data.screenshot.startsWith('data:') 
+              ? data.screenshot 
+              : `data:image/png;base64,${data.screenshot}`;
+          }
+        } catch (e) {
+          console.error('Failed to parse WS message', e);
+        }
+      };
+    }
+
+    // Initialize mock / demo canvas placeholder while waiting for device
+    function initPlaceholder() {
+      screenCtx.fillStyle = '#111';
+      screenCtx.fillRect(0, 0, screenCanvas.width, screenCanvas.height);
+      screenCtx.fillStyle = '#666';
+      screenCtx.font = '14px sans-serif';
+      screenCtx.textAlign = 'center';
+      screenCtx.fillText('Waiting for device stream...', screenCanvas.width / 2, screenCanvas.height / 2);
+    }
+
+    initPlaceholder();
+    connectWebSocket();
+  </script>
+</body>
+</html>
