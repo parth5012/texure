@@ -1653,10 +1653,7 @@ async fn route_request(
         }
         ("POST", "/state/snapshots/restore") => {
             let req_json: Value = serde_json::from_slice(body).unwrap_or_default();
-            let name = req_json
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let name = req_json.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
             let mut app_st = state.app_state.lock().await;
             if let Some(snap) = app_st.snapshots.get(name).cloned() {

@@ -568,7 +568,8 @@ pub fn get_all_tests() -> Vec<TestDef> {
         },
         TestDef {
             id: "BB-S3".to_string(),
-            name: "Save snapshot, mutate state, restore snapshot, verify reverted state".to_string(),
+            name: "Save snapshot, mutate state, restore snapshot, verify reverted state"
+                .to_string(),
             scenario_file: "state_snapshots.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
