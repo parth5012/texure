@@ -46,7 +46,7 @@ class BridgeStateSnapshot(private val context: Context) {
      */
     @Synchronized
     fun reset(scope: String, onMutated: (() -> Unit)? = null): JSONObject {
-        val normalizedScope = scope.lowercase()
+        val normalizedScope = scope.lowercase(java.util.Locale.ROOT)
         if (normalizedScope !in listOf("all", "prefs", "db", "cache")) {
             return JSONObject().apply {
                 put("error", JSONObject().apply {
@@ -220,9 +220,6 @@ class BridgeStateSnapshot(private val context: Context) {
                 }
             }
 
-            if (finalZipFile.exists()) {
-                finalZipFile.delete()
-            }
             if (!tmpZipFile.renameTo(finalZipFile)) {
                 tmpZipFile.copyTo(finalZipFile, overwrite = true)
                 tmpZipFile.delete()

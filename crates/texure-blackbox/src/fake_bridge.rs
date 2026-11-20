@@ -1579,6 +1579,20 @@ async fn route_request(
                 .get("db")
                 .and_then(|v| v.as_str())
                 .unwrap_or("app_db");
+            let sql = req_json.get("sql").and_then(|v| v.as_str()).unwrap_or("");
+            if sql.is_empty() {
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": "Missing 'sql' parameter in query payload"
+                        }
+                    }))
+                    .unwrap(),
+                );
+            }
 
             let app_st = state.app_state.lock().await;
             let rows = app_st.query_rows.get(db_name).cloned().unwrap_or_default();
@@ -1598,13 +1612,23 @@ async fn route_request(
                 .get("db")
                 .and_then(|v| v.as_str())
                 .unwrap_or("app_db");
+            let sql = req_json.get("sql").and_then(|v| v.as_str()).unwrap_or("");
             let params = req_json.get("params").and_then(|v| v.as_array());
 
             let mut app_st = state.app_state.lock().await;
             if let Some(params) = params {
                 let mut map = serde_json::Map::new();
+                let col_names = if sql.contains("username") && sql.contains("role") {
+                    vec!["username".to_string(), "role".to_string()]
+                } else {
+                    (0..params.len()).map(|i| format!("col_{i}")).collect()
+                };
                 for (i, p) in params.iter().enumerate() {
-                    map.insert(format!("col_{i}"), p.clone());
+                    let col = col_names
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| format!("col_{i}"));
+                    map.insert(col, p.clone());
                 }
                 app_st
                     .query_rows

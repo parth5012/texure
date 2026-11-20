@@ -551,8 +551,8 @@ class BridgeServer(
             }
         }
         val scope = body.optString("scope", "all")
-        val validScopes = setOf("all", "prefs", "db", "databases", "cache")
-        if (scope.lowercase() !in validScopes) {
+        val validScopes = setOf("all", "prefs", "db", "cache")
+        if (scope.lowercase(java.util.Locale.ROOT) !in validScopes) {
             return badRequest("Invalid scope '$scope'. Valid scopes: all, prefs, db, cache")
         }
         val result = stateSnapshot.reset(scope) {
