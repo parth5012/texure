@@ -474,6 +474,13 @@
 - Applied Council review rounds 1-3 fixes: xfail write-first tracking, threat model documentation in DECISIONS.md/docs/guardrails.md, target parity, and test suite verification.
 - VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings) · L1 pass (`cargo test --workspace` 80/80 passed) · clippy clean (0 warnings) · fmt clean · L2 pass (`mcp-fake` 17 pass / 13 xfail / 0 fail; `mcp-real` 17 pass / 13 xfail / 5 skip / 0 fail).
 
+## 2026-11-19 (session) — Wayfinder queue-keeper automation (T3 scheduled task)
+- Modelled on the Vela keeper (`scheduled-task:95520c19-...`): hourly sequential ship queue, one worker thread at a time, each spawned in a fresh worktree on antigravity/gemini-3.8-flash, never auto-merge.
+- Created `scheduled-task:a4ecba1e-aa39-4b0a-b9b1-64e5502bc25a` bound to the "Automate Wayfinder Map Shipping" thread in the texure T3 project (00287bf2-2b94-4189-8144-b8e12b16fa30); enabled, interval 1h, first run 2026-11-19T13:34Z.
+- Queue: #64 (already landed — PRs #119/#120/#122/#123/#124 merged, children #59–#63 closed; issue open, keeper will close it), then 69 → 74 → 79 → 83 → 87 → 91. Worker detection covers both `Ship Wayfinder Map N` and `Wayfinder Ship N — ...` title forms while excluding the keeper thread.
+- VERIFY: task listed as enabled with correct projectId/bound thread/interval; worker-title scan returns "Ship Wayfinder Map 64" as the newest non-keeper ship thread; self-disable step carries the explicit scheduledTaskId.
+- Kicked the queue manually: closed map #64 (comment + `--reason completed`) after confirming PRs #119/#120/#122/#123/#124 merged and children #59–#63 closed; spawned [Wayfinder Ship 69 — Wayfinder map 14: In-app network interception & dynamic API mocking](t3-thread://v2/1b2b1840-8750-47a4-a5cc-9ad9f5873c5b/mcp:3fba8c40-8f32-44d0-b798-47458ab66a02) on `wf/69-network-mocking` (fresh worktree off `origin/main`, antigravity/gemini-3.8-flash). Status running; the queued keeper run will see it and hold instead of re-spawning.
+
 ## 2026-11-20 (session) — Wayfinder Map 17 / #83: In-app logcat ring buffer & diagnostic query API
 - Executed Wayfinder Map 17 tickets end-to-end (#80, #81, #82):
   - Ticket #80: Implemented `BridgeLogcatReader` daemon thread reading `logcat -v threadtime --pid=<own_pid>`, regex parsing date, time, pid, tid, level, tag, and message; implemented memory-safe rolling `LogRingBuffer` capped at 2,000 entries with thread-safe synchronized access.
