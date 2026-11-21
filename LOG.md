@@ -1,5 +1,27 @@
 # Log
 
+## 2026-11-21 (session) — Texure Companion UI Polish Overhaul
+- Scope: Comprehensive UI/UX redesign and visual craft overhaul for Texure Companion (Tauri v2 + React/Vite in `companion/`).
+- Goal: Achieve "Robin-approved" status with $\ge$ 9/10 evaluation scores across all Design Council members.
+- Delivered Improvements:
+  - Bundled Inter (OpenType features `cv02`, `cv03`, `cv04`, `cv11`) and JetBrains Mono fonts via `@fontsource`.
+  - Machine metal surface system: deep `#09090b` canvas with milled `#1e1e24` card tops, `inset 0 1px 0 rgba(255,255,255,0.12)` highlight, and ambient gradient glow.
+  - Translucent frosted glass in light mode (`rgba(255,255,255,0.82)` with `backdrop-filter: blur(16px)`).
+  - Two-row card header architecture with single-line titles (`whitespace-nowrap`) and pixel-identical vertical baselines across the primary dashboard.
+  - Domain-specific color encoding: Indigo (Shizuku Gateway), Sky (Tunnel), Emerald (Target App), Violet (Device Vitals).
+  - Tactile filled secondary buttons (`bg-slate-100 border-slate-300 dark:bg-zinc-800 dark:border-zinc-700`) resolving optical weight asymmetry.
+  - Persistent base gradient under animated sweep on gateway topology conduit, eliminating empty-progress-bar perception.
+  - Content-driven terminal container (`min-h-[140px] max-h-[520px]`), centered empty state, and fixed `w-24` source column.
+  - Portaled toast container to `document.body` escaping ancestor transform containing blocks.
+  - Inactive navigation tab contrast calibrated to $\ge$ 4.7:1 (WCAG AA).
+- Design Council Review Scores Across All Rounds:
+  - Claude Sonnet 4.6: R1 (8/10), R2 (8/10), R3 (**9/10** — Approved).
+  - Hy4 Flash: R1 (8/10), R2 (8.5/10), R3 (**9/10** — Approved).
+  - DeepSeek V4.1 Flash: R1 (7.5/10), R2 (7.5/10), R3 (8/10), R4 (7.5/10), R5 (8.5/10), R6 (**9/10** — Approved).
+  - Beam: R1 (8/10), R2 (8/10), R6 (8.5/10), R7 (**9.5/10** — Approved).
+- Verification: All 37 unit and component tests passing (`pnpm test` in `companion/`); clean Vite build (`pnpm build`); all 8 screenshots verified in dark and light modes.
+- PR: Created PR #129 (`https://github.com/parth5012/texure/pull/129`) titled "UI polish overhaul".
+
 ## 2026-11-20 (session) — Wayfinder map 16 (#79) Live Web Inspector (`texure inspect`)
 - Scope: 4 AFK tickets (#75, #76, #77, #78), single-PR mode (4 < 5), branch `wf/79-live-web-inspector`, PR #127 (`main` ← branch).
 - #75: embedded zero-dependency single-page inspector HTML in `crates/texure-server/assets/inspect.html` via `include_str!` — hover bounding-box overlays, node detail drawer, one-click MCP/Python/Bash tool-call copy.
