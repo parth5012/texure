@@ -356,3 +356,15 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 3. **In-Tree JVM Verification of Real OkHttp Bytecode Transformation and Parity Hardening.**
    - *What:* Added in-tree JVM integration test in `TexureOkHttpVisitorTest` weaving real `okhttp3.OkHttpClient$Builder` from `okhttp-4.12.0.jar` with `COMPUTE_FRAMES` StackMap verification, asserting interceptor attachment and deduplication on `newBuilder().build()`. Added OkHttp dependency to `sample` debug builds, validating AGP ASM class transformation and Guardrail G1 release-leak check. Hardened request body safety (immediate passthrough when `!mockingEnabled`, one-shot/duplex placeholder guards, 64KB cap with `ForwardingSink`, and zero false truncation on exactly 64KB bodies). Enforced strict integer validation for `status` (200..599), `times` (> 0), and `delay_ms` (0..30000ms) with 200-rule capacity cap across both `BridgeServer` and `FakeBridge`. Added `DELETE /network/history` and diagnostic `POST /network/execute` to both `BridgeServer` and `FakeBridge`, with `X-Mock-Source: Texure` header parity.
    - *Why:* Closes adversarial Council review findings across all 3 delegates, ensuring 100% test proof in-tree and strict contract alignment without relying on mock-only endpoints.
+
+---
+
+## 2026-11-21 (Wayfinder Map #18 / #87: Deep-link & push notification simulator)
+
+1. **Group D Capability Elevation & Strict Package Scoping (Guardrail G6).**
+   - *What:* Added Group D (`BB-D1..BB-D3`) representing package-scoped deep-link intent routing and native push notification simulation. Updated `docs_gate` linter regex to `BB-(?:[A-C]|R|N|S|L|D)[0-9]+` and registered `BB-D1..D3` in expected blackbox tests.
+   - *Security & Scoping:* Dispatched intents strictly enforce `intent.setPackage(context.packageName)`. Any request explicitly specifying a foreign package is rejected with 400 `CROSS_PACKAGE_FORBIDDEN` upholding Guardrail G6.
+   - *Endpoints:* Additive HTTP routes `/intent`, `/notification/simulate`, and `DELETE /notification` authenticated via Bearer token; `schema_version` stays 1.
+
+2. **Automatic Debug Notification Channel Fallback.**
+   - *What:* `POST /notification/simulate` automatically registers debug notification channel `texure_debug_channel` with high importance if the requested channel does not exist, attaching deep-link PendingIntents for local notification traversal without external FCM services.
