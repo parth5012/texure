@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Upload, AlertCircle, CheckCircle2, RefreshCw, X, ShieldCheck } from 'lucide-react';
+import { Camera, Upload, AlertCircle, CheckCircle2, RefreshCw, X, ShieldCheck, HelpCircle, Radio } from 'lucide-react';
 import { PairingConfig } from '../types';
 import { parsePairingPayload, DEFAULT_APP, DEFAULT_PATH, DEFAULT_PORT } from '../lib/qr-parser';
 import { useCompanion } from '../context/CompanionContext';
@@ -113,7 +113,6 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
 
     const video = videoRef.current;
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      // 1. Check BarcodeDetector API (cached detector instance)
       if (typeof window.BarcodeDetector !== 'undefined') {
         try {
           if (!detectorRef.current) {
@@ -176,7 +175,6 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
     }
   }, [stopCamera]);
 
-  // Manage component lifecycle / unmount teardown
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -185,7 +183,6 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
     };
   }, [stopCamera]);
 
-  // Manage rAF scan loop separately from camera teardown
   useEffect(() => {
     if (scanning && !successConfig) {
       animFrameRef.current = requestAnimationFrame(scanFrame);
@@ -198,20 +195,17 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
     };
   }, [scanning, successConfig, scanFrame]);
 
-  // Handle uploaded image file
   const processImageFile = async (file: File) => {
     setIsProcessing(true);
     setParseError(null);
 
     try {
-      // 1. If JSON or text file (for raw JSON fixtures), prioritize directly
       if (file.type === 'application/json' || file.name.endsWith('.json') || file.type.startsWith('text/')) {
         const text = await readFileAsText(file);
         await handlePayloadResult(text);
         return;
       }
 
-      // 2. Check for BarcodeDetector on ImageBitmap
       if (typeof window.BarcodeDetector !== 'undefined') {
         try {
           const imageBitmap = await createImageBitmap(file);
@@ -226,7 +220,6 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
         }
       }
 
-      // 3. Fallback: Read using ZXing
       let imgUrl: string | null = null;
       try {
         const { BrowserQRCodeReader } = await import('@zxing/browser');
@@ -263,169 +256,251 @@ export const QrScanner: React.FC<QrScannerProps> = ({ onPairSuccess, onCancel })
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden max-w-xl mx-auto shadow-2xl">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
-        <div className="flex items-center space-x-2">
-          <Camera className="w-4 h-4 text-indigo-400" />
-          <h2 className="text-sm font-semibold text-slate-100">Pair Remote Gateway</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
+            <Camera className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+            <span>Pair Remote Gateway</span>
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1">
+            Authenticate and establish a secure reverse WebSocket connection between phone and desktop bridge.
+          </p>
         </div>
         {onCancel && (
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-200">
+          <button
+            onClick={onCancel}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition"
+            aria-label="Cancel"
+          >
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      <div className="p-6 space-y-6">
-        {/* Success View */}
-        {successConfig ? (
-          <div data-testid="pair-success-state" className="text-center py-6 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
-              <CheckCircle2 className="w-8 h-8" />
+      {/* Main 2-Column Responsive Deck */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Left Column: Viewfinder & Dropzone (7 Cols) */}
+        <div className="lg:col-span-7 glass-panel rounded-2xl overflow-hidden p-6 shadow-xs flex flex-col justify-between">
+          {successConfig ? (
+            <div data-testid="pair-success-state" className="text-center py-10 space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-500 dark:text-emerald-400 shadow-md shadow-emerald-500/10">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-zinc-100">Pairing Successful!</h3>
+                <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1">
+                  Connected to endpoint: <span className="font-mono text-indigo-600 dark:text-indigo-400 font-semibold">{successConfig.url}</span>
+                </p>
+              </div>
+              <div className="inline-flex items-center space-x-2 text-xs bg-slate-100 dark:bg-zinc-800/80 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                <span className="text-slate-700 dark:text-zinc-300 font-mono text-xs font-medium">Token: {successConfig.token.substring(0, 16)}...</span>
+              </div>
+              <div>
+                <button
+                  onClick={() => {
+                    setSuccessConfig(null);
+                    startCamera();
+                  }}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold underline"
+                >
+                  Scan Another QR
+                </button>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-medium text-emerald-400">Pairing Successful!</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Connected to endpoint: <span className="font-mono text-slate-300">{successConfig.url}</span>
-              </p>
-            </div>
-            <div className="inline-flex items-center space-x-2 text-xs bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-slate-300 font-mono">Token: {successConfig.token.substring(0, 12)}...</span>
-            </div>
-            <div>
-              <button
-                onClick={() => {
-                  setSuccessConfig(null);
-                  startCamera();
-                }}
-                className="text-xs text-indigo-400 hover:text-indigo-300 underline"
-              >
-                Scan Another QR
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Viewfinder or Camera Feed */}
-            <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex flex-col items-center justify-center">
-              <video
-                ref={videoRef}
-                playsInline
-                muted
-                className={`w-full h-full object-cover ${scanning ? 'block' : 'hidden'}`}
-              />
-              {scanning ? (
-                <>
-                  {/* Viewfinder overlay */}
-                  <div className="absolute inset-0 border-2 border-indigo-500/40 pointer-events-none flex items-center justify-center">
-                    <div className="w-48 h-48 border-2 border-indigo-400/80 rounded-lg relative">
-                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-indigo-400 -mt-0.5 -ml-0.5" />
-                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-indigo-400 -mt-0.5 -mr-0.5" />
-                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-indigo-400 -mb-0.5 -ml-0.5" />
-                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-indigo-400 -mb-0.5 -mr-0.5" />
-                      <div className="w-full h-0.5 bg-indigo-500 animate-pulse mt-24 shadow-lg shadow-indigo-500" />
+          ) : (
+            <div className="space-y-4">
+              {/* Viewfinder or Camera Feed */}
+              <div className={`relative aspect-video rounded-2xl overflow-hidden flex flex-col items-center justify-center shadow-md transition-colors ${
+                scanning
+                  ? 'bg-slate-900 border border-slate-800'
+                  : 'bg-slate-100 dark:bg-zinc-950/80 border border-slate-200/90 dark:border-zinc-800'
+              }`}>
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${scanning ? 'block' : 'hidden'}`}
+                />
+                {scanning ? (
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className="w-48 h-48 border border-indigo-500/40 rounded-xl relative shadow-glow-indigo">
+                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-indigo-400 rounded-tl-sm -mt-0.5 -ml-0.5" />
+                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-indigo-400 rounded-tr-sm -mt-0.5 -mr-0.5" />
+                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-indigo-400 rounded-bl-sm -mb-0.5 -ml-0.5" />
+                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-indigo-400 rounded-br-sm -mb-0.5 -mr-0.5" />
+                      <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-lg shadow-cyan-400 absolute animate-laser" />
                     </div>
                   </div>
-                </>
-              ) : (
-                <div className="text-center p-6 space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
-                    <Camera className="w-6 h-6" />
+                ) : (
+                  <div className="text-center p-6 space-y-3 relative w-full h-full flex flex-col items-center justify-center">
+                    {/* High-contrast technical optical reticle frame */}
+                    <div className="absolute inset-4 pointer-events-none border border-slate-300/80 dark:border-zinc-700/80 rounded-xl">
+                      <div className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 border-t-2 border-l-2 border-indigo-600 dark:border-indigo-400 rounded-tl-sm" />
+                      <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 border-t-2 border-r-2 border-indigo-600 dark:border-indigo-400 rounded-tr-sm" />
+                      <div className="absolute -bottom-0.5 -left-0.5 w-3.5 h-3.5 border-b-2 border-l-2 border-indigo-600 dark:border-indigo-400 rounded-bl-sm" />
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-b-2 border-r-2 border-indigo-600 dark:border-indigo-400 rounded-br-sm" />
+                    </div>
+
+                    <div className="w-12 h-12 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-center mx-auto text-slate-700 dark:text-zinc-300 shadow-xs relative z-10">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                    <div className="relative z-10">
+                      <p className="text-xs text-slate-800 dark:text-zinc-200 font-medium">Camera preview is currently inactive.</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Use camera to scan QR or upload fixture below</p>
+                    </div>
+                    <button
+                      onClick={startCamera}
+                      className="relative z-10 px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white rounded-xl text-xs font-medium transition inline-flex items-center space-x-2 shadow-sm shadow-indigo-500/25 active:scale-[0.99]"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Start Camera Scan</span>
+                    </button>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Camera preview is currently inactive.</p>
-                  </div>
+                )}
+
+                {scanning && (
                   <button
-                    onClick={startCamera}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition inline-flex items-center space-x-1.5 shadow"
+                    onClick={stopCamera}
+                    className="absolute top-3 right-3 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 rounded-lg text-zinc-200 text-xs border border-zinc-700/80 shadow-md backdrop-blur-md"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Start Camera Scan</span>
+                    Stop Camera
                   </button>
+                )}
+              </div>
+
+              {cameraError && (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-300 flex items-start space-x-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                  <span>{cameraError}</span>
                 </div>
               )}
 
-              {scanning && (
-                <button
-                  onClick={stopCamera}
-                  className="absolute top-2 right-2 p-1.5 bg-slate-900/80 hover:bg-slate-900 rounded-md text-slate-300 text-xs border border-slate-700"
-                >
-                  Stop Camera
-                </button>
+              {parseError && (
+                <div data-testid="parse-error-message" className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-700 dark:text-rose-300 flex items-start space-x-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                  <span>{parseError}</span>
+                </div>
               )}
-            </div>
 
-            {/* Error notifications */}
-            {cameraError && (
-              <div className="p-3 bg-amber-950/40 border border-amber-600/30 rounded-lg text-xs text-amber-300 flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                <span>{cameraError}</span>
-              </div>
-            )}
-
-            {parseError && (
-              <div data-testid="parse-error-message" className="p-3 bg-rose-950/40 border border-rose-600/30 rounded-lg text-xs text-rose-300 flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                <span>{parseError}</span>
-              </div>
-            )}
-
-            {/* Drag & drop / File Upload Fallback */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition ${
-                dragActive
-                  ? 'border-indigo-400 bg-indigo-950/20'
-                  : 'border-slate-800 hover:border-slate-700 bg-slate-950/40'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,application/json"
-                className="hidden"
-                data-testid="file-upload-input"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    processImageFile(e.target.files[0]);
-                    e.target.value = '';
+              {/* Drag & drop / File Upload Fallback */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Upload QR code fixture image or JSON"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
                   }
                 }}
-              />
-              <Upload className={`w-6 h-6 text-slate-500 mx-auto mb-2 ${isProcessing ? 'animate-bounce text-indigo-400' : ''}`} />
-              <p className="text-xs font-medium text-slate-300">
-                {isProcessing ? 'Processing QR payload...' : (
-                  <>
-                    Drag and drop a QR code image here, or <span className="text-indigo-400 underline">browse</span>
-                  </>
-                )}
-              </p>
-              <p className="text-[10px] text-slate-500 mt-1">Supports PNG, JPG, WebP, or pairing JSON fixture</p>
-            </div>
-
-            {/* One-click fixture tester (for browser mock & headless testing) */}
-            {isBrowserMock && (
-              <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
-                <span className="text-slate-500 text-[11px]">Desktop & Mock Test Aid:</span>
-                <button
-                  data-testid="load-fixture-qr-btn"
-                  onClick={() => handlePayloadResult(BB_R11_TEST_PAYLOAD)}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px]"
-                >
-                  Load Golden Pairing Payload (BB-R11)
-                </button>
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  dragActive
+                    ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30'
+                    : 'border-slate-300 dark:border-zinc-700 hover:border-indigo-500 dark:hover:border-zinc-500 bg-slate-50/60 dark:bg-zinc-950/40'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/json"
+                  className="hidden"
+                  data-testid="file-upload-input"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      processImageFile(e.target.files[0]);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <Upload className={`w-6 h-6 text-slate-400 dark:text-zinc-500 mx-auto mb-2 ${isProcessing ? 'animate-bounce text-indigo-500' : ''}`} />
+                <p className="text-xs font-medium text-slate-700 dark:text-zinc-300">
+                  {isProcessing ? 'Processing QR payload...' : (
+                    <>
+                      Drag and drop a QR code image here, or <span className="text-indigo-600 dark:text-indigo-400 underline font-semibold">browse</span>
+                    </>
+                  )}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Supports PNG, JPG, WebP, or pairing JSON fixture</p>
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Guide & Diagnostic Details (5 Cols) */}
+        <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
+          <div className="glass-panel rounded-2xl p-6 shadow-xs">
+            <div className="flex items-center space-x-2.5 mb-3">
+              <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40">
+                <HelpCircle className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-zinc-100">Pairing Instructions</h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-4">
+              To control this Android device from your desktop development environment:
+            </p>
+            <ol className="text-xs text-slate-600 dark:text-zinc-300 space-y-2.5 pl-4 list-decimal">
+              <li>Run <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 font-mono text-indigo-600 dark:text-indigo-400 font-semibold">texure pair</code> in your terminal.</li>
+              <li>Point this camera at the displayed ASCII/PNG QR code.</li>
+              <li>The reverse tunnel establishes an encrypted TLS channel automatically.</li>
+            </ol>
+
+            <div className="mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800/60 space-y-2">
+              <div className="flex justify-between text-xs text-slate-600 dark:text-zinc-400">
+                <span>Security</span>
+                <span className="font-mono text-slate-800 dark:text-zinc-200 font-semibold">WSS + Bearer Token</span>
+              </div>
+              <div className="flex justify-between text-xs text-slate-600 dark:text-zinc-400">
+                <span>Protocol Spec</span>
+                <span className="font-mono text-slate-800 dark:text-zinc-200 font-semibold">Standard WSS Protocol</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Test Aid Card */}
+          {isBrowserMock && (
+            <div className="glass-panel rounded-2xl p-5 border-dashed border-indigo-400 dark:border-indigo-500 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-zinc-100">Development Shortcut</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40">
+                  SIMULATION
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-zinc-400 mb-3">
+                Click below to instantly feed a verified sample pairing payload without a physical camera:
+              </p>
+              <button
+                data-testid="load-fixture-qr-btn"
+                onClick={() => handlePayloadResult(BB_R11_TEST_PAYLOAD)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-500 hover:border-indigo-600 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300 text-xs font-sans font-semibold transition shadow-xs text-center active:scale-[0.99]"
+              >
+                Load Sample Pairing Payload
+              </button>
+            </div>
+          )}
+
+          {/* Subnet Discovery Spec */}
+          <div className="glass-panel rounded-2xl p-5 shadow-xs space-y-2">
+            <div className="flex items-center space-x-2">
+              <div className="p-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                <Radio className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-zinc-100">Zero-Conf Subnet Beacon</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
+              Companion broadcasts mDNS beacon service <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800/80 font-mono text-indigo-600 dark:text-indigo-400 text-[11px]">_texure-bridge._tcp.local</code> for automatic LAN discovery.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

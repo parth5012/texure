@@ -36,7 +36,7 @@ class MockBackend {
       id: 'log-2',
       timestamp: new Date(Date.now() - 25000).toISOString(),
       level: 'INFO',
-      message: 'Shizuku service ping OK: IPC version 13, uid 0',
+      message: 'Shizuku service ping OK: IPC version 13, uid 2000',
       source: 'shizuku',
     },
     {
