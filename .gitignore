@@ -18,6 +18,10 @@ local.properties
 node_modules/
 dist/
 
+# Python
+__pycache__/
+*.pyc
+
 # OS
 .DS_Store
 Thumbs.db
