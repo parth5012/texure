@@ -2589,7 +2589,11 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                 let level = step.args.get("level").and_then(|v| v.as_str());
                 let tag = step.args.get("tag").and_then(|v| v.as_str());
                 let since = step.args.get("since").and_then(|v| v.as_u64());
-                let limit = step.args.get("limit").and_then(|v| v.as_u64()).map(|l| l as usize);
+                let limit = step
+                    .args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|l| l as usize);
                 match client.get_logs(level, tag, since, limit).await {
                     Ok(resp) => {
                         last_response = resp;
@@ -2633,50 +2637,48 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     }
                 }
             }
-            "logs_clear" | "logs_delete" => {
-                match client.delete_logs().await {
-                    Ok(resp) => {
-                        last_response = resp;
-                        push_step(
-                            &mut steps,
-                            idx,
-                            &step.action,
-                            Some(&step.args),
-                            &last_response,
-                            None,
-                            None,
-                            offset_ms,
-                        );
-                    }
-                    Err(HttpBridgeError::StatusError { body, .. }) => {
-                        let err_val: Value =
-                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
-                        last_response = err_val;
-                        push_step(
-                            &mut steps,
-                            idx,
-                            &step.action,
-                            Some(&step.args),
-                            &last_response,
-                            None,
-                            None,
-                            offset_ms,
-                        );
-                    }
-                    Err(e) => {
-                        push_error_step(
-                            &mut steps,
-                            idx,
-                            &step.action,
-                            Some(&step.args),
-                            &e.to_string(),
-                            offset_ms,
-                        );
-                        server.stop();
-                        return Err((steps, format!("logs_clear failed: {e}")));
-                    }
+            "logs_clear" | "logs_delete" => match client.delete_logs().await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
                 }
-            }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("logs_clear failed: {e}")));
+                }
+            },
             other => {
                 server.stop();
                 return Err((
