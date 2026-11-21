@@ -180,6 +180,9 @@ Rows below define the contract for debug-only state inspection, direct seeding o
 | Clean-slate reset | BB-S1 | Trigger `POST /state/reset` with scope, verify target data directories/caches are purged to clean-slate and pairing token is preserved. |
 | SharedPreferences seeding | BB-S2 | Mutate preferences via `POST /state/prefs`, verify updated key values via `GET /state/prefs` and tree revision bump. |
 | State snapshot save & restore | BB-S3 | Save snapshot via `POST /state/snapshots/save`, mutate state, restore snapshot via `POST /state/snapshots/restore`, verify restored key-value and database state. |
+| Logcat level filtering | BB-L1 | Query `GET /logs?level=ERROR`, verify response only contains logs matching minimum severity ERROR. |
+| Logcat timestamp filtering | BB-L2 | Query `GET /logs?since=<timestamp>`, verify response only returns entries newer than timestamp. |
+| Logcat buffer clear | BB-L3 | Trigger `DELETE /logs`, verify subsequent query is empty and buffer is cleared. |
 
 ## 4. Explicit non-behaviors (v1)
 
@@ -190,5 +193,5 @@ Rows below define the contract for debug-only state inspection, direct seeding o
 
 ## 5. Verification hooks (link to testing-architecture)
 
-- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13), plus Group N network scenarios `network_mock_response`, `network_history`, `network_mode_passthrough` (BB-N1..BB-N3), plus Group S state scenarios `state_reset`, `state_prefs`, `state_snapshots` (BB-S1..BB-S3).
+- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13), plus Group N network scenarios `network_mock_response`, `network_history`, `network_mode_passthrough` (BB-N1..BB-N3), plus Group S state scenarios `state_reset`, `state_prefs`, `state_snapshots` (BB-S1..BB-S3), plus Group L log scenarios `logs_level_filter`, `logs_since_filter`, `logs_clear` (BB-L1..BB-L3).
 - The spec as a whole is the input to the behavior-driven test matrix; breaking a row is a bug, not a choice.
