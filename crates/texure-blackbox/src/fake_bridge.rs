@@ -40,6 +40,17 @@ pub struct FakeBridgeState {
     pub tags: tokio::sync::Mutex<std::collections::HashMap<String, u64>>,
     pub network: tokio::sync::Mutex<FakeNetworkState>,
     pub app_state: tokio::sync::Mutex<FakeAppState>,
+    pub logs: tokio::sync::Mutex<Vec<FakeLogEntry>>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FakeLogEntry {
+    pub timestamp: u64,
+    pub pid: u32,
+    pub tid: u32,
+    pub level: String,
+    pub tag: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug)]
@@ -177,6 +188,32 @@ impl FakeBridgeServer {
                 history: Vec::new(),
             }),
             app_state: tokio::sync::Mutex::new(FakeAppState::default()),
+            logs: tokio::sync::Mutex::new(vec![
+                FakeLogEntry {
+                    timestamp: 1000,
+                    pid: 100,
+                    tid: 101,
+                    level: "INFO".to_string(),
+                    tag: "AppInit".to_string(),
+                    message: "Application launched".to_string(),
+                },
+                FakeLogEntry {
+                    timestamp: 2000,
+                    pid: 100,
+                    tid: 101,
+                    level: "WARN".to_string(),
+                    tag: "Network".to_string(),
+                    message: "High latency detected".to_string(),
+                },
+                FakeLogEntry {
+                    timestamp: 3000,
+                    pid: 100,
+                    tid: 101,
+                    level: "ERROR".to_string(),
+                    tag: "CrashReporter".to_string(),
+                    message: "NullPointerException in user profile".to_string(),
+                },
+            ]),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -1346,6 +1383,100 @@ async fn route_request(
             };
             let resp = json!({
                 "history": filtered,
+                "count": filtered.len()
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("DELETE", "/logs") => {
+            let mut logs = state.logs.lock().await;
+            logs.clear();
+            let resp = json!({
+                "ok": true,
+                "cleared": true,
+                "count": 0
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("GET", "/logs") => {
+            let mut level_filter: Option<String> = None;
+            let mut tag_filter: Option<String> = None;
+            let mut since_filter: Option<u64> = None;
+            let mut limit_filter: Option<usize> = None;
+
+            for part in query_str.split('&') {
+                if let Some(val) = part.strip_prefix("level=") {
+                    level_filter = Some(decode_query_value(val));
+                } else if let Some(val) = part.strip_prefix("tag=") {
+                    tag_filter = Some(decode_query_value(val));
+                } else if let Some(val) = part.strip_prefix("since=") {
+                    since_filter = val.parse::<u64>().ok();
+                } else if let Some(val) = part.strip_prefix("limit=") {
+                    limit_filter = val.parse::<usize>().ok();
+                }
+            }
+
+            fn level_priority(lvl: &str) -> u8 {
+                match lvl.trim().to_uppercase().as_str() {
+                    "V" | "VERBOSE" => 2,
+                    "D" | "DEBUG" => 3,
+                    "I" | "INFO" => 4,
+                    "W" | "WARN" | "WARNING" => 5,
+                    "E" | "ERROR" | "F" | "FATAL" => 6,
+                    _ => 0,
+                }
+            }
+
+            if let Some(ref lvl) = level_filter {
+                if level_priority(lvl) == 0 {
+                    let err = json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": format!("Invalid level parameter: {lvl}")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            }
+
+            let logs = state.logs.lock().await;
+            let min_priority = level_filter.as_deref().map(level_priority).unwrap_or(0);
+            let limit = limit_filter.unwrap_or(100).clamp(1, 1000);
+
+            let mut filtered: Vec<&FakeLogEntry> = logs
+                .iter()
+                .filter(|entry| {
+                    (level_priority(&entry.level) >= min_priority)
+                        && tag_filter
+                            .as_ref()
+                            .map(|sub| entry.tag.to_lowercase().contains(&sub.to_lowercase()))
+                            .unwrap_or(true)
+                        && since_filter.map(|s| entry.timestamp > s).unwrap_or(true)
+                })
+                .collect();
+
+            if filtered.len() > limit {
+                filtered = if since_filter.is_some() {
+                    filtered.into_iter().take(limit).collect()
+                } else {
+                    let len = filtered.len();
+                    filtered.into_iter().skip(len - limit).collect()
+                };
+            }
+
+            let resp = json!({
+                "logs": filtered,
                 "count": filtered.len()
             });
             (

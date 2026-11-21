@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "logs_clear",
+  "kind": "scenario",
+  "description": "BB-L3: Clear logs via DELETE /logs, verify subsequent query is empty",
+  "steps": [
+    {
+      "action": "logs_clear",
+      "args": {},
+      "expect": {
+        "ok": true,
+        "cleared": true
+      }
+    },
+    {
+      "action": "logs_query",
+      "args": {},
+      "expect": {
+        "count": 0
+      }
+    }
+  ],
+  "assertions": []
+}

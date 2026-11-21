@@ -416,6 +416,68 @@ impl HttpBridgeClient {
         })
     }
 
+    pub async fn get_logs(
+        &self,
+        level: Option<&str>,
+        tag: Option<&str>,
+        since: Option<u64>,
+        limit: Option<usize>,
+    ) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/logs", self.base_url);
+        let mut req = self.client.get(&url);
+        if let Some(l) = level {
+            req = req.query(&[("level", l)]);
+        }
+        if let Some(t) = tag {
+            req = req.query(&[("tag", t)]);
+        }
+        let s_str;
+        if let Some(s) = since {
+            s_str = s.to_string();
+            req = req.query(&[("since", &s_str)]);
+        }
+        let lim_str;
+        if let Some(lim) = limit {
+            lim_str = lim.to_string();
+            req = req.query(&[("limit", &lim_str)]);
+        }
+        let resp = req.headers(self.headers()?).send().await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
+    pub async fn delete_logs(&self) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/logs", self.base_url);
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let body_text = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError {
+                status,
+                body: body_text,
+            });
+        }
+        serde_json::from_str(&body_text).map_err(|e| HttpBridgeError::StatusError {
+            status,
+            body: format!("Invalid JSON response: {e}"),
+        })
+    }
+
     pub async fn network_mode(&self, enabled: bool) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/network/mode", self.base_url);
         let resp = self

@@ -575,6 +575,31 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: false,
         },
+        // Group L: logcat ring buffer & diagnostic query (map 17 #82)
+        TestDef {
+            id: "BB-L1".to_string(),
+            name: "Query /logs with level=ERROR, verify filtered output".to_string(),
+            scenario_file: "logs_level_filter.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-L2".to_string(),
+            name: "Query /logs with since=<timestamp>, verify timestamp filtering".to_string(),
+            scenario_file: "logs_since_filter.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-L3".to_string(),
+            name: "Clear logs via DELETE /logs, verify subsequent query is empty".to_string(),
+            scenario_file: "logs_clear.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
     ]
 }
 
