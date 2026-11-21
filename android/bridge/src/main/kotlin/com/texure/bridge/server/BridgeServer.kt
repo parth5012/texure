@@ -50,8 +50,15 @@ class BridgeServer(
     val logcatReader: BridgeLogcatReader = BridgeLogcatReader()
 ) : NanoWSD(port) {
 
+    init {
+        logcatReader.onErrorLogged = { entry ->
+            broadcastLogError(entry)
+        }
+    }
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val activeWebSockets = CopyOnWriteArraySet<BridgeWebSocket>()
+    internal var onWebSocketBroadcast: ((String) -> Unit)? = null
     private val currentState = AtomicReference(BridgeState.IDLE)
 
     // Single-flight lock
@@ -159,6 +166,27 @@ class BridgeServer(
                     put("error", JSONObject().apply {
                         put("code", "INTERNAL_ERROR")
                         put("message", t.message ?: "state endpoint error")
+                    })
+                })
+            }
+        }
+        if (uri == "/logs") {
+            return try {
+                when (method) {
+                    Method.GET -> handleGetLogs(session)
+                    Method.DELETE -> handleDeleteLogs()
+                    else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", "NOT_FOUND")
+                            put("message", "Route not found: ${method.name} $uri")
+                        })
+                    })
+                }
+            } catch (t: Throwable) {
+                jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
+                    put("error", JSONObject().apply {
+                        put("code", "INTERNAL_ERROR")
+                        put("message", t.message ?: "logs endpoint error")
                     })
                 })
             }
@@ -1000,6 +1028,80 @@ class BridgeServer(
                 }
             } catch (_: Exception) {}
         }
+    }
+
+    internal fun broadcastLogError(entry: com.texure.bridge.logcat.LogEntry) {
+        val message = JSONObject().apply {
+            put("event", "log_error")
+            put("type", "log_error")
+            put("entry", entry.toJson())
+        }.toString()
+
+        try {
+            onWebSocketBroadcast?.invoke(message)
+        } catch (_: Exception) {}
+
+        for (ws in activeWebSockets) {
+            try {
+                if (ws.isOpen) {
+                    ws.send(message)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun handleGetLogs(session: IHTTPSession): Response {
+        val levelStr = session.parms["level"]
+        val level = if (levelStr != null) {
+            val parsed = com.texure.bridge.logcat.LogLevel.fromString(levelStr)
+                ?: return badRequest("Invalid level parameter: $levelStr. Allowed: V, D, I, W, E")
+            parsed
+        } else {
+            null
+        }
+
+        val tag = session.parms["tag"]?.takeIf { it.isNotBlank() }
+
+        val sinceStr = session.parms["since"]
+        val since = if (sinceStr != null) {
+            sinceStr.toLongOrNull() ?: return badRequest("Invalid 'since' timestamp: $sinceStr")
+        } else {
+            null
+        }
+
+        val limitStr = session.parms["limit"]
+        val limit = if (limitStr != null) {
+            limitStr.toIntOrNull() ?: return badRequest("Invalid 'limit' parameter: $limitStr")
+        } else {
+            100
+        }
+
+        val entries = logcatReader.ringBuffer.query(
+            level = level,
+            tag = tag,
+            since = since,
+            limit = limit
+        )
+
+        val logsArray = JSONArray()
+        for (entry in entries) {
+            logsArray.put(entry.toJson())
+        }
+
+        val response = JSONObject().apply {
+            put("logs", logsArray)
+            put("count", logsArray.length())
+        }
+        return jsonResponse(Response.Status.OK, response)
+    }
+
+    private fun handleDeleteLogs(): Response {
+        logcatReader.ringBuffer.clear()
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            put("cleared", true)
+            put("count", 0)
+        })
     }
 
     override fun stop() {
