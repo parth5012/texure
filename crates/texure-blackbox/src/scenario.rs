@@ -106,6 +106,11 @@ impl Scenario {
             "state_snapshot_save",
             "state_snapshot_restore",
             "state_snapshots_list",
+            // Group L: logcat ring buffer & diagnostic query (map 17 #82)
+            "logs_query",
+            "logs_get",
+            "logs_clear",
+            "logs_delete",
         ];
 
         for step in &self.steps {

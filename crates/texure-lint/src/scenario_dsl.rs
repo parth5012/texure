@@ -73,6 +73,11 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "state_snapshot_save",
         "state_snapshot_restore",
         "state_snapshots_list",
+        // Group L: logcat ring buffer & diagnostic query (map 17 #82)
+        "logs_query",
+        "logs_get",
+        "logs_clear",
+        "logs_delete",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 

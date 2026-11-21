@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "logs_level_filter",
+  "kind": "scenario",
+  "description": "BB-L1: Query /logs with level=ERROR, verify filtered output",
+  "steps": [
+    {
+      "action": "logs_query",
+      "args": {
+        "level": "ERROR"
+      },
+      "expect": {
+        "count": 1,
+        "logs.0.level": "ERROR"
+      }
+    }
+  ],
+  "assertions": []
+}

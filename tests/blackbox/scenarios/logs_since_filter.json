@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "logs_since_filter",
+  "kind": "scenario",
+  "description": "BB-L2: Query /logs with since=<timestamp>, verify timestamp filtering",
+  "steps": [
+    {
+      "action": "logs_query",
+      "args": {
+        "since": 2500
+      },
+      "expect": {
+        "count": 1,
+        "logs.0.timestamp": 3000
+      }
+    }
+  ],
+  "assertions": []
+}
