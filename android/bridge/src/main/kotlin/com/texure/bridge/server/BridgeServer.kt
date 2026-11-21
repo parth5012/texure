@@ -11,6 +11,8 @@ import android.os.PowerManager
 import com.texure.bridge.crash.BridgeCrashHandler
 import com.texure.bridge.intent.BridgeIntentDispatcher
 import com.texure.bridge.intent.IntentDispatchResult
+import com.texure.bridge.notification.BridgeNotificationSimulator
+import com.texure.bridge.notification.NotificationSimulateResult
 import com.texure.bridge.logcat.BridgeLogcatReader
 import com.texure.bridge.model.BridgeError
 import com.texure.bridge.model.BridgeState
@@ -73,6 +75,7 @@ class BridgeServer(
     val intentDispatcher: BridgeIntentDispatcher = BridgeIntentDispatcher(context, treeExtractor) { rev ->
         broadcastTreeChanged(rev)
     }
+    val notificationSimulator: BridgeNotificationSimulator = BridgeNotificationSimulator(context)
 
     fun setHumanSteering() {
         currentState.set(BridgeState.HUMAN_STEERING)
@@ -197,6 +200,27 @@ class BridgeServer(
                 })
             }
         }
+        if (isNotificationRoute(method, uri)) {
+            return try {
+                when {
+                    method == Method.POST && uri == "/notification/simulate" -> handlePostNotificationSimulate(session)
+                    method == Method.DELETE && uri == "/notification" -> handleDeleteNotification(session)
+                    else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", "NOT_FOUND")
+                            put("message", "Route not found: ${method.name} $uri")
+                        })
+                    })
+                }
+            } catch (t: Throwable) {
+                jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
+                    put("error", JSONObject().apply {
+                        put("code", "INTERNAL_ERROR")
+                        put("message", t.message ?: "notification simulation error")
+                    })
+                })
+            }
+        }
         val lockResponse = checkSingleFlightLock(clientHandle)
         if (lockResponse != null) {
             return lockResponse
@@ -230,6 +254,52 @@ class BridgeServer(
                 })
             })
         }
+    }
+
+    // --- Notification simulation routes (map #87, ticket #85) ---
+
+    private fun isNotificationRoute(method: Method, uri: String): Boolean =
+        (method == Method.POST && uri == "/notification/simulate") ||
+        (method == Method.DELETE && uri == "/notification")
+
+    private fun handlePostNotificationSimulate(session: IHTTPSession): Response {
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        return when (val res = notificationSimulator.simulate(body)) {
+            is NotificationSimulateResult.Success -> {
+                jsonResponse(Response.Status.OK, JSONObject().apply {
+                    put("ok", true)
+                    put("id", res.id)
+                    put("channel_id", res.channelId)
+                })
+            }
+            is NotificationSimulateResult.Error -> {
+                jsonResponse(
+                    Response.Status.lookup(res.httpStatus) ?: Response.Status.BAD_REQUEST,
+                    JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", res.code)
+                            put("message", res.message)
+                        })
+                    }
+                )
+            }
+        }
+    }
+
+    private fun handleDeleteNotification(session: IHTTPSession): Response {
+        drainBody(session)
+        val idParam = session.parameters["id"]?.firstOrNull()?.toIntOrNull()
+            ?: session.parms["id"]?.toIntOrNull()
+        val res = notificationSimulator.cancel(idParam)
+        return jsonResponse(Response.Status.OK, JSONObject().apply {
+            put("ok", true)
+            if (res.id != null) {
+                put("id", res.id)
+            } else {
+                put("id", JSONObject.NULL)
+            }
+            put("cancelled", res.isCancelled)
+        })
     }
 
     // --- Workflow recording control routes (contract: /recording/*, map #6 #23) ---
