@@ -473,3 +473,10 @@
 - Restored Map 9 blackbox runner capabilities alongside Map 8 additions (`POST /tag`, region screenshot, hash targeting).
 - Applied Council review rounds 1-3 fixes: xfail write-first tracking, threat model documentation in DECISIONS.md/docs/guardrails.md, target parity, and test suite verification.
 - VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings) · L1 pass (`cargo test --workspace` 80/80 passed) · clippy clean (0 warnings) · fmt clean · L2 pass (`mcp-fake` 17 pass / 13 xfail / 0 fail; `mcp-real` 17 pass / 13 xfail / 5 skip / 0 fail).
+
+## 2026-11-20 (session) — Wayfinder Map 17 / #83: In-app logcat ring buffer & diagnostic query API
+- Executed Wayfinder Map 17 tickets end-to-end (#80, #81, #82):
+  - Ticket #80: Implemented `BridgeLogcatReader` daemon thread reading `logcat -v threadtime --pid=<own_pid>`, regex parsing date, time, pid, tid, level, tag, and message; implemented memory-safe rolling `LogRingBuffer` capped at 2,000 entries with thread-safe synchronized access.
+  - Ticket #81: Implemented `GET /logs` with `level`, `tag`, `since`, and `limit` query parameters, and `DELETE /logs` buffer clear; implemented WebSocket real-time `log_error` broadcast event.
+  - Ticket #82: Implemented FakeBridge endpoints for `GET /logs` and `DELETE /logs`, scenario DSL actions `logs_query` and `logs_clear`, and blackbox scenarios BB-L1 (`logs_level_filter.json`), BB-L2 (`logs_since_filter.json`), and BB-L3 (`logs_clear.json`).
+- VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings, `cargo clippy --workspace -- -D warnings` 0 warnings) · L1 pass (`cargo test --workspace` all passed, `./gradlew :bridge:testDebugUnitTest` 37/37 tasks green) · L2 pass (`mcp-fake` 26/26 passed including BB-L1, BB-L2, BB-L3).

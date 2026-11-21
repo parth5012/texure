@@ -97,7 +97,7 @@ Optional query `region=x,y,w,h` (map #36, ticket #30): crops the captured bitmap
 
 ### GET /ws
 
-WebSocket. Bridge pushes `{ "type": "tree_changed", "rev": N }`. Extra event types later are additive; the route name does not change.
+WebSocket. Bridge pushes `{ "type": "tree_changed", "rev": N }` or real-time error log notifications `{ "event": "log_error", "type": "log_error", "entry": { ... } }` when an in-process ERROR-level log is captured. Extra event types later are additive; the route name does not change.
 
 ### GET /last-crash
 
@@ -358,6 +358,45 @@ Response:
 ```json
 {
   "snapshots": ["post_onboarding"]
+}
+```
+
+### Diagnostic log buffer & query routes (map #17, #83)
+
+In-process capture of own-PID application logcat into a rolling circular ring buffer (last 2,000 entries, ~500 KB RAM limit).
+
+#### GET /logs
+
+Returns buffered log entries matching filter criteria:
+- `level=V|D|I|W|E`: filters entries by minimum severity level.
+- `tag=<substring>`: case-insensitive tag substring filter.
+- `since=<epoch_ms>`: returns entries newer than timestamp.
+- `limit=<int>`: default 100, max 1,000.
+
+```json
+{
+  "logs": [
+    {
+      "timestamp": 1730370000000,
+      "pid": 1234,
+      "tid": 5678,
+      "level": "ERROR",
+      "tag": "MyTag",
+      "message": "Something failed"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### DELETE /logs
+
+Clears the rolling log buffer. Response:
+```json
+{
+  "ok": true,
+  "cleared": true,
+  "count": 0
 }
 ```
 
