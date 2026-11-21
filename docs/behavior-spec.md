@@ -184,6 +184,16 @@ Rows below define the contract for debug-only state inspection, direct seeding o
 | Logcat timestamp filtering | BB-L2 | Query `GET /logs?since=<timestamp>`, verify response only returns entries newer than timestamp. |
 | Logcat buffer clear | BB-L3 | Trigger `DELETE /logs`, verify subsequent query is empty and buffer is cleared. |
 
+## 3D. Deep-link & push notification simulator [D] (map 18, #87)
+
+Rows below define the contract for package-scoped deep-link intent routing and native push notification simulation with auto-channel creation.
+
+| Behavior | Test ID | Spec |
+|---|---|---|
+| Deep-link intent dispatch | BB-D1 | Dispatch deep-link intent via `POST /intent`, verify package scoping enforcement (`intent.setPackage(context.packageName)`), activity resolution, and tree revision bump. |
+| Push notification simulation | BB-D2 | Simulate notification via `POST /notification/simulate`, verify automatic debug channel creation (`texure_debug_channel`), pending intent attachment, and notification dismissal via `DELETE /notification`. |
+| Cross-package intent rejection | BB-D3 | Attempt cross-package intent dispatch, verify hard rejection with HTTP 400 error enforcing Guardrail G6 boundary. |
+
 ## 4. Explicit non-behaviors (v1)
 
 - No auto-wake of a powered-off screen by the in-app bridge (remote wake via Shizuku in §3R BB-R7 is an explicitly guarded remote bootstrap exception).
@@ -193,5 +203,5 @@ Rows below define the contract for debug-only state inspection, direct seeding o
 
 ## 5. Verification hooks (link to testing-architecture)
 
-- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13), plus Group N network scenarios `network_mock_response`, `network_history`, `network_mode_passthrough` (BB-N1..BB-N3), plus Group S state scenarios `state_reset`, `state_prefs`, `state_snapshots` (BB-S1..BB-S3), plus Group L log scenarios `logs_level_filter`, `logs_since_filter`, `logs_clear` (BB-L1..BB-L3).
+- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13), plus Group N network scenarios `network_mock_response`, `network_history`, `network_mode_passthrough` (BB-N1..BB-N3), plus Group S state scenarios `state_reset`, `state_prefs`, `state_snapshots` (BB-S1..BB-S3), plus Group L log scenarios `logs_level_filter`, `logs_since_filter`, `logs_clear` (BB-L1..BB-L3), plus Group D deep-link and notification scenarios `deep_link_intent`, `notification_simulate`, `cross_package_intent` (BB-D1..BB-D3).
 - The spec as a whole is the input to the behavior-driven test matrix; breaking a row is a bug, not a choice.

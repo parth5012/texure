@@ -400,6 +400,89 @@ Clears the rolling log buffer. Response:
 }
 ```
 
+### Deep-link Intent Routing & Notification Simulation (Map 18, #87)
+
+Additive routes for deep-link testing and local notification simulation.
+
+#### POST /intent
+
+Dispatches a package-scoped Android Intent for deep-link navigation testing.
+
+```json
+{
+  "action": "android.intent.action.VIEW",
+  "uri": "app://example/path",
+  "extras": { "userId": 123, "ref": "promo", "active": true },
+  "flags": ["FLAG_ACTIVITY_NEW_TASK", "FLAG_ACTIVITY_CLEAR_TOP"],
+  "package": "com.texure.sample"
+}
+```
+
+- `action`: optional string, defaults to `android.intent.action.VIEW` if `uri` is provided.
+- `uri`: optional URI string.
+- `extras`: optional map of primitive extras (String, Int, Long, Double, Boolean).
+- `flags`: optional list of flag strings from standard `Intent.FLAG_*`. `FLAG_ACTIVITY_NEW_TASK` is always enforced.
+- `package`: optional package name. Enforces package-scoping: must match the target app's own `packageName`, or is rejected with 400 `CROSS_PACKAGE_FORBIDDEN` (Guardrail G6). In all cases, `intent.setPackage(context.packageName)` is enforced.
+- **Tree revision:** On successful activity transition, tree revision is bumped and `tree_changed` is broadcast over `/ws`.
+
+Response (200 OK):
+```json
+{
+  "ok": true,
+  "action": "android.intent.action.VIEW",
+  "uri": "app://example/path",
+  "package": "com.texure.sample",
+  "rev": 43
+}
+```
+
+Errors:
+- 400 if URI syntax is invalid or activity cannot be resolved (`ACTIVITY_NOT_FOUND`).
+- 400 if `package` targets a foreign package (`CROSS_PACKAGE_FORBIDDEN`).
+
+#### POST /notification/simulate
+
+Simulates local push notification delivery with automatic notification channel registration.
+
+```json
+{
+  "title": "New Message",
+  "body": "You have received a new notification",
+  "channel_id": "texure_debug_channel",
+  "intent_uri": "app://example/chat/42",
+  "small_icon": "ic_notification"
+}
+```
+
+- `title`: required notification title string.
+- `body`: required notification content text string.
+- `channel_id`: optional notification channel ID; if missing or does not exist, automatically creates debug channel `texure_debug_channel` with high importance.
+- `intent_uri`: optional deep-link URI attached as `PendingIntent` to the notification content intent.
+- `small_icon`: optional drawable resource name; falls back to app icon.
+
+Response (200 OK):
+```json
+{
+  "ok": true,
+  "id": 1,
+  "channel_id": "texure_debug_channel"
+}
+```
+
+#### DELETE /notification
+
+Cancels a simulated notification by ID.
+
+Query param: `?id=<int>`.
+Response (200 OK):
+```json
+{
+  "ok": true,
+  "id": 1,
+  "cancelled": true
+}
+```
+
 ### (tool note, agent-facing)
 
 MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`.

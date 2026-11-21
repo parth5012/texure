@@ -9,6 +9,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import com.texure.bridge.crash.BridgeCrashHandler
+import com.texure.bridge.intent.BridgeIntentDispatcher
+import com.texure.bridge.intent.IntentDispatchResult
 import com.texure.bridge.logcat.BridgeLogcatReader
 import com.texure.bridge.model.BridgeError
 import com.texure.bridge.model.BridgeState
@@ -67,6 +69,10 @@ class BridgeServer(
     private val lockTimeoutMs = 60_000L
 
     val state: BridgeState get() = currentState.get()
+
+    val intentDispatcher: BridgeIntentDispatcher = BridgeIntentDispatcher(context, treeExtractor) { rev ->
+        broadcastTreeChanged(rev)
+    }
 
     fun setHumanSteering() {
         currentState.set(BridgeState.HUMAN_STEERING)
@@ -206,6 +212,7 @@ class BridgeServer(
                 method == Method.POST && uri == "/keypress" -> handlePostKeypress(session)
                 method == Method.POST && uri == "/back" -> handlePostBack()
                 method == Method.POST && uri == "/tag" -> handlePostTag(session)
+                method == Method.POST && uri == "/intent" -> handlePostIntent(session)
                 method == Method.GET && uri == "/screenshot" -> handleGetScreenshot(session)
                 method == Method.GET && uri == "/last-crash" -> handleGetLastCrash()
                 else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
@@ -824,6 +831,35 @@ class BridgeServer(
         } catch (_: Exception) {
             currentState.set(BridgeState.IDLE)
             badRequest("Invalid tag request")
+        }
+    }
+
+    private fun handlePostIntent(session: IHTTPSession): Response {
+        val refusal = checkDeviceReadiness(mutating = true)
+        if (refusal != null) return refusal
+
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        return when (val res = intentDispatcher.dispatch(body)) {
+            is IntentDispatchResult.Success -> {
+                jsonResponse(Response.Status.OK, JSONObject().apply {
+                    put("ok", true)
+                    put("action", res.action)
+                    put("uri", res.uri ?: JSONObject.NULL)
+                    put("package", res.pkg)
+                    put("rev", res.rev)
+                })
+            }
+            is IntentDispatchResult.Error -> {
+                jsonResponse(
+                    Response.Status.lookup(res.httpStatus) ?: Response.Status.BAD_REQUEST,
+                    JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", res.code)
+                            put("message", res.message)
+                        })
+                    }
+                )
+            }
         }
     }
 

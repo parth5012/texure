@@ -56,6 +56,8 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
         "BB-S1", "BB-S2", "BB-S3",
         // Group L: in-app logcat ring buffer & diagnostic query (map 17 #82)
         "BB-L1", "BB-L2", "BB-L3",
+        // Group D: deep-link & push notification simulation (map 18 #87)
+        "BB-D1", "BB-D2", "BB-D3",
     ];
 
     let mut mapped_bb_ids: std::collections::HashMap<String, usize> =
@@ -63,7 +65,7 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
     let mut behavior_rows = Vec::new();
 
     static BB_REGEX: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"BB-(?:[A-C]|R|N|S|L)[0-9]+").unwrap());
+        std::sync::LazyLock::new(|| Regex::new(r"BB-(?:[A-C]|R|N|S|L|D)[0-9]+").unwrap());
 
     let lines: Vec<&str> = content.lines().collect();
     let mut in_table = false;
