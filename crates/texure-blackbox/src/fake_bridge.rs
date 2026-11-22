@@ -1937,10 +1937,13 @@ async fn route_request(
 
             // Transition: Bump revision
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
-            let _ = state.ws_sender.send(json!({
-                "type": "tree_changed",
-                "rev": new_rev
-            }).to_string());
+            let _ = state.ws_sender.send(
+                json!({
+                    "type": "tree_changed",
+                    "rev": new_rev
+                })
+                .to_string(),
+            );
 
             let resp = json!({
                 "ok": true,
@@ -1973,8 +1976,16 @@ async fn route_request(
                 }
             };
 
-            let title = req_json.get("title").and_then(|t| t.as_str()).unwrap_or("").trim();
-            let body_text = req_json.get("body").and_then(|b| b.as_str()).unwrap_or("").trim();
+            let title = req_json
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .trim();
+            let body_text = req_json
+                .get("body")
+                .and_then(|b| b.as_str())
+                .unwrap_or("")
+                .trim();
 
             if title.is_empty() || body_text.is_empty() {
                 let err = json!({

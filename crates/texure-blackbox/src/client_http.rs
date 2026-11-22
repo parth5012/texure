@@ -752,7 +752,10 @@ impl HttpBridgeClient {
         }
     }
 
-    pub async fn post_notification_simulate(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+    pub async fn post_notification_simulate(
+        &self,
+        payload: &Value,
+    ) -> Result<Value, HttpBridgeError> {
         let url = format!("{}/notification/simulate", self.base_url);
         let resp = self
             .client
