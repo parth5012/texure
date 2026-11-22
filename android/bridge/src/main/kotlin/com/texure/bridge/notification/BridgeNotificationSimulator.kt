@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -25,6 +26,7 @@ class BridgeNotificationSimulator(
     companion object {
         const val DEFAULT_CHANNEL_ID = "texure_debug_channel"
         const val DEFAULT_CHANNEL_NAME = "Texure Debug Channel"
+        const val BRIDGE_NOTIFICATION_TAG = "texure_bridge_notification"
     }
 
     private val idCounter = AtomicInteger(1)
@@ -41,10 +43,19 @@ class BridgeNotificationSimulator(
             )
         }
 
+        val nmCompat = NotificationManagerCompat.from(context)
+        if (!nmCompat.areNotificationsEnabled()) {
+            return NotificationSimulateResult.Error(
+                code = "NOTIFICATIONS_DISABLED",
+                message = "Notifications are disabled for package ${context.packageName}. Grant POST_NOTIFICATIONS runtime permission.",
+                httpStatus = 403
+            )
+        }
+
         val requestedChannel = payload.optString("channel_id").takeIf { it.isNotBlank() }
         val effectiveChannelId = resolveOrCreateChannel(requestedChannel)
 
-        val id = if (payload.has("id")) payload.optInt("id", idCounter.getAndIncrement()) else idCounter.getAndIncrement()
+        val id = if (payload.has("id")) payload.getInt("id") else idCounter.getAndIncrement()
 
         val builder = NotificationCompat.Builder(context, effectiveChannelId)
             .setContentTitle(title)
@@ -64,17 +75,13 @@ class BridgeNotificationSimulator(
                 `package` = context.packageName
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             val pendingIntent = PendingIntent.getActivity(context, id, deepLinkIntent, flags)
             builder.setContentIntent(pendingIntent)
         }
 
         return try {
-            notificationManager.notify(id, builder.build())
+            notificationManager.notify(BRIDGE_NOTIFICATION_TAG, id, builder.build())
             NotificationSimulateResult.Success(id = id, channelId = effectiveChannelId)
         } catch (e: Exception) {
             NotificationSimulateResult.Error(
@@ -87,30 +94,40 @@ class BridgeNotificationSimulator(
 
     fun cancel(id: Int?): NotificationCancelResult {
         return if (id != null) {
-            notificationManager.cancel(id)
-            NotificationCancelResult(id = id, isCancelled = true)
+            try {
+                notificationManager.cancel(BRIDGE_NOTIFICATION_TAG, id)
+                NotificationCancelResult(id = id, isCancelled = true)
+            } catch (_: Exception) {
+                NotificationCancelResult(id = id, isCancelled = false)
+            }
         } else {
-            notificationManager.cancelAll()
-            NotificationCancelResult(id = null, isCancelled = true)
+            NotificationCancelResult(id = null, isCancelled = false)
         }
     }
 
     private fun resolveOrCreateChannel(channelId: String?): String {
-        val targetChannel = channelId ?: DEFAULT_CHANNEL_ID
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val existing = notificationManager.getNotificationChannel(targetChannel)
-            if (existing == null) {
+            val trimmed = channelId?.trim()
+            if (!trimmed.isNullOrEmpty()) {
+                val existing = notificationManager.getNotificationChannel(trimmed)
+                if (existing != null) {
+                    return trimmed
+                }
+            }
+            // Fall back to DEFAULT_CHANNEL_ID (texure_debug_channel)
+            if (notificationManager.getNotificationChannel(DEFAULT_CHANNEL_ID) == null) {
                 val channel = NotificationChannel(
-                    targetChannel,
-                    if (targetChannel == DEFAULT_CHANNEL_ID) DEFAULT_CHANNEL_NAME else targetChannel,
+                    DEFAULT_CHANNEL_ID,
+                    DEFAULT_CHANNEL_NAME,
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "Texure debug notification simulation channel"
                 }
                 notificationManager.createNotificationChannel(channel)
             }
+            return DEFAULT_CHANNEL_ID
         }
-        return targetChannel
+        return channelId?.trim()?.ifEmpty { DEFAULT_CHANNEL_ID } ?: DEFAULT_CHANNEL_ID
     }
 
     private fun resolveIcon(iconName: String?): Int {

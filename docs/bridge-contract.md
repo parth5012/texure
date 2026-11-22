@@ -471,9 +471,9 @@ Response (200 OK):
 
 #### DELETE /notification
 
-Cancels a simulated notification by ID.
+Cancels a simulated notification by ID. Simulated notifications are tagged with `texure_bridge_notification` to prevent collisions with host application notifications.
 
-Query param: `?id=<int>`.
+Query param: `?id=<int>` (required; 400 Bad Request if missing or non-integer).
 Response (200 OK):
 ```json
 {
@@ -521,6 +521,9 @@ MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `scree
 | `SNAPSHOT_ERROR` | bridge | 400 | snapshot creation failure | verify storage space and permissions |
 | `RESTORE_ERROR` | bridge | 400 | snapshot restoration failure | verify snapshot integrity |
 | `COMMIT_FAILED` | bridge | 500 | preference commit failure | retry mutation |
+| `CROSS_PACKAGE_FORBIDDEN` | bridge | 400 | target package is foreign / cross-package | intents must target own package (Guardrail G6) |
+| `ACTIVITY_NOT_FOUND` | bridge | 400 | intent could not resolve to any activity in target package | verify activity filter or URI scheme |
+| `NOTIFICATIONS_DISABLED` | bridge | 403 | app notification permission denied or disabled | grant POST_NOTIFICATIONS runtime permission |
 
 **Non-error row (separate so lint's code sweep doesn't false-positive):** `WAIT_TIMEOUT` — `wait_for` expiry returns `{ "ok": false, "last_rev": N }` plus the re-plan hint, NOT the error envelope. Removed: `APP_BUSY` (was the draft alias of the single-flight refusal; `BUSY` is the one name).
 

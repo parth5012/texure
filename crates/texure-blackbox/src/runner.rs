@@ -2768,7 +2768,10 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                 }
             },
             "notification_cancel" => {
-                let id = step.args.get("id").and_then(|v| v.as_u64());
+                let id = step.args.get("id").and_then(|v| {
+                    v.as_u64()
+                        .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+                });
                 match client.delete_notification(id).await {
                     Ok(resp) => {
                         last_response = resp;
