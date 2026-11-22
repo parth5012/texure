@@ -270,6 +270,48 @@ class BridgeNotificationSimulatorTest {
     }
 
     @Test
+    fun testSimulateWithCoercedStringIdReturns400() {
+        val payload = JSONObject().apply {
+            put("title", "Coerced String ID Alert")
+            put("body", "String numeric id should fail without coercion")
+            put("id", "5")
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("BAD_REQUEST", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
+    fun testSimulateWithFloatIdReturns400() {
+        val payload = JSONObject().apply {
+            put("title", "Float ID Alert")
+            put("body", "Float id should not be truncated")
+            put("id", 5.5)
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("BAD_REQUEST", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
+    fun testSimulateWithOverflowIdReturns400() {
+        val payload = JSONObject().apply {
+            put("title", "Overflow ID Alert")
+            put("body", "ID exceeding Int.MAX_VALUE should fail")
+            put("id", 3000000000L)
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("BAD_REQUEST", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
     fun testCancelUnknownNotificationReturnsFalse() {
         val cancelResult = simulator.cancel(999)
         assertFalse(cancelResult.isCancelled)

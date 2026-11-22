@@ -57,10 +57,11 @@ class BridgeNotificationSimulator(
         val effectiveChannelId = resolveOrCreateChannel(requestedChannel)
 
         val id = if (payload.has("id")) {
-            val customId = try {
-                if (payload.isNull("id")) -1 else payload.getInt("id")
-            } catch (_: Exception) {
-                -1
+            val rawId = payload.opt("id")
+            val customId = when (rawId) {
+                is Int -> rawId
+                is Long -> if (rawId in 1..Int.MAX_VALUE) rawId.toInt() else -1
+                else -> -1
             }
             if (customId <= 0) {
                 return NotificationSimulateResult.Error(

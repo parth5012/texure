@@ -411,7 +411,7 @@ Dispatches a package-scoped Android Intent for deep-link navigation testing.
 ```json
 {
   "action": "android.intent.action.VIEW",
-  "uri": "app://example/path",
+  "uri": "texure://sample/path",
   "categories": ["android.intent.category.BROWSABLE"],
   "extras": { "userId": 123, "ref": "promo", "active": true },
   "flags": ["FLAG_ACTIVITY_NEW_TASK", "FLAG_ACTIVITY_CLEAR_TOP"],
@@ -432,7 +432,7 @@ Response (200 OK):
 {
   "ok": true,
   "action": "android.intent.action.VIEW",
-  "uri": "app://example/path",
+  "uri": "texure://sample/path",
   "package": "com.texure.sample",
   "rev": 43
 }
@@ -451,7 +451,7 @@ Simulates local push notification delivery with automatic notification channel r
   "title": "New Message",
   "body": "You have received a new notification",
   "channel_id": "texure_debug_channel",
-  "intent_uri": "app://example/chat/42",
+  "intent_uri": "texure://sample/chat/42",
   "small_icon": "ic_notification",
   "id": 1
 }

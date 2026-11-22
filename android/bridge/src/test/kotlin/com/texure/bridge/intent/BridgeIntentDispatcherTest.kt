@@ -153,6 +153,19 @@ class BridgeIntentDispatcherTest {
     }
 
     @Test
+    fun testHostMismatchReturns400ActivityNotFound() {
+        val payload = JSONObject().apply {
+            put("uri", "texure://sampleevil/x")
+        }
+
+        val result = dispatcher.dispatch(payload)
+        assertTrue("Expected Error result, got $result", result is IntentDispatchResult.Error)
+        val error = result as IntentDispatchResult.Error
+        assertEquals("ACTIVITY_NOT_FOUND", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
     fun testIntentWithCategories() {
         val catIntent = Intent(Intent.ACTION_VIEW, Uri.parse("texure://sample/profile")).apply {
             `package` = activity.packageName
