@@ -34,6 +34,16 @@
       "expect": {
         "error.code": "ACTIVITY_NOT_FOUND"
       }
+    },
+    {
+      "action": "intent_dispatch",
+      "args": {
+        "action": "android.intent.action.VIEW",
+        "uri": "texure://sampleevil/x"
+      },
+      "expect": {
+        "error.code": "ACTIVITY_NOT_FOUND"
+      }
     }
   ],
   "assertions": []

@@ -46,6 +46,40 @@
       "expect": {
         "error.code": "BAD_REQUEST"
       }
+    },
+    {
+      "action": "notification_simulate",
+      "args": {
+        "title": "String ID Test",
+        "body": "Should fail with BAD_REQUEST",
+        "id": "5"
+      },
+      "expect": {
+        "error.code": "BAD_REQUEST"
+      }
+    },
+    {
+      "action": "notification_simulate",
+      "args": {
+        "title": "Float ID Test",
+        "body": "Should fail with BAD_REQUEST",
+        "id": 5.5
+      },
+      "expect": {
+        "error.code": "BAD_REQUEST"
+      }
+    },
+    {
+      "action": "notification_simulate",
+      "args": {
+        "title": "Custom ID Test",
+        "body": "Should succeed with custom id",
+        "id": 42
+      },
+      "expect": {
+        "ok": true,
+        "id": 42
+      }
     }
   ],
   "assertions": []
