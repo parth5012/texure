@@ -78,6 +78,11 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "logs_get",
         "logs_clear",
         "logs_delete",
+        // Group D: deep-link & push notification simulator (map 18 #87)
+        "intent_dispatch",
+        "intent",
+        "notification_simulate",
+        "notification_cancel",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 
