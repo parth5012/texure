@@ -2811,7 +2811,7 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                         return Err((steps, format!("notification_cancel failed: {e}")));
                     }
                 }
-            },
+            }
             other => {
                 server.stop();
                 return Err((
