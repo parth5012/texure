@@ -25,6 +25,16 @@
         "ok": true,
         "cancelled": true
       }
+    },
+    {
+      "action": "notification_cancel",
+      "args": {
+        "id": 999
+      },
+      "expect": {
+        "ok": true,
+        "cancelled": false
+      }
     }
   ],
   "assertions": []

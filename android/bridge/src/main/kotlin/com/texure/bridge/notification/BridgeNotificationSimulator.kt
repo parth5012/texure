@@ -55,7 +55,19 @@ class BridgeNotificationSimulator(
         val requestedChannel = payload.optString("channel_id").takeIf { it.isNotBlank() }
         val effectiveChannelId = resolveOrCreateChannel(requestedChannel)
 
-        val id = if (payload.has("id")) payload.getInt("id") else idCounter.getAndIncrement()
+        val id = if (payload.has("id")) {
+            val customId = payload.optInt("id", -1)
+            if (customId <= 0) {
+                return NotificationSimulateResult.Error(
+                    code = "BAD_REQUEST",
+                    message = "Invalid 'id' parameter: must be a positive integer",
+                    httpStatus = 400
+                )
+            }
+            customId
+        } else {
+            idCounter.getAndIncrement()
+        }
 
         val builder = NotificationCompat.Builder(context, effectiveChannelId)
             .setContentTitle(title)

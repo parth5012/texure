@@ -25,6 +25,11 @@ class MainActivity : AppCompatActivity() {
 
         // Attach bridge overlay in debug builds (Guardrail G1 compliant)
         if (BuildConfig.DEBUG) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+                }
+            }
             try {
                 val overlayClass = Class.forName("com.texure.bridge.overlay.BridgeOverlay")
                 val installMethod = overlayClass.getMethod("install", android.app.Activity::class.java)

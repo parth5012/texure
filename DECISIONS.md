@@ -368,3 +368,12 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 
 2. **Automatic Debug Notification Channel Fallback.**
    - *What:* `POST /notification/simulate` automatically registers debug notification channel `texure_debug_channel` with high importance if the requested channel does not exist, attaching deep-link PendingIntents for local notification traversal without external FCM services.
+
+3. **Council Hardening & Notification Route Safety Semantics.**
+   - *What:* Addressed Council adversarial reviews across Gemini 3.8 Flash, Hy4 Flash, and DeepSeek V4.1 Flash:
+     - Notification routes (`POST /notification/simulate` and `DELETE /notification`) are protected under single-flight locking, crash-action recording, and mutating device readiness checks (`checkDeviceReadiness(mutating = true)`).
+     - Android 13+ (API 33+) runtime notification permission is checked prior to simulation; disabled notifications return HTTP 403 `NOTIFICATIONS_DISABLED`.
+     - `DELETE /notification` strictly requires integer `?id=<int>` query parameter (400 if missing or invalid), eliminating un-scoped `cancelAll()`.
+     - Simulated notifications are isolated to tag `texure_bridge_notification` (`BRIDGE_NOTIFICATION_TAG`) to prevent collisions with host app notifications.
+     - `POST /intent` accepts optional `categories` array attached via `intent.addCategory()`, and resolves activities via `PackageManager.MATCH_DEFAULT_ONLY` verifying `resolveInfo.activityInfo?.packageName == ownPackage`.
+     - Canonical error codes `CROSS_PACKAGE_FORBIDDEN` (400), `ACTIVITY_NOT_FOUND` (400), and `NOTIFICATIONS_DISABLED` (403) documented in contract error table.

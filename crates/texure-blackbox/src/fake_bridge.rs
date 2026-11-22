@@ -41,6 +41,8 @@ pub struct FakeBridgeState {
     pub network: tokio::sync::Mutex<FakeNetworkState>,
     pub app_state: tokio::sync::Mutex<FakeAppState>,
     pub logs: tokio::sync::Mutex<Vec<FakeLogEntry>>,
+    pub simulated_notifications: tokio::sync::Mutex<std::collections::HashSet<u64>>,
+    pub next_notification_id: AtomicU64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -214,6 +216,8 @@ impl FakeBridgeServer {
                     message: "NullPointerException in user profile".to_string(),
                 },
             ]),
+            simulated_notifications: tokio::sync::Mutex::new(std::collections::HashSet::new()),
+            next_notification_id: AtomicU64::new(1),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -1932,7 +1936,13 @@ async fn route_request(
             let action = req_json
                 .get("action")
                 .and_then(|a| a.as_str())
-                .unwrap_or("android.intent.action.VIEW");
+                .unwrap_or_else(|| {
+                    if req_json.get("uri").is_some() {
+                        "android.intent.action.VIEW"
+                    } else {
+                        "android.intent.action.MAIN"
+                    }
+                });
             let uri = req_json.get("uri").and_then(|u| u.as_str());
 
             if let Some(u) = uri {
@@ -2029,7 +2039,12 @@ async fn route_request(
                     channel_id_raw
                 };
 
-            let id = req_json.get("id").and_then(|i| i.as_u64()).unwrap_or(1);
+            let id = if let Some(custom_id) = req_json.get("id").and_then(|i| i.as_u64()) {
+                custom_id
+            } else {
+                state.next_notification_id.fetch_add(1, Ordering::SeqCst)
+            };
+            state.simulated_notifications.lock().await.insert(id);
 
             let resp = json!({
                 "ok": true,
@@ -2064,10 +2079,14 @@ async fn route_request(
                 );
             }
 
+            let target_id = notif_id.unwrap();
+            let mut active = state.simulated_notifications.lock().await;
+            let was_cancelled = active.remove(&target_id);
+
             let resp = json!({
                 "ok": true,
-                "id": notif_id,
-                "cancelled": true
+                "id": target_id,
+                "cancelled": was_cancelled
             });
             (
                 "200 OK",
