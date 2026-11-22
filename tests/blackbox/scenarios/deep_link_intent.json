@@ -24,6 +24,16 @@
       "expect": {
         "rev": 43
       }
+    },
+    {
+      "action": "intent_dispatch",
+      "args": {
+        "action": "android.intent.action.VIEW",
+        "uri": "texure://sample/unknown_unresolvable_route"
+      },
+      "expect": {
+        "error.code": "ACTIVITY_NOT_FOUND"
+      }
     }
   ],
   "assertions": []

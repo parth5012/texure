@@ -412,6 +412,7 @@ Dispatches a package-scoped Android Intent for deep-link navigation testing.
 {
   "action": "android.intent.action.VIEW",
   "uri": "app://example/path",
+  "categories": ["android.intent.category.BROWSABLE"],
   "extras": { "userId": 123, "ref": "promo", "active": true },
   "flags": ["FLAG_ACTIVITY_NEW_TASK", "FLAG_ACTIVITY_CLEAR_TOP"],
   "package": "com.texure.sample"
@@ -420,10 +421,11 @@ Dispatches a package-scoped Android Intent for deep-link navigation testing.
 
 - `action`: optional string, defaults to `android.intent.action.VIEW` if `uri` is provided.
 - `uri`: optional URI string.
+- `categories`: optional list of intent category strings (e.g. `["android.intent.category.BROWSABLE"]`).
 - `extras`: optional map of primitive extras (String, Int, Long, Double, Boolean).
 - `flags`: optional list of flag strings from standard `Intent.FLAG_*`. `FLAG_ACTIVITY_NEW_TASK` is always enforced.
 - `package`: optional package name. Enforces package-scoping: must match the target app's own `packageName`, or is rejected with 400 `CROSS_PACKAGE_FORBIDDEN` (Guardrail G6). In all cases, `intent.setPackage(context.packageName)` is enforced.
-- **Tree revision:** On successful activity transition, tree revision is bumped and `tree_changed` is broadcast over `/ws`.
+- **Tree revision:** On intent dispatch, tree revision is bumped and `tree_changed` is broadcast over `/ws`.
 
 Response (200 OK):
 ```json
