@@ -1946,8 +1946,13 @@ async fn route_request(
             let uri = req_json.get("uri").and_then(|u| u.as_str());
 
             if let Some(u) = uri {
-                let is_registered =
-                    u.starts_with("texure://sample") || u.starts_with("app://example");
+                let is_registered = if let Ok(parsed) = reqwest::Url::parse(u) {
+                    let s = parsed.scheme();
+                    let h = parsed.host_str().unwrap_or("");
+                    (s == "texure" && h == "sample") || (s == "app" && h == "example")
+                } else {
+                    false
+                };
                 if !is_registered {
                     let err = json!({
                         "error": {
@@ -2042,8 +2047,14 @@ async fn route_request(
                 };
 
             let id = if req_json.get("id").is_some() {
-                match req_json.get("id").and_then(|i| i.as_i64()) {
-                    Some(custom_id) if custom_id > 0 => custom_id as u64,
+                let raw_val = req_json.get("id").unwrap();
+                let is_strict_int = raw_val.is_i64() || raw_val.is_u64();
+                match raw_val.as_i64() {
+                    Some(custom_id)
+                        if is_strict_int && custom_id > 0 && custom_id <= i32::MAX as i64 =>
+                    {
+                        custom_id as u64
+                    }
                     _ => {
                         let err = json!({
                             "error": {
