@@ -519,6 +519,11 @@
 - Council Review (3 delegates: Gemini 3.8 Flash, Hy4 Flash, DeepSeek V4.1 Flash):
   - Round 1: Gemini 3.8 Flash (7/10), Hy4 Flash (6/10), DeepSeek V4.1 Flash (7/10) → Requesting Changes.
   - Remediations: Android 13+ permission gate (403 `NOTIFICATIONS_DISABLED`), channel fallback strictly to `texure_debug_channel`, required `id` on DELETE (400 on missing), notification isolation tag (`texure_bridge_notification`), single-flight lock & device readiness on notification routes, `categories` array parsing, FakeBridge parity & active notification tracking, sample app runtime permission request and deep link intent filter.
-  - Round 2: Gemini 3.8 Flash (**10/10** — Satisfied), Hy4 Flash (**8.5/10** — Satisfied), DeepSeek V4.1 Flash (**7/10** → R2 follow-up refinements applied).
-- VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings, `cargo clippy --workspace --all-targets -- -D warnings` 0 warnings) · L1 pass (`cargo test --workspace` 75/75 passed, `./gradlew :bridge:testDebugUnitTest` 37/37 tasks green, 128 tests) · L2 pass (`mcp-fake` 29/29 passed including BB-D1, BB-D2, BB-D3).
-- PR: Created PR #130 (`https://github.com/parth5012/texure/pull/130`) on branch `wf/87-deeplink-notification-sim`.
+  - Round 2: Gemini 3.8 Flash (**10/10** — Satisfied), Hy4 Flash (**8.5/10** — Satisfied), DeepSeek V4.1 Flash (7/10 → requested 4 refinements on device-fake cancellation parity, contract/fake ID validation, and activity resolution).
+  - Round 3 Fixes:
+    - Implemented active notification ID tracking in `BridgeNotificationSimulator` ensuring real bridge returns `cancelled: false` on unknown/duplicate IDs, achieving complete parity with `FakeBridge` and blackbox assertions.
+    - Updated `docs/bridge-contract.md` documenting optional `id` parameter on `POST /notification/simulate` and unknown-ID `cancelled: false` behavior on `DELETE /notification`.
+    - Added strict positive integer validation on `id` in both `BridgeNotificationSimulator` and `FakeBridge` (400 `BAD_REQUEST` on invalid/non-positive ID) with 4 new unit tests in `BridgeNotificationSimulatorTest` and step 4 in `notification_simulate.json`.
+    - Replaced substring heuristics in `FakeBridge` with manifest route table resolution (`texure://sample` / `app://example`), and aligned BB-D1 step 3 to `texure://unregistered/nowhere`.
+- VERIFY: L0 pass (`cargo run -p texure-lint` 0 findings, `cargo clippy --workspace --all-targets -- -D warnings` 0 warnings, `cargo fmt --check` clean) · L1 pass (`cargo test --workspace` 75/75 passed, `./gradlew :bridge:testDebugUnitTest` 37/37 tasks green, 134 tests) · L2 pass (`mcp-fake` 29/29 passed including BB-D1, BB-D2, BB-D3).
+- PR: PR #130 (`https://github.com/parth5012/texure/pull/130`) on branch `wf/87-deeplink-notification-sim`.

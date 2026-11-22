@@ -1946,7 +1946,9 @@ async fn route_request(
             let uri = req_json.get("uri").and_then(|u| u.as_str());
 
             if let Some(u) = uri {
-                if u.contains("unknown") || u.contains("unresolvable") {
+                let is_registered =
+                    u.starts_with("texure://sample") || u.starts_with("app://example");
+                if !is_registered {
                     let err = json!({
                         "error": {
                             "code": "ACTIVITY_NOT_FOUND",
@@ -2039,8 +2041,23 @@ async fn route_request(
                     channel_id_raw
                 };
 
-            let id = if let Some(custom_id) = req_json.get("id").and_then(|i| i.as_u64()) {
-                custom_id
+            let id = if req_json.get("id").is_some() {
+                match req_json.get("id").and_then(|i| i.as_i64()) {
+                    Some(custom_id) if custom_id > 0 => custom_id as u64,
+                    _ => {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "Invalid 'id' parameter: must be a positive integer"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                }
             } else {
                 state.next_notification_id.fetch_add(1, Ordering::SeqCst)
             };
