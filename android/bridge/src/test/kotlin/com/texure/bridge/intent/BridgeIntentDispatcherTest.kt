@@ -153,6 +153,41 @@ class BridgeIntentDispatcherTest {
     }
 
     @Test
+    fun testIntentWithCategories() {
+        val catIntent = Intent(Intent.ACTION_VIEW, Uri.parse("texure://sample/profile")).apply {
+            `package` = activity.packageName
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        val resolveInfo = ResolveInfo().apply {
+            activityInfo = ActivityInfo().apply {
+                packageName = activity.packageName
+                name = "com.texure.sample.ProfileActivity"
+                applicationInfo = ApplicationInfo().apply {
+                    packageName = activity.packageName
+                }
+            }
+        }
+        shadowOf(activity.packageManager).addResolveInfoForIntent(catIntent, resolveInfo)
+
+        val payload = JSONObject().apply {
+            put("action", Intent.ACTION_VIEW)
+            put("uri", "texure://sample/profile")
+            put("categories", org.json.JSONArray().apply {
+                put(Intent.CATEGORY_BROWSABLE)
+                put(Intent.CATEGORY_DEFAULT)
+            })
+        }
+        val result = dispatcher.dispatch(payload)
+        assertTrue(result is IntentDispatchResult.Success)
+
+        val startedIntent = shadowOf(activity).nextStartedActivity
+        assertNotNull(startedIntent)
+        assertTrue(startedIntent.hasCategory(Intent.CATEGORY_BROWSABLE))
+        assertTrue(startedIntent.hasCategory(Intent.CATEGORY_DEFAULT))
+    }
+
+    @Test
     fun testServerPostIntentEndpointWithAuth() {
         val url = URL("http://127.0.0.1:$testPort/intent")
         val conn = url.openConnection() as HttpURLConnection

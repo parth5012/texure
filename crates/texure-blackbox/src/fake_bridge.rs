@@ -1935,6 +1935,22 @@ async fn route_request(
                 .unwrap_or("android.intent.action.VIEW");
             let uri = req_json.get("uri").and_then(|u| u.as_str());
 
+            if let Some(u) = uri {
+                if u.contains("unknown") || u.contains("unresolvable") {
+                    let err = json!({
+                        "error": {
+                            "code": "ACTIVITY_NOT_FOUND",
+                            "message": format!("No activity found to handle intent in package '{own_pkg}'")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            }
+
             // Transition: Bump revision
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = state.ws_sender.send(
@@ -2001,10 +2017,17 @@ async fn route_request(
                 );
             }
 
-            let channel_id = req_json
+            let channel_id_raw = req_json
                 .get("channel_id")
                 .and_then(|c| c.as_str())
-                .unwrap_or("texure_debug_channel");
+                .unwrap_or("")
+                .trim();
+            let channel_id =
+                if channel_id_raw.is_empty() || channel_id_raw != "texure_debug_channel" {
+                    "texure_debug_channel"
+                } else {
+                    channel_id_raw
+                };
 
             let id = req_json.get("id").and_then(|i| i.as_u64()).unwrap_or(1);
 
@@ -2025,6 +2048,20 @@ async fn route_request(
                 if let Some(val) = part.strip_prefix("id=") {
                     notif_id = val.parse::<u64>().ok();
                 }
+            }
+
+            if notif_id.is_none() {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": "Missing or invalid 'id' parameter"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
             }
 
             let resp = json!({

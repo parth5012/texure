@@ -200,27 +200,6 @@ class BridgeServer(
                 })
             }
         }
-        if (isNotificationRoute(method, uri)) {
-            return try {
-                when {
-                    method == Method.POST && uri == "/notification/simulate" -> handlePostNotificationSimulate(session)
-                    method == Method.DELETE && uri == "/notification" -> handleDeleteNotification(session)
-                    else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
-                        put("error", JSONObject().apply {
-                            put("code", "NOT_FOUND")
-                            put("message", "Route not found: ${method.name} $uri")
-                        })
-                    })
-                }
-            } catch (t: Throwable) {
-                jsonResponse(Response.Status.INTERNAL_ERROR, JSONObject().apply {
-                    put("error", JSONObject().apply {
-                        put("code", "INTERNAL_ERROR")
-                        put("message", t.message ?: "notification simulation error")
-                    })
-                })
-            }
-        }
         val lockResponse = checkSingleFlightLock(clientHandle)
         if (lockResponse != null) {
             return lockResponse
@@ -237,6 +216,8 @@ class BridgeServer(
                 method == Method.POST && uri == "/back" -> handlePostBack()
                 method == Method.POST && uri == "/tag" -> handlePostTag(session)
                 method == Method.POST && uri == "/intent" -> handlePostIntent(session)
+                method == Method.POST && uri == "/notification/simulate" -> handlePostNotificationSimulate(session)
+                method == Method.DELETE && uri == "/notification" -> handleDeleteNotification(session)
                 method == Method.GET && uri == "/screenshot" -> handleGetScreenshot(session)
                 method == Method.GET && uri == "/last-crash" -> handleGetLastCrash()
                 else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
@@ -258,11 +239,10 @@ class BridgeServer(
 
     // --- Notification simulation routes (map #87, ticket #85) ---
 
-    private fun isNotificationRoute(method: Method, uri: String): Boolean =
-        (method == Method.POST && uri == "/notification/simulate") ||
-        (method == Method.DELETE && uri == "/notification")
-
     private fun handlePostNotificationSimulate(session: IHTTPSession): Response {
+        val refusal = checkDeviceReadiness(mutating = true)
+        if (refusal != null) return refusal
+
         val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
         return when (val res = notificationSimulator.simulate(body)) {
             is NotificationSimulateResult.Success -> {
@@ -287,17 +267,19 @@ class BridgeServer(
     }
 
     private fun handleDeleteNotification(session: IHTTPSession): Response {
+        val refusal = checkDeviceReadiness(mutating = true)
+        if (refusal != null) return refusal
+
         drainBody(session)
         val idParam = session.parameters["id"]?.firstOrNull()?.toIntOrNull()
             ?: session.parms["id"]?.toIntOrNull()
+        if (idParam == null) {
+            return badRequest("Missing or invalid 'id' parameter")
+        }
         val res = notificationSimulator.cancel(idParam)
         return jsonResponse(Response.Status.OK, JSONObject().apply {
             put("ok", true)
-            if (res.id != null) {
-                put("id", res.id)
-            } else {
-                put("id", JSONObject.NULL)
-            }
+            put("id", res.id)
             put("cancelled", res.isCancelled)
         })
     }

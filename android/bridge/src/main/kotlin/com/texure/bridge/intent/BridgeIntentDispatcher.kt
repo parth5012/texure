@@ -2,6 +2,7 @@ package com.texure.bridge.intent
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import com.texure.bridge.tree.BridgeTreeExtractor
 import org.json.JSONArray
@@ -68,7 +69,18 @@ class BridgeIntentDispatcher(
         // 4. Strictly package-scoped
         intent.`package` = ownPackage
 
-        // 5. Flags
+        // 5. Categories
+        val categoriesArray = payload.optJSONArray("categories")
+        if (categoriesArray != null) {
+            for (i in 0 until categoriesArray.length()) {
+                val cat = categoriesArray.optString(i)?.trim()
+                if (!cat.isNullOrEmpty()) {
+                    intent.addCategory(cat)
+                }
+            }
+        }
+
+        // 6. Flags
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val flagsArray = payload.optJSONArray("flags")
         if (flagsArray != null) {
@@ -82,7 +94,7 @@ class BridgeIntentDispatcher(
             }
         }
 
-        // 6. Extras (primitives: String, Int, Long, Double, Boolean)
+        // 7. Extras (primitives: String, Int, Long, Double, Boolean)
         val extrasObj = payload.optJSONObject("extras")
         if (extrasObj != null) {
             val keys = extrasObj.keys()
@@ -107,10 +119,11 @@ class BridgeIntentDispatcher(
             }
         }
 
-        // 7. Verify intent resolution
+        // 8. Verify intent resolution
         val pm = context.packageManager
-        val resolveInfo = pm.resolveActivity(intent, 0)
-        if (resolveInfo == null) {
+        val resolveInfo = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            ?: pm.resolveActivity(intent, 0)
+        if (resolveInfo == null || resolveInfo.activityInfo?.packageName != ownPackage) {
             return IntentDispatchResult.Error(
                 code = "ACTIVITY_NOT_FOUND",
                 message = "No activity found to handle intent (action=$action, uri=$uriStr) in package '$ownPackage'",
@@ -118,7 +131,7 @@ class BridgeIntentDispatcher(
             )
         }
 
-        // 8. Dispatch activity
+        // 9. Dispatch activity
         return try {
             context.startActivity(intent)
             treeExtractor.bumpRev()

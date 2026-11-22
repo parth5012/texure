@@ -121,6 +121,38 @@ class BridgeNotificationSimulatorTest {
     }
 
     @Test
+    fun testMissingChannelFallsBackToDefaultChannel() {
+        val payload = JSONObject().apply {
+            put("title", "Fallback Channel Alert")
+            put("body", "Testing channel fallback")
+            put("channel_id", "non_existent_channel_xyz")
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Success)
+        val success = result as NotificationSimulateResult.Success
+        assertEquals(BridgeNotificationSimulator.DEFAULT_CHANNEL_ID, success.channelId)
+    }
+
+    @Test
+    fun testNotificationsDisabledReturns403() {
+        val shadowNm = shadowOf(notificationManager)
+        shadowNm.setNotificationsEnabled(false)
+
+        val payload = JSONObject().apply {
+            put("title", "Disabled Alert")
+            put("body", "Should fail due to permission")
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("NOTIFICATIONS_DISABLED", error.code)
+        assertEquals(403, error.httpStatus)
+
+        // Restore for other tests
+        shadowNm.setNotificationsEnabled(true)
+    }
+
+    @Test
     fun testMissingTitleOrBodyReturns400() {
         val payload = JSONObject().apply {
             put("title", "")
@@ -168,5 +200,12 @@ class BridgeNotificationSimulatorTest {
         val delJson = JSONObject(delResponse)
         assertTrue(delJson.getBoolean("ok"))
         assertTrue(delJson.getBoolean("cancelled"))
+
+        // 3. DELETE /notification without id fails 400
+        val delNoIdUrl = URL("http://127.0.0.1:$testPort/notification")
+        val delNoIdConn = delNoIdUrl.openConnection() as HttpURLConnection
+        delNoIdConn.requestMethod = "DELETE"
+        delNoIdConn.setRequestProperty("Authorization", "Bearer $testToken")
+        assertEquals(400, delNoIdConn.responseCode)
     }
 }
