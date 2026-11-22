@@ -30,6 +30,7 @@ class BridgeNotificationSimulator(
     }
 
     private val idCounter = AtomicInteger(1)
+    private val activeNotificationIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     fun simulate(payload: JSONObject): NotificationSimulateResult {
         val title = payload.optString("title").trim()
@@ -56,7 +57,11 @@ class BridgeNotificationSimulator(
         val effectiveChannelId = resolveOrCreateChannel(requestedChannel)
 
         val id = if (payload.has("id")) {
-            val customId = payload.optInt("id", -1)
+            val customId = try {
+                if (payload.isNull("id")) -1 else payload.getInt("id")
+            } catch (_: Exception) {
+                -1
+            }
             if (customId <= 0) {
                 return NotificationSimulateResult.Error(
                     code = "BAD_REQUEST",
@@ -94,6 +99,7 @@ class BridgeNotificationSimulator(
 
         return try {
             notificationManager.notify(BRIDGE_NOTIFICATION_TAG, id, builder.build())
+            activeNotificationIds.add(id)
             NotificationSimulateResult.Success(id = id, channelId = effectiveChannelId)
         } catch (e: Exception) {
             NotificationSimulateResult.Error(
@@ -106,9 +112,10 @@ class BridgeNotificationSimulator(
 
     fun cancel(id: Int?): NotificationCancelResult {
         return if (id != null) {
+            val wasActive = activeNotificationIds.remove(id)
             try {
                 notificationManager.cancel(BRIDGE_NOTIFICATION_TAG, id)
-                NotificationCancelResult(id = id, isCancelled = true)
+                NotificationCancelResult(id = id, isCancelled = wasActive)
             } catch (_: Exception) {
                 NotificationCancelResult(id = id, isCancelled = false)
             }

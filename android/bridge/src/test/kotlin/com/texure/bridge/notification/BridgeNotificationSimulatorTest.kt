@@ -11,6 +11,7 @@ import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -207,5 +208,88 @@ class BridgeNotificationSimulatorTest {
         delNoIdConn.requestMethod = "DELETE"
         delNoIdConn.setRequestProperty("Authorization", "Bearer $testToken")
         assertEquals(400, delNoIdConn.responseCode)
+    }
+
+    @Test
+    fun testSimulateWithValidCustomId() {
+        val payload = JSONObject().apply {
+            put("title", "Custom ID Alert")
+            put("body", "Notification with custom id")
+            put("id", 42)
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Success)
+        val success = result as NotificationSimulateResult.Success
+        assertEquals(42, success.id)
+
+        // Cancel with custom ID returns isCancelled = true
+        val cancelResult = simulator.cancel(42)
+        assertTrue(cancelResult.isCancelled)
+    }
+
+    @Test
+    fun testSimulateWithInvalidCustomIdNegativeReturns400() {
+        val payload = JSONObject().apply {
+            put("title", "Negative ID Alert")
+            put("body", "Should fail due to negative id")
+            put("id", -1)
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("BAD_REQUEST", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
+    fun testSimulateWithInvalidCustomIdZeroReturns400() {
+        val payload = JSONObject().apply {
+            put("title", "Zero ID Alert")
+            put("body", "Should fail due to zero id")
+            put("id", 0)
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("BAD_REQUEST", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
+    fun testSimulateWithInvalidCustomIdStringReturns400() {
+        val payload = JSONObject().apply {
+            put("title", "String ID Alert")
+            put("body", "Should fail due to non-integer id")
+            put("id", "not-a-number")
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Error)
+        val error = result as NotificationSimulateResult.Error
+        assertEquals("BAD_REQUEST", error.code)
+        assertEquals(400, error.httpStatus)
+    }
+
+    @Test
+    fun testCancelUnknownNotificationReturnsFalse() {
+        val cancelResult = simulator.cancel(999)
+        assertFalse(cancelResult.isCancelled)
+        assertEquals(999, cancelResult.id)
+    }
+
+    @Test
+    fun testCancelTwiceReturnsFalseSecondTime() {
+        val payload = JSONObject().apply {
+            put("title", "Repeat Cancel")
+            put("body", "Testing double cancellation")
+        }
+        val result = simulator.simulate(payload)
+        assertTrue(result is NotificationSimulateResult.Success)
+        val id = (result as NotificationSimulateResult.Success).id
+
+        val firstCancel = simulator.cancel(id)
+        assertTrue(firstCancel.isCancelled)
+
+        val secondCancel = simulator.cancel(id)
+        assertFalse(secondCancel.isCancelled)
     }
 }

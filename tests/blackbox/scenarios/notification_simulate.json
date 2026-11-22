@@ -35,6 +35,17 @@
         "ok": true,
         "cancelled": false
       }
+    },
+    {
+      "action": "notification_simulate",
+      "args": {
+        "title": "Invalid ID Test",
+        "body": "Should fail with BAD_REQUEST",
+        "id": -1
+      },
+      "expect": {
+        "error.code": "BAD_REQUEST"
+      }
     }
   ],
   "assertions": []

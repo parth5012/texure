@@ -452,7 +452,8 @@ Simulates local push notification delivery with automatic notification channel r
   "body": "You have received a new notification",
   "channel_id": "texure_debug_channel",
   "intent_uri": "app://example/chat/42",
-  "small_icon": "ic_notification"
+  "small_icon": "ic_notification",
+  "id": 1
 }
 ```
 
@@ -461,6 +462,7 @@ Simulates local push notification delivery with automatic notification channel r
 - `channel_id`: optional notification channel ID; if missing or does not exist, automatically creates debug channel `texure_debug_channel` with high importance.
 - `intent_uri`: optional deep-link URI attached as `PendingIntent` to the notification content intent.
 - `small_icon`: optional drawable resource name; falls back to app icon.
+- `id`: optional positive integer notification ID (must be > 0; if omitted, an auto-incrementing ID is allocated).
 
 Response (200 OK):
 ```json
@@ -470,6 +472,11 @@ Response (200 OK):
   "channel_id": "texure_debug_channel"
 }
 ```
+
+Errors:
+- 400 if `title` or `body` is missing or empty (`BAD_REQUEST`).
+- 400 if `id` is provided but is not a positive integer (`BAD_REQUEST`).
+- 403 if notifications are disabled for package (`NOTIFICATIONS_DISABLED`).
 
 #### DELETE /notification
 
@@ -484,6 +491,8 @@ Response (200 OK):
   "cancelled": true
 }
 ```
+
+- `cancelled`: boolean indicating whether an active simulated notification with that ID was found and cancelled (`false` if ID was not found or already cancelled).
 
 ### (tool note, agent-facing)
 

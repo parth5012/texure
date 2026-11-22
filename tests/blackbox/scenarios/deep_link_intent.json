@@ -29,7 +29,7 @@
       "action": "intent_dispatch",
       "args": {
         "action": "android.intent.action.VIEW",
-        "uri": "texure://sample/unknown_unresolvable_route"
+        "uri": "texure://unregistered/nowhere"
       },
       "expect": {
         "error.code": "ACTIVITY_NOT_FOUND"
