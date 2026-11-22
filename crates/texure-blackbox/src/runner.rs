@@ -585,6 +585,10 @@ async fn run_mcp_real_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path
                 | "logs_get"
                 | "logs_clear"
                 | "logs_delete"
+                | "intent_dispatch"
+                | "intent"
+                | "notification_simulate"
+                | "notification_cancel"
         )
     }) {
         return Err((
@@ -2677,6 +2681,135 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     );
                     server.stop();
                     return Err((steps, format!("logs_clear failed: {e}")));
+                }
+            },
+            "intent_dispatch" | "intent" => match client.post_intent(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("intent_dispatch failed: {e}")));
+                }
+            },
+            "notification_simulate" => match client.post_notification_simulate(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("notification_simulate failed: {e}")));
+                }
+            },
+            "notification_cancel" => {
+                let id = step.args.get("id").and_then(|v| v.as_u64());
+                match client.delete_notification(id).await {
+                    Ok(resp) => {
+                        last_response = resp;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(HttpBridgeError::StatusError { body, .. }) => {
+                        let err_val: Value =
+                            serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                        last_response = err_val;
+                        push_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &last_response,
+                            None,
+                            None,
+                            offset_ms,
+                        );
+                    }
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        server.stop();
+                        return Err((steps, format!("notification_cancel failed: {e}")));
+                    }
                 }
             },
             other => {

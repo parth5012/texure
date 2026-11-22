@@ -730,6 +730,75 @@ impl HttpBridgeClient {
         })
     }
 
+    pub async fn post_intent(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/intent", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if (200..300).contains(&status) {
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
+                status,
+                body: format!("Invalid JSON: {e}"),
+            })
+        } else {
+            Err(HttpBridgeError::StatusError { status, body })
+        }
+    }
+
+    pub async fn post_notification_simulate(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/notification/simulate", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if (200..300).contains(&status) {
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
+                status,
+                body: format!("Invalid JSON: {e}"),
+            })
+        } else {
+            Err(HttpBridgeError::StatusError { status, body })
+        }
+    }
+
+    pub async fn delete_notification(&self, id: Option<u64>) -> Result<Value, HttpBridgeError> {
+        let url = if let Some(i) = id {
+            format!("{}/notification?id={i}", self.base_url)
+        } else {
+            format!("{}/notification", self.base_url)
+        };
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if (200..300).contains(&status) {
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
+                status,
+                body: format!("Invalid JSON: {e}"),
+            })
+        } else {
+            Err(HttpBridgeError::StatusError { status, body })
+        }
+    }
+
     pub async fn get_inspect(&self) -> Result<String, HttpBridgeError> {
         let url = format!("{}/inspect", self.base_url);
         let resp = self.client.get(&url).send().await?;

@@ -1893,6 +1893,140 @@ async fn route_request(
                 serde_json::to_vec(&resp).unwrap(),
             )
         }
+        ("POST", "/intent") => {
+            let req_json: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let err = json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": format!("Invalid JSON: {e}")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+
+            // Guardrail G6: Package scoping enforcement
+            let own_pkg = "com.texure.sample";
+            if let Some(target_pkg) = req_json.get("package").and_then(|p| p.as_str()) {
+                if !target_pkg.is_empty() && target_pkg != own_pkg {
+                    let err = json!({
+                        "error": {
+                            "code": "CROSS_PACKAGE_FORBIDDEN",
+                            "message": format!("Cross-package intents forbidden by Guardrail G6. Target package '{target_pkg}' != '{own_pkg}'")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            }
+
+            let action = req_json
+                .get("action")
+                .and_then(|a| a.as_str())
+                .unwrap_or("android.intent.action.VIEW");
+            let uri = req_json.get("uri").and_then(|u| u.as_str());
+
+            // Transition: Bump revision
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state.ws_sender.send(json!({
+                "type": "tree_changed",
+                "rev": new_rev
+            }).to_string());
+
+            let resp = json!({
+                "ok": true,
+                "action": action,
+                "uri": uri,
+                "package": own_pkg,
+                "rev": new_rev
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/notification/simulate") => {
+            let req_json: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let err = json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": format!("Invalid JSON: {e}")
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+            };
+
+            let title = req_json.get("title").and_then(|t| t.as_str()).unwrap_or("").trim();
+            let body_text = req_json.get("body").and_then(|b| b.as_str()).unwrap_or("").trim();
+
+            if title.is_empty() || body_text.is_empty() {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": "Missing or empty required parameters: 'title' and 'body' are required"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+
+            let channel_id = req_json
+                .get("channel_id")
+                .and_then(|c| c.as_str())
+                .unwrap_or("texure_debug_channel");
+
+            let id = req_json.get("id").and_then(|i| i.as_u64()).unwrap_or(1);
+
+            let resp = json!({
+                "ok": true,
+                "id": id,
+                "channel_id": channel_id
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("DELETE", "/notification") => {
+            let mut notif_id: Option<u64> = None;
+            for part in query_str.split('&') {
+                if let Some(val) = part.strip_prefix("id=") {
+                    notif_id = val.parse::<u64>().ok();
+                }
+            }
+
+            let resp = json!({
+                "ok": true,
+                "id": notif_id,
+                "cancelled": true
+            });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
         _ => {
             let err = json!({
                 "error": {

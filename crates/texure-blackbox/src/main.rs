@@ -600,6 +600,33 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: false,
         },
+        // Group D: deep-link & push notification simulation (map 18 #87)
+        TestDef {
+            id: "BB-D1".to_string(),
+            name: "Dispatch deep-link intent POST /intent, verify simulated activity screen change"
+                .to_string(),
+            scenario_file: "deep_link_intent.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-D2".to_string(),
+            name: "Simulate notification via POST /notification/simulate, verify successful dispatch payload"
+                .to_string(),
+            scenario_file: "notification_simulate.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-D3".to_string(),
+            name: "Verify cross-package intent rejection (Guardrail G6 check)".to_string(),
+            scenario_file: "cross_package_intent.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
     ]
 }
 

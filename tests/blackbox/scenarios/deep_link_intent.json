@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "deep_link_intent",
+  "kind": "scenario",
+  "description": "BB-D1: Dispatch deep-link intent POST /intent, verify simulated activity screen change",
+  "steps": [
+    {
+      "action": "intent_dispatch",
+      "args": {
+        "action": "android.intent.action.VIEW",
+        "uri": "texure://sample/profile?user=42",
+        "extras": {
+          "user_id": 42
+        }
+      },
+      "expect": {
+        "ok": true,
+        "package": "com.texure.sample"
+      }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "rev": 43
+      }
+    }
+  ],
+  "assertions": []
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "notification_simulate",
+  "kind": "scenario",
+  "description": "BB-D2: Simulate notification via POST /notification/simulate, verify successful dispatch payload",
+  "steps": [
+    {
+      "action": "notification_simulate",
+      "args": {
+        "title": "Welcome",
+        "body": "Simulated notification message",
+        "intent_uri": "texure://sample/details"
+      },
+      "expect": {
+        "ok": true,
+        "channel_id": "texure_debug_channel"
+      }
+    },
+    {
+      "action": "notification_cancel",
+      "args": {
+        "id": 1
+      },
+      "expect": {
+        "ok": true,
+        "cancelled": true
+      }
+    }
+  ],
+  "assertions": []
+}
