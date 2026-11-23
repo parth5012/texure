@@ -79,6 +79,7 @@ class BridgeConfigStress(
     private var baselineFontScale: Float = 1.0f
     private var baselineNightMode: Int = AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
     private var baselineUiMode: Int = Configuration.UI_MODE_NIGHT_NO
+    private var baselineProcessLocale: Locale = Locale.getDefault()
     private var baselineLocale: Locale = Locale.getDefault()
     private var baselineLayoutDirection: Int = View.LAYOUT_DIRECTION_LTR
     private var baselineRequestedOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -270,7 +271,7 @@ class BridgeConfigStress(
                     AppCompatDelegate.setDefaultNightMode(baselineNightMode)
                 } catch (_: Throwable) {}
 
-                Locale.setDefault(baselineLocale)
+                Locale.setDefault(baselineProcessLocale)
                 resetConfig.setLocale(baselineLocale)
                 resetConfig.setLayoutDirection(baselineLocale)
                 val dirBits = if (baselineLayoutDirection == android.view.View.LAYOUT_DIRECTION_RTL) {
@@ -323,6 +324,7 @@ class BridgeConfigStress(
             val config = activity.resources.configuration
             baselineFontScale = config.fontScale
             baselineUiMode = config.uiMode
+            baselineProcessLocale = Locale.getDefault()
             baselineLocale = config.locales.get(0) ?: Locale.getDefault()
             baselineLayoutDirection = config.layoutDirection
             baselineRequestedOrientation = activity.requestedOrientation
