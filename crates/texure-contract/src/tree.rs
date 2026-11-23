@@ -99,7 +99,7 @@ impl UiTree {
 }
 
 /// A single node in the Android view tree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiNode {
     /// View resource ID or test tag.
     #[serde(default, alias = "tag", alias = "view_id")]
@@ -142,6 +142,11 @@ pub struct UiNode {
     /// Additive nullable under schema_version 1: absent on legacy bridges.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
+
+    /// Whether text in this node is clipped or truncated (map 19 #91).
+    /// Additive nullable under schema_version 1: absent on legacy bridges or non-text nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clipped: Option<bool>,
 
     /// Child nodes (for hierarchical representation if used).
     #[serde(default)]
@@ -239,6 +244,7 @@ mod tests {
             scrollable: false,
             index: Some(1),
             hash: Some("bbbbbbbbbbbbbbbb".to_string()),
+            clipped: None,
             children: Vec::new(),
         };
         let tree = UiTree::new(
@@ -255,6 +261,7 @@ mod tests {
                 scrollable: false,
                 index: Some(0),
                 hash: Some("aaaaaaaaaaaaaaaa".to_string()),
+                clipped: None,
                 children: vec![child],
             }],
         );
@@ -267,5 +274,35 @@ mod tests {
             Some("child")
         );
         assert!(tree.find_by_hash("missing").is_none());
+    }
+
+    #[test]
+    fn test_ui_node_clipped_field() {
+        let json = serde_json::json!({
+            "id": "txt_title",
+            "text": "Long title text that overflowed bounds",
+            "cls": "android.widget.TextView",
+            "bounds": [0, 0, 100, 30],
+            "clickable": false,
+            "editable": false,
+            "clipped": true
+        });
+        let node: UiNode = serde_json::from_value(json).expect("deserialize node with clipped");
+        assert_eq!(node.clipped, Some(true));
+
+        let out = serde_json::to_value(&node).unwrap();
+        assert_eq!(out["clipped"], true);
+
+        // Without clipped field (additive nullable)
+        let unclipped_json = serde_json::json!({
+            "id": "btn",
+            "text": "Click",
+            "cls": "android.widget.Button",
+            "clickable": true
+        });
+        let unclipped_node: UiNode = serde_json::from_value(unclipped_json).unwrap();
+        assert_eq!(unclipped_node.clipped, None);
+        let unclipped_out = serde_json::to_value(&unclipped_node).unwrap();
+        assert!(unclipped_out.get("clipped").is_none());
     }
 }

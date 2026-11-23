@@ -51,7 +51,9 @@ data class TreeNode(
     val editable: Boolean,
     // Semantic node hash (map #36, #29): FNV-1a 64 over ancestor path,
     // stable tag/resource id, text snippet, class name. Null = legacy node.
-    val hash: String? = null
+    val hash: String? = null,
+    // Text clipping flag (map 19 #91): true if ellipsized or layout bounds exceed view bounds.
+    val clipped: Boolean? = null
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -65,6 +67,9 @@ data class TreeNode(
             put("clickable", clickable)
             put("editable", editable)
             put("hash", hash ?: JSONObject.NULL)
+            if (clipped != null) {
+                put("clipped", clipped)
+            }
         }
     }
 }

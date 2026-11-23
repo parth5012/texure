@@ -105,6 +105,10 @@ class BridgeTreeExtractor {
             val id = resolveNodeId(view)
             val isClickable = view.isClickable
             val isEditable = view is EditText || (view.isFocusable && view.isFocusableInTouchMode)
+            val isClipped = when (view) {
+                is TextView -> isTextClipped(view)
+                else -> null
+            }
 
             val treeNode = TreeNode(
                 id = id,
@@ -114,7 +118,8 @@ class BridgeTreeExtractor {
                 bounds = listOf(xDp, yDp, wDp, hDp),
                 clickable = isClickable,
                 editable = isEditable,
-                hash = computeSemanticHash(ancestorPath, id, text, view.javaClass.name)
+                hash = computeSemanticHash(ancestorPath, id, text, view.javaClass.name),
+                clipped = isClipped
             )
             collectedNodes.add(treeNode)
             collectedViews.add(view)
@@ -144,6 +149,41 @@ class BridgeTreeExtractor {
         if (view is TextView && !view.text.isNullOrBlank()) return true
         if (!view.contentDescription.isNullOrBlank()) return true
         if (view.tag != null) return true
+        return false
+    }
+
+    private fun isTextClipped(textView: TextView): Boolean {
+        val layout = textView.layout ?: return false
+
+        // 1. Check ellipsis count across lines
+        val lineCount = layout.lineCount
+        if (lineCount > 0) {
+            for (line in 0 until lineCount) {
+                if (layout.getEllipsisCount(line) > 0) {
+                    return true
+                }
+            }
+        }
+
+        // 2. Check layout bounds vs view available dimensions
+        val availableWidth = textView.width - textView.compoundPaddingLeft - textView.compoundPaddingRight
+        val availableHeight = textView.height - textView.compoundPaddingTop - textView.compoundPaddingBottom
+
+        if (availableWidth > 0 && lineCount > 0) {
+            for (line in 0 until lineCount) {
+                if (layout.getLineWidth(line) > availableWidth) {
+                    return true
+                }
+            }
+        }
+
+        if (availableHeight > 0 && lineCount > 0) {
+            val totalTextHeight = layout.getLineBottom(lineCount - 1) - layout.getLineTop(0)
+            if (totalTextHeight > availableHeight) {
+                return true
+            }
+        }
+
         return false
     }
 
