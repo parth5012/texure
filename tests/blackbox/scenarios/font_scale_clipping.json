@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "font_scale_clipping",
+  "kind": "scenario",
+  "description": "BB-X1: Apply font_scale=1.5, verify tree extraction reflects updated node measurements and clipped flags",
+  "steps": [
+    {
+      "action": "config_stress",
+      "args": {
+        "font_scale": 1.5
+      },
+      "expect": {
+        "ok": true,
+        "font_scale": 1.5
+      }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "rev": 43,
+        "nodes.0.clipped": true
+      }
+    }
+  ],
+  "assertions": []
+}

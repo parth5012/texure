@@ -589,11 +589,13 @@ async fn run_mcp_real_test(_test: &TestDef, scenario: &Scenario, root_dir: &Path
                 | "intent"
                 | "notification_simulate"
                 | "notification_cancel"
+                | "config_stress"
+                | "config_stress_reset"
         )
     }) {
         return Err((
             steps,
-            "SKIP: tag, recording_*, network_*, state_*, and logs_* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
+            "SKIP: tag, recording_*, network_*, state_*, logs_*, and config_stress* actions are bridge-HTTP routes, not MCP tools; covered by http/mcp-fake targets"
                 .to_string(),
         ));
     }
@@ -2815,6 +2817,90 @@ async fn run_http_fake_test(_test: &TestDef, scenario: &Scenario, root_dir: &Pat
                     }
                 }
             }
+            "config_stress" => match client.post_config_stress(&step.args).await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("config_stress failed: {e}")));
+                }
+            },
+            "config_stress_reset" => match client.delete_config_stress().await {
+                Ok(resp) => {
+                    last_response = resp;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(HttpBridgeError::StatusError { body, .. }) => {
+                    let err_val: Value =
+                        serde_json::from_str(&body).unwrap_or(json!({"raw": body}));
+                    last_response = err_val;
+                    push_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &last_response,
+                        None,
+                        None,
+                        offset_ms,
+                    );
+                }
+                Err(e) => {
+                    push_error_step(
+                        &mut steps,
+                        idx,
+                        &step.action,
+                        Some(&step.args),
+                        &e.to_string(),
+                        offset_ms,
+                    );
+                    server.stop();
+                    return Err((steps, format!("config_stress_reset failed: {e}")));
+                }
+            },
             other => {
                 server.stop();
                 return Err((

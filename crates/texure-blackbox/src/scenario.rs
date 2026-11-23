@@ -116,6 +116,9 @@ impl Scenario {
             "intent",
             "notification_simulate",
             "notification_cancel",
+            // Group X: accessibility & layout stress simulation (map 19 #91)
+            "config_stress",
+            "config_stress_reset",
         ];
 
         for step in &self.steps {

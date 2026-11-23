@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "config_stress_reset",
+  "kind": "scenario",
+  "description": "BB-X3: Reset configuration via DELETE /config/stress, verify return to baseline",
+  "steps": [
+    {
+      "action": "config_stress",
+      "args": {
+        "font_scale": 1.5,
+        "dark_mode": true
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "rev": 43,
+        "nodes.0.clipped": true
+      }
+    },
+    {
+      "action": "config_stress_reset",
+      "args": {},
+      "expect": {
+        "ok": true,
+        "reset": true
+      }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "rev": 44,
+        "nodes.0.clipped": false
+      }
+    }
+  ],
+  "assertions": []
+}

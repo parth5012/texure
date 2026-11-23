@@ -812,6 +812,53 @@ impl HttpBridgeClient {
         }
         Ok(body)
     }
+
+    pub async fn post_config_stress(&self, payload: &Value) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/config/stress", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers()?)
+            .json(payload)
+            .send()
+            .await?;
+
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError { status, body });
+        }
+
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
+                status,
+                body: format!("Invalid JSON response: {e}"),
+            })?;
+        Ok(json)
+    }
+
+    pub async fn delete_config_stress(&self) -> Result<Value, HttpBridgeError> {
+        let url = format!("{}/config/stress", self.base_url);
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers()?)
+            .send()
+            .await?;
+
+        let status = resp.status().as_u16();
+        let body = resp.text().await?;
+        if status != 200 {
+            return Err(HttpBridgeError::StatusError { status, body });
+        }
+
+        let json: Value =
+            serde_json::from_str(&body).map_err(|e| HttpBridgeError::StatusError {
+                status,
+                body: format!("Invalid JSON response: {e}"),
+            })?;
+        Ok(json)
+    }
 }
 
 #[cfg(test)]
