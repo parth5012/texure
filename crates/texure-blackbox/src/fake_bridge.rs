@@ -556,15 +556,11 @@ fn inject_clipped(value: &mut Value, clipped: bool) {
             }
         }
         Value::Object(map) => {
-            let is_editable = map
-                .get("editable")
-                .and_then(|e| e.as_bool())
-                .unwrap_or(false)
-                || map
-                    .get("cls")
-                    .and_then(|c| c.as_str())
-                    .is_some_and(|c| c.contains("EditText"));
-            if !is_editable {
+            let is_edit_text = map
+                .get("cls")
+                .and_then(|c| c.as_str())
+                .is_some_and(|c| c.contains("EditText"));
+            if !is_edit_text {
                 if let Some(text) = map.get("text").and_then(|t| t.as_str()) {
                     if !text.is_empty() {
                         map.insert("clipped".to_string(), json!(clipped));
@@ -2195,6 +2191,11 @@ async fn route_request(
                 );
             }
 
+            let mut parsed_font_scale = None;
+            let mut parsed_dark_mode = None;
+            let mut parsed_locale = None;
+            let mut parsed_orientation = None;
+
             if let Some(font_val) = body_json.get("font_scale") {
                 if !font_val.is_null() {
                     let Some(font_scale) = font_val.as_f64() else {
@@ -2225,7 +2226,7 @@ async fn route_request(
                             serde_json::to_vec(&err).unwrap(),
                         );
                     }
-                    config_stress.font_scale = Some(font_scale as f32);
+                    parsed_font_scale = Some(font_scale as f32);
                 }
             }
 
@@ -2245,7 +2246,7 @@ async fn route_request(
                             serde_json::to_vec(&err).unwrap(),
                         );
                     };
-                    config_stress.dark_mode = Some(dark_mode);
+                    parsed_dark_mode = Some(dark_mode);
                 }
             }
 
@@ -2282,27 +2283,57 @@ async fn route_request(
                             serde_json::to_vec(&err).unwrap(),
                         );
                     }
-                    config_stress.locale = Some(locale.to_string());
+                    parsed_locale = Some(locale.to_string());
                 }
             }
 
-            if let Some(orientation) = body_json.get("orientation").and_then(|v| v.as_str()) {
-                let orient_upper = orientation.trim().to_uppercase();
-                if orient_upper != "PORTRAIT" && orient_upper != "LANDSCAPE" {
-                    let err = json!({
-                        "error": {
-                            "code": "BAD_REQUEST",
-                            "message": "orientation must be PORTRAIT or LANDSCAPE",
-                            "hint": "provide orientation PORTRAIT or LANDSCAPE"
-                        }
-                    });
-                    return (
-                        "400 Bad Request",
-                        vec![("Content-Type", "application/json".to_string())],
-                        serde_json::to_vec(&err).unwrap(),
-                    );
+            if let Some(orient_val) = body_json.get("orientation") {
+                if !orient_val.is_null() {
+                    let Some(orientation) = orient_val.as_str() else {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "orientation must be PORTRAIT or LANDSCAPE",
+                                "hint": "provide orientation PORTRAIT or LANDSCAPE"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    };
+                    let orient_upper = orientation.trim().to_uppercase();
+                    if orient_upper != "PORTRAIT" && orient_upper != "LANDSCAPE" {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "orientation must be PORTRAIT or LANDSCAPE",
+                                "hint": "provide orientation PORTRAIT or LANDSCAPE"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                    parsed_orientation = Some(orient_upper);
                 }
-                config_stress.orientation = Some(orient_upper);
+            }
+
+            // Only apply mutations once ALL fields have passed validation
+            if let Some(fs) = parsed_font_scale {
+                config_stress.font_scale = Some(fs);
+            }
+            if let Some(dm) = parsed_dark_mode {
+                config_stress.dark_mode = Some(dm);
+            }
+            if let Some(loc) = parsed_locale {
+                config_stress.locale = Some(loc);
+            }
+            if let Some(ori) = parsed_orientation {
+                config_stress.orientation = Some(ori);
             }
 
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;

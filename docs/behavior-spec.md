@@ -200,7 +200,7 @@ Rows below define the contract for in-process configuration overrides (font scal
 
 | Behavior | Test ID | Spec |
 |---|---|---|
-| In-process font scale & clipping | BB-X1 | Apply `font_scale=1.5` via `POST /config/stress`, verify tree extraction reflects updated node measurements and `clipped: true` flags on truncated text. |
+| In-process font scale & clipping | BB-X1 | Apply `font_scale=1.5` via `POST /config/stress`, verify in-process configuration update, tree revision bump, and `clipped: true` flags on truncated text. |
 | Dark mode & locale override | BB-X2 | Apply `dark_mode=true` and RTL locale via `POST /config/stress`, verify configuration update, night mode, and tree revision bump. |
 | Configuration stress reset | BB-X3 | Reset configuration via `DELETE /config/stress`, verify return to baseline device configuration. |
 

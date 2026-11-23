@@ -64,8 +64,8 @@ class BridgeConfigStress(
             block()
             return
         }
-        if (!latch.await(2, TimeUnit.SECONDS)) {
-            // If timed out, execute fallback only if main runnable has not started
+        if (!latch.await(200, TimeUnit.MILLISECONDS)) {
+            // If timed out (e.g. paused looper in test harnesses), execute fallback only if main runnable has not started
             if (executed.compareAndSet(false, true)) {
                 block()
             }
@@ -206,6 +206,14 @@ class BridgeConfigStress(
                 resources.updateConfiguration(newConfig, metrics)
                 @Suppress("DEPRECATION")
                 activity.applicationContext.resources.updateConfiguration(newConfig, metrics)
+
+                try {
+                    activity.window?.decorView?.let { decor ->
+                        refreshViewHierarchy(decor)
+                        decor.requestLayout()
+                        decor.invalidate()
+                    }
+                } catch (_: Throwable) {}
             }
         } catch (t: Throwable) {
             return ConfigStressResult.Error(
@@ -284,6 +292,14 @@ class BridgeConfigStress(
                 resources.updateConfiguration(resetConfig, metrics)
                 @Suppress("DEPRECATION")
                 activity.applicationContext.resources.updateConfiguration(resetConfig, metrics)
+
+                try {
+                    activity.window?.decorView?.let { decor ->
+                        refreshViewHierarchy(decor)
+                        decor.requestLayout()
+                        decor.invalidate()
+                    }
+                } catch (_: Throwable) {}
             }
 
             baselineCaptured = false
@@ -318,5 +334,20 @@ class BridgeConfigStress(
             }
             baselineCaptured = true
         }
+    }
+
+    private fun refreshViewHierarchy(view: android.view.View) {
+        try {
+            if (view is android.widget.TextView) {
+                view.requestLayout()
+                view.invalidate()
+            }
+            if (view is android.view.ViewGroup) {
+                for (i in 0 until view.childCount) {
+                    refreshViewHierarchy(view.getChildAt(i))
+                }
+            }
+            view.requestLayout()
+        } catch (_: Throwable) {}
     }
 }
