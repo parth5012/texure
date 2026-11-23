@@ -3,6 +3,7 @@ import { CompanionProvider, useCompanion } from './context/CompanionContext';
 import { MockToolbar } from './components/MockToolbar';
 import { QrScanner } from './components/QrScanner';
 import { StatusDashboard } from './components/StatusDashboard';
+import { ControlPanel } from './components/ControlPanel';
 import { Smartphone, QrCode, Sliders, Terminal, Activity, Moon, Sun } from 'lucide-react';
 
 const DashboardShell: React.FC = () => {
@@ -120,9 +121,8 @@ const DashboardShell: React.FC = () => {
           )}
 
           {activeTab === 'controls' && (
-            <div data-testid="controls-view" className="p-6 bg-slate-900/60 rounded-xl border border-slate-800">
-              <h2 className="text-lg font-semibold text-slate-100 mb-2">Device Control Panel</h2>
-              <p className="text-sm text-slate-400">Manual lifecycle, wake, and keyguard controls.</p>
+            <div data-testid="controls-view">
+              <ControlPanel />
             </div>
           )}
 

@@ -200,6 +200,24 @@ class MockBackend {
     this.emit('device_state_changed', { ...this.state });
   }
 
+  public reset() {
+    this.state = {
+      shizukuStatus: 'AUTHORIZED',
+      tunnelState: 'CONNECTED',
+      appStatus: 'FOREGROUND',
+      vitals: {
+        batteryPercent: 88,
+        screenOn: true,
+        networkType: 'WIFI',
+        latencyMs: 14,
+      },
+      pairing: null,
+      paired: false,
+    };
+    this.logs = [];
+    this.emit('device_state_changed', { ...this.state });
+  }
+
   public getState(): DeviceState {
     return { ...this.state };
   }
