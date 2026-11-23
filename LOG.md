@@ -11,8 +11,12 @@
   - L2 Blackbox: `cargo run -p texure-blackbox -- --target mcp-fake` (32/32 passed including BB-X1..BB-X3).
 - PR & Babysitting:
   - PR #131 filed (`https://github.com/parth5012/texure/pull/131`).
-  - Triggered `@coderabbitai review` and `/review`.
-  - CI Checks: `Lint & Quality Gates` (success), `Rust Tests (ubuntu-latest)` (success), `Rust Tests (windows-latest)` (success), `Android Build & Leak Probe` (success), `GitGuardian Security Checks` (success), `Release Assets` (skipped).
+  - Council Multi-Model Adversarial Review (Gemini 3.8 Flash, Hy4 Flash, DeepSeek V4.1 Flash):
+    - Round 1: Gemini 3.8 Flash (8.5/10), Hy4 Flash (6.5/10), DeepSeek V4.1 Flash (6.0/10). Identified missing WS `tree_changed` broadcast, main-thread mutation requirements, and text clipping precision.
+    - Round 2: Gemini 3.8 Flash (9.0/10), Hy4 Flash (7.0/10), DeepSeek V4.1 Flash (7.5/10). Hardened single-source WS broadcast, CAS single-shot barrier on main looper, and text-only node clipping.
+    - Round 3: Gemini 3.8 Flash (**10/10**), Hy4 Flash (**8.0/10** — APPROVE), DeepSeek V4.1 Flash (resolved remaining items in commits `67417b2` and `02a2d2a`).
+  - Resolved all 9 CodeRabbit review threads on PR #131.
+  - CI Checks: `Lint & Quality Gates` (success), `Rust Tests (ubuntu-latest)` (success), `Rust Tests (windows-latest)` (success), `Android Build & Leak Probe` (success), `GitGuardian Security Checks` (success).
   - 0 failed checks, 0 unresolved review threads, mergeable.
 - Status: READY FOR MERGE (handed off to user/merge-pr).
 
