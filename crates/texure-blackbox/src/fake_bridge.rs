@@ -43,6 +43,15 @@ pub struct FakeBridgeState {
     pub logs: tokio::sync::Mutex<Vec<FakeLogEntry>>,
     pub simulated_notifications: tokio::sync::Mutex<std::collections::HashSet<u64>>,
     pub next_notification_id: AtomicU64,
+    pub config_stress: tokio::sync::Mutex<FakeConfigStressState>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FakeConfigStressState {
+    pub font_scale: Option<f32>,
+    pub dark_mode: Option<bool>,
+    pub locale: Option<String>,
+    pub orientation: Option<String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -218,6 +227,7 @@ impl FakeBridgeServer {
             ]),
             simulated_notifications: tokio::sync::Mutex::new(std::collections::HashSet::new()),
             next_notification_id: AtomicU64::new(1),
+            config_stress: tokio::sync::Mutex::new(FakeConfigStressState::default()),
         });
 
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -538,6 +548,23 @@ fn inject_hashes(nodes: &mut Value, ancestor: &[String]) {
     }
 }
 
+fn inject_clipped(value: &mut Value, clipped: bool) {
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                inject_clipped(item, clipped);
+            }
+        }
+        Value::Object(map) => {
+            map.insert("clipped".to_string(), json!(clipped));
+            if let Some(children) = map.get_mut("children") {
+                inject_clipped(children, clipped);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn load_fixture_nodes(path: &Path) -> Vec<Value> {
     if path.exists() {
         if let Ok(content) = fs::read_to_string(path) {
@@ -724,6 +751,11 @@ async fn route_request(
                 // Inject semantic hashes after tagging so tagged nodes' hashes rotate.
                 if let Some(nodes) = obj.get_mut("nodes") {
                     inject_hashes(nodes, &[]);
+                }
+                let config_stress = state.config_stress.lock().await;
+                let is_clipped = config_stress.font_scale.map(|s| s > 1.2).unwrap_or(false);
+                if let Some(nodes) = obj.get_mut("nodes") {
+                    inject_clipped(nodes, is_clipped);
                 }
             }
 
@@ -2116,6 +2148,103 @@ async fn route_request(
                 "id": target_id,
                 "cancelled": was_cancelled
             });
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("POST", "/config/stress") => {
+            let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
+            let mut config_stress = state.config_stress.lock().await;
+
+            if let Some(font_scale) = body_json.get("font_scale").and_then(|v| v.as_f64()) {
+                if !(0.5..=3.0).contains(&font_scale) {
+                    let err = json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": "font_scale must be between 0.5 and 3.0",
+                            "hint": "provide font_scale in 0.5..=3.0"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+                config_stress.font_scale = Some(font_scale as f32);
+            }
+
+            if let Some(dark_mode) = body_json.get("dark_mode").and_then(|v| v.as_bool()) {
+                config_stress.dark_mode = Some(dark_mode);
+            }
+
+            if let Some(locale) = body_json.get("locale").and_then(|v| v.as_str()) {
+                config_stress.locale = Some(locale.to_string());
+            }
+
+            if let Some(orientation) = body_json.get("orientation").and_then(|v| v.as_str()) {
+                if orientation != "PORTRAIT" && orientation != "LANDSCAPE" {
+                    let err = json!({
+                        "error": {
+                            "code": "BAD_REQUEST",
+                            "message": "orientation must be PORTRAIT or LANDSCAPE",
+                            "hint": "provide orientation PORTRAIT or LANDSCAPE"
+                        }
+                    });
+                    return (
+                        "400 Bad Request",
+                        vec![("Content-Type", "application/json".to_string())],
+                        serde_json::to_vec(&err).unwrap(),
+                    );
+                }
+                config_stress.orientation = Some(orientation.to_string());
+            }
+
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state
+                .ws_sender
+                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+
+            let mut resp = json!({
+                "ok": true,
+                "rev": new_rev
+            });
+            if let Some(font_scale) = config_stress.font_scale {
+                resp["font_scale"] = json!(font_scale);
+            }
+            if let Some(dark_mode) = config_stress.dark_mode {
+                resp["dark_mode"] = json!(dark_mode);
+            }
+            if let Some(ref locale) = config_stress.locale {
+                resp["locale"] = json!(locale);
+            }
+            if let Some(ref orientation) = config_stress.orientation {
+                resp["orientation"] = json!(orientation);
+            }
+
+            (
+                "200 OK",
+                vec![("Content-Type", "application/json".to_string())],
+                serde_json::to_vec(&resp).unwrap(),
+            )
+        }
+        ("DELETE", "/config/stress") => {
+            let mut config_stress = state.config_stress.lock().await;
+            *config_stress = FakeConfigStressState::default();
+
+            let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state
+                .ws_sender
+                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+
+            let resp = json!({
+                "ok": true,
+                "reset": true,
+                "rev": new_rev
+            });
+
             (
                 "200 OK",
                 vec![("Content-Type", "application/json".to_string())],

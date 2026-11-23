@@ -83,6 +83,9 @@ pub fn check_scenarios(root_dir: &Path) -> Vec<Finding> {
         "intent",
         "notification_simulate",
         "notification_cancel",
+        // Group X: accessibility & layout stress simulator (map 19 #91)
+        "config_stress",
+        "config_stress_reset",
     ];
     let allowed_preds = ["exists", "missing", "count_lt", "state", "bounds_of"];
 

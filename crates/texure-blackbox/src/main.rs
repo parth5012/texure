@@ -627,6 +627,34 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: false,
         },
+        // Group X: accessibility & layout stress simulation (map 19 #91)
+        TestDef {
+            id: "BB-X1".to_string(),
+            name: "Apply font_scale=1.5, verify tree extraction reflects updated node measurements and clipped flags"
+                .to_string(),
+            scenario_file: "font_scale_clipping.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-X2".to_string(),
+            name: "Apply dark_mode=true and RTL locale, verify configuration update"
+                .to_string(),
+            scenario_file: "dark_mode_locale.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
+        TestDef {
+            id: "BB-X3".to_string(),
+            name: "Reset configuration via DELETE /config/stress, verify return to baseline"
+                .to_string(),
+            scenario_file: "config_stress_reset.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: false,
+        },
     ]
 }
 

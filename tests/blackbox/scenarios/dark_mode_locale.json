@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "dark_mode_locale",
+  "kind": "scenario",
+  "description": "BB-X2: Apply dark_mode=true and RTL locale, verify configuration update",
+  "steps": [
+    {
+      "action": "config_stress",
+      "args": {
+        "dark_mode": true,
+        "locale": "ar-AE",
+        "orientation": "LANDSCAPE"
+      },
+      "expect": {
+        "ok": true,
+        "dark_mode": true,
+        "locale": "ar-AE",
+        "orientation": "LANDSCAPE"
+      }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": {
+        "rev": 43
+      }
+    },
+    {
+      "action": "config_stress",
+      "args": {
+        "font_scale": 4.5
+      },
+      "expect": {
+        "error.code": "BAD_REQUEST"
+      }
+    }
+  ],
+  "assertions": []
+}
