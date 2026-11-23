@@ -532,7 +532,11 @@ Response (200 OK):
 ```
 
 Errors:
-- 400 if `font_scale` is negative or out of bounds (< 0.5 or > 3.0), orientation is invalid, or JSON is malformed (`BAD_REQUEST`).
+- 400 if `font_scale` is negative or out of bounds (< 0.5 or > 3.0), non-numeric, or JSON is malformed (`BAD_REQUEST`).
+- 400 if `dark_mode` is not a boolean (`BAD_REQUEST`).
+- 400 if `locale` is not a valid BCP-47 tag (`BAD_REQUEST`).
+- 400 if `orientation` is not `PORTRAIT` or `LANDSCAPE` (`BAD_REQUEST`).
+- 400 if no stress parameter is provided in the request body (`BAD_REQUEST`).
 - 400 if no active Activity is foregrounded (`APP_NOT_FOREGROUND`).
 
 #### DELETE /config/stress
