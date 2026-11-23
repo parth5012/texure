@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CompanionProvider, useCompanion } from './context/CompanionContext';
 import { MockToolbar } from './components/MockToolbar';
 import { QrScanner } from './components/QrScanner';
+import { StatusDashboard } from './components/StatusDashboard';
 import { Smartphone, QrCode, Sliders, Terminal, Activity, Moon, Sun } from 'lucide-react';
 
 const DashboardShell: React.FC = () => {
@@ -113,11 +114,8 @@ const DashboardShell: React.FC = () => {
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
         <div id="tab-content" className="space-y-6">
           {activeTab === 'dashboard' && (
-            <div data-testid="dashboard-view" className="p-6 bg-slate-900/60 rounded-xl border border-slate-800">
-              <h2 className="text-lg font-semibold text-slate-100 mb-2">Device & Shizuku Status</h2>
-              <p className="text-sm text-slate-400">
-                Connected tunnel state: <strong className="text-emerald-400">{state.tunnelState}</strong> | Shizuku: <strong className="text-indigo-400">{state.shizukuStatus}</strong>
-              </p>
+            <div data-testid="dashboard-view">
+              <StatusDashboard />
             </div>
           )}
 
