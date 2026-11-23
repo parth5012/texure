@@ -1,5 +1,21 @@
 # Log
 
+## 2026-11-23 (session) — Wayfinder map 19 (#91) Accessibility & Layout Stress Simulator with Text-Clipping Detection
+- Scope: 3 AFK tickets (#88, #89, #90) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/91-a11y-layout-stress`, PR #131 (`main` ← branch).
+- Ticket #88: In-process configuration override engine in `android/bridge`. Added `POST /config/stress` and `DELETE /config/stress` to `BridgeServer` and `BridgeConfigStress`. Supports `font_scale` (0.5..=3.0), `dark_mode` (via `AppCompatDelegate`), `locale` (supporting RTL locales like `ar-AE`), and `orientation` (`PORTRAIT` / `LANDSCAPE`). Unit tests in `BridgeConfigStressTest.kt` pass 100%. Closed #88.
+- Ticket #89: Text-clipping & layout truncation detector in `BridgeTreeExtractor` and `UiNode`. Added additive nullable `clipped: Option<bool>` to `UiNode` in `texure-contract` and `TreeNode` in Android bridge. Implemented `isTextClipped` checking layout line ellipsis (`getEllipsisCount > 0`) and physical text bounds exceeding view dimensions. Unit tests in `TextClippingTest.kt` and `texure-contract` pass 100%. Closed #89.
+- Ticket #90: Blackbox scenario suite & FakeBridge mocks for layout stress testing. Added Group X scenarios (`BB-X1` font scale clipping, `BB-X2` dark mode & RTL locale, `BB-X3` config stress reset) and registered in `crates/texure-blackbox/src/main.rs`. Implemented `FakeConfigStressState` and `/config/stress` POST & DELETE handlers in `crates/texure-blackbox/src/fake_bridge.rs` with recursive `inject_clipped` tree enhancement. Added HTTP client methods and runner wiring. Registered Group X actions in `texure-lint` scenario DSL. Blackbox scenarios pass 100%. Closed #90.
+- Verification:
+  - L0 Static: `cargo run -p texure-lint` (0 findings), `cargo fmt --check` (clean), `cargo clippy --workspace --all-targets -- -D warnings` (clean).
+  - L1 Unit: `cargo test --workspace` (158/158 passed), `./gradlew :bridge:testDebugUnitTest` (all 37 tasks passed).
+  - L2 Blackbox: `cargo run -p texure-blackbox -- --target mcp-fake` (32/32 passed including BB-X1..BB-X3).
+- PR & Babysitting:
+  - PR #131 filed (`https://github.com/parth5012/texure/pull/131`).
+  - Triggered `@coderabbitai review` and `/review`.
+  - CI Checks: `Lint & Quality Gates` (success), `Rust Tests (ubuntu-latest)` (success), `Rust Tests (windows-latest)` (success), `Android Build & Leak Probe` (success), `GitGuardian Security Checks` (success), `Release Assets` (skipped).
+  - 0 failed checks, 0 unresolved review threads, mergeable.
+- Status: READY FOR MERGE (handed off to user/merge-pr).
+
 ## 2026-11-21 (session) — Texure Companion UI Polish Overhaul
 - Scope: Comprehensive UI/UX redesign and visual craft overhaul for Texure Companion (Tauri v2 + React/Vite in `companion/`).
 - Goal: Achieve "Robin-approved" status with $\ge$ 9/10 evaluation scores across all Design Council members.
