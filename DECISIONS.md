@@ -377,3 +377,26 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
      - Simulated notifications are isolated to tag `texure_bridge_notification` (`BRIDGE_NOTIFICATION_TAG`) to prevent collisions with host app notifications.
      - `POST /intent` accepts optional `categories` array attached via `intent.addCategory()`, and resolves activities via `PackageManager.MATCH_DEFAULT_ONLY` verifying `resolveInfo.activityInfo?.packageName == ownPackage`.
      - Canonical error codes `CROSS_PACKAGE_FORBIDDEN` (400), `ACTIVITY_NOT_FOUND` (400), and `NOTIFICATIONS_DISABLED` (403) documented in contract error table.
+
+
+---
+
+## 2026-11-23 (Wayfinder Map #19 / #91: Accessibility & layout stress simulator with text-clipping detection via Council Review)
+
+1. **Group X Capability Elevation & Additive Node Shape (Guardrail G7).**
+   - *What:* Added Group X (`BB-X1..BB-X3`) representing accessibility, locale, and layout stress simulation with automatic text-clipping detection. Updated `docs_gate` linter regex to `BB-(?:[A-C]|R|N|S|L|D|X)[0-9]+` and registered `BB-X1..X3` in expected blackbox tests.
+   - *Node shape:* Added additive nullable `clipped: Option<bool>` to `UiNode` in `crates/texure-contract/src/tree.rs` and `TreeNode` in Android bridge. Present only on text-bearing nodes (`absent on non-text nodes`). Schema version stays 1 per additive backward-compatibility precedent.
+   - *Endpoints:* Additive HTTP routes `/config/stress` (POST / DELETE) authenticated via Bearer token; MCP tools remain strictly frozen at 6 (Guardrail G7).
+
+2. **In-Process Configuration & Locale Override Boundary.**
+   - *What:* Configuration stress modifications (`font_scale` 0.5..=3.0, `dark_mode`, `locale` with RTL direction, `orientation`) apply exclusively in-process to the target Application and Activity resources. Device-wide developer settings are never modified. Baseline configuration is captured on first mutation and cleanly restored on `DELETE /config/stress` or app restart.
+
+3. **Council Hardening Across All Three Delegates (Gemini 3.8 Flash, Hy4 Flash, DeepSeek V4.1 Flash).**
+   - *What:*
+     - Wired WebSocket `broadcastTreeChanged(rev)` in `BridgeServer.kt` on `POST /config/stress` and `DELETE /config/stress`, guaranteeing reactive wake-up for WebSocket clients and `wait_for`.
+     - Marshaled configuration, orientation, and night mode mutations to the Android Main Looper (`Handler(Looper.getMainLooper())`) with caller thread synchronization and test scheduler timeout fallback.
+     - Restored explicit `baselineLayoutDirection` on configuration reset in `BridgeConfigStress.kt`.
+     - Hardened `isTextClipped`: added subpixel float epsilon (`+0.5f`) for font kerning, handled zero-bound padding overflow as clipped when text exists, detected `maxLines` truncation, and excluded `EditText` fields.
+     - Validated BCP-47 locale tags against standard format and non-empty language.
+     - Aligned `FakeBridge`: verified non-empty payload requirement (400 on empty `{}`), case-insensitive orientation, text-only node clipping injection, and `"type": "tree_changed"` event format.
+     - Added `@Volatile` to `BridgeService.activeActivity` for safe cross-thread memory visibility.

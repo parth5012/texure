@@ -54,7 +54,7 @@ class BridgeServer(
     val stateDb: BridgeStateDb = BridgeStateDb(context),
     val stateSnapshot: BridgeStateSnapshot = BridgeStateSnapshot(context),
     val logcatReader: BridgeLogcatReader = BridgeLogcatReader(),
-    val configStress: BridgeConfigStress = BridgeConfigStress(activityProvider, treeExtractor)
+    configStress: BridgeConfigStress? = null
 ) : NanoWSD(port) {
 
     init {
@@ -79,6 +79,9 @@ class BridgeServer(
         broadcastTreeChanged(rev)
     }
     val notificationSimulator: BridgeNotificationSimulator = BridgeNotificationSimulator(context)
+    val configStress: BridgeConfigStress = configStress ?: BridgeConfigStress(activityProvider, treeExtractor) { rev ->
+        broadcastTreeChanged(rev)
+    }
 
     fun setHumanSteering() {
         currentState.set(BridgeState.HUMAN_STEERING)
@@ -927,6 +930,7 @@ class BridgeServer(
         val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
         return when (val res = configStress.applyStress(body)) {
             is ConfigStressResult.Success -> {
+                broadcastTreeChanged(res.rev)
                 jsonResponse(Response.Status.OK, JSONObject().apply {
                     put("ok", true)
                     res.fontScale?.let { put("font_scale", it) }
@@ -937,6 +941,7 @@ class BridgeServer(
                 })
             }
             is ConfigStressResult.ResetSuccess -> {
+                broadcastTreeChanged(res.rev)
                 jsonResponse(Response.Status.OK, JSONObject().apply {
                     put("ok", true)
                     put("reset", true)
@@ -964,6 +969,7 @@ class BridgeServer(
         drainBody(session)
         return when (val res = configStress.resetStress()) {
             is ConfigStressResult.ResetSuccess -> {
+                broadcastTreeChanged(res.rev)
                 jsonResponse(Response.Status.OK, JSONObject().apply {
                     put("ok", true)
                     put("reset", true)

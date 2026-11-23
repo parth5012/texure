@@ -3,11 +3,15 @@ package com.texure.bridge.config
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import androidx.appcompat.app.AppCompatDelegate
 import com.texure.bridge.tree.BridgeTreeExtractor
 import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 sealed class ConfigStressResult {
     data class Success(
@@ -34,6 +38,37 @@ class BridgeConfigStress(
     private val treeExtractor: BridgeTreeExtractor,
     private val broadcastTreeChanged: ((Long) -> Unit)? = null
 ) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val bcp47Regex = Regex("^[a-zA-Z]{2,3}(-[a-zA-Z0-9]+)*$")
+
+    private fun runOnMainThread(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            val latch = CountDownLatch(1)
+            var error: Throwable? = null
+            val posted = mainHandler.post {
+                try {
+                    block()
+                } catch (t: Throwable) {
+                    error = t
+                } finally {
+                    latch.countDown()
+                }
+            }
+            if (!posted) {
+                block()
+                return
+            }
+            if (!latch.await(100, TimeUnit.MILLISECONDS)) {
+                // Fallback if main looper is paused/unpumped in test harness
+                block()
+            } else {
+                error?.let { throw it }
+            }
+        }
+    }
+
     // Baseline configuration snapshot before any stress override
     private var baselineCaptured = false
     private var baselineFontScale: Float = 1.0f
@@ -78,10 +113,10 @@ class BridgeConfigStress(
         // Parse & validate locale
         val localeTag: String? = if (payload.has("locale") && !payload.isNull("locale")) {
             val tag = payload.optString("locale").trim()
-            if (tag.isEmpty()) {
+            if (tag.isEmpty() || !bcp47Regex.matches(tag) || Locale.forLanguageTag(tag).language.isEmpty()) {
                 return ConfigStressResult.Error(
                     code = "BAD_REQUEST",
-                    message = "locale must be a non-empty BCP-47 language tag (e.g. ar-AE, de-DE)",
+                    message = "locale must be a valid BCP-47 language tag (e.g. ar-AE, de-DE); received '$tag'",
                     httpStatus = 400
                 )
             }
@@ -116,55 +151,57 @@ class BridgeConfigStress(
         try {
             captureBaselineIfNeeded(activity)
 
-            val resources = activity.resources
-            val currentConfig = resources.configuration
-            val newConfig = Configuration(currentConfig)
-            val metrics = resources.displayMetrics
+            runOnMainThread {
+                val resources = activity.resources
+                val currentConfig = resources.configuration
+                val newConfig = Configuration(currentConfig)
+                val metrics = resources.displayMetrics
 
-            if (fontScale != null) {
-                newConfig.fontScale = fontScale
+                if (fontScale != null) {
+                    newConfig.fontScale = fontScale
+                    @Suppress("DEPRECATION")
+                    metrics.scaledDensity = metrics.density * fontScale
+                }
+
+                if (darkMode != null) {
+                    val nightMask = Configuration.UI_MODE_NIGHT_MASK
+                    val nightVal = if (darkMode) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+                    newConfig.uiMode = (newConfig.uiMode and nightMask.inv()) or nightVal
+
+                    try {
+                        val appCompatMode = if (darkMode) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+                        AppCompatDelegate.setDefaultNightMode(appCompatMode)
+                    } catch (_: Throwable) {
+                        // AppCompat optional
+                    }
+                }
+
+                if (localeTag != null) {
+                    val parsedLocale = Locale.forLanguageTag(localeTag)
+                    Locale.setDefault(parsedLocale)
+                    newConfig.setLocale(parsedLocale)
+                    newConfig.setLayoutDirection(parsedLocale)
+                }
+
+                if (orientationStr != null) {
+                    val requested = if (orientationStr == "PORTRAIT") {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    }
+                    activity.requestedOrientation = requested
+                    newConfig.orientation = if (orientationStr == "PORTRAIT") {
+                        Configuration.ORIENTATION_PORTRAIT
+                    } else {
+                        Configuration.ORIENTATION_LANDSCAPE
+                    }
+                }
+
                 @Suppress("DEPRECATION")
-                metrics.scaledDensity = metrics.density * fontScale
+                resources.updateConfiguration(newConfig, metrics)
+                @Suppress("DEPRECATION")
+                activity.applicationContext.resources.updateConfiguration(newConfig, metrics)
             }
-
-            if (darkMode != null) {
-                val nightMask = Configuration.UI_MODE_NIGHT_MASK
-                val nightVal = if (darkMode) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
-                newConfig.uiMode = (newConfig.uiMode and nightMask.inv()) or nightVal
-
-                try {
-                    val appCompatMode = if (darkMode) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-                    AppCompatDelegate.setDefaultNightMode(appCompatMode)
-                } catch (_: Throwable) {
-                    // AppCompat optional
-                }
-            }
-
-            if (localeTag != null) {
-                val parsedLocale = Locale.forLanguageTag(localeTag)
-                Locale.setDefault(parsedLocale)
-                newConfig.setLocale(parsedLocale)
-                newConfig.setLayoutDirection(parsedLocale)
-            }
-
-            if (orientationStr != null) {
-                val requested = if (orientationStr == "PORTRAIT") {
-                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                }
-                activity.requestedOrientation = requested
-                newConfig.orientation = if (orientationStr == "PORTRAIT") {
-                    Configuration.ORIENTATION_PORTRAIT
-                } else {
-                    Configuration.ORIENTATION_LANDSCAPE
-                }
-            }
-
-            @Suppress("DEPRECATION")
-            resources.updateConfiguration(newConfig, metrics)
-            @Suppress("DEPRECATION")
-            activity.applicationContext.resources.updateConfiguration(newConfig, metrics)
         } catch (t: Throwable) {
             return ConfigStressResult.Error(
                 code = "INTERNAL_ERROR",
@@ -203,35 +240,46 @@ class BridgeConfigStress(
         }
 
         try {
-            val resources = activity.resources
-            val currentConfig = resources.configuration
-            val resetConfig = Configuration(currentConfig)
-            val metrics = resources.displayMetrics
+            runOnMainThread {
+                val resources = activity.resources
+                val currentConfig = resources.configuration
+                val resetConfig = Configuration(currentConfig)
+                val metrics = resources.displayMetrics
 
-            resetConfig.fontScale = baselineFontScale
-            @Suppress("DEPRECATION")
-            metrics.scaledDensity = metrics.density * baselineFontScale
+                resetConfig.fontScale = baselineFontScale
+                @Suppress("DEPRECATION")
+                metrics.scaledDensity = metrics.density * baselineFontScale
 
-            val nightMask = Configuration.UI_MODE_NIGHT_MASK
-            resetConfig.uiMode = (resetConfig.uiMode and nightMask.inv()) or (baselineUiMode and nightMask)
+                val nightMask = Configuration.UI_MODE_NIGHT_MASK
+                resetConfig.uiMode = (resetConfig.uiMode and nightMask.inv()) or (baselineUiMode and nightMask)
 
-            try {
-                AppCompatDelegate.setDefaultNightMode(baselineNightMode)
-            } catch (_: Throwable) {}
+                try {
+                    AppCompatDelegate.setDefaultNightMode(baselineNightMode)
+                } catch (_: Throwable) {}
 
-            Locale.setDefault(baselineLocale)
-            resetConfig.setLocale(baselineLocale)
-            resetConfig.setLayoutDirection(baselineLocale)
+                Locale.setDefault(baselineLocale)
+                resetConfig.setLocale(baselineLocale)
+                resetConfig.setLayoutDirection(baselineLocale)
+                val dirBits = if (baselineLayoutDirection == android.view.View.LAYOUT_DIRECTION_RTL) {
+                    Configuration.SCREENLAYOUT_LAYOUTDIR_RTL
+                } else {
+                    Configuration.SCREENLAYOUT_LAYOUTDIR_LTR
+                }
+                resetConfig.screenLayout = (resetConfig.screenLayout and Configuration.SCREENLAYOUT_LAYOUTDIR_MASK.inv()) or dirBits
+                try {
+                    activity.window?.decorView?.layoutDirection = baselineLayoutDirection
+                } catch (_: Throwable) {}
 
-            activity.requestedOrientation = baselineRequestedOrientation
-            if (baselineOrientation != Configuration.ORIENTATION_UNDEFINED) {
-                resetConfig.orientation = baselineOrientation
+                activity.requestedOrientation = baselineRequestedOrientation
+                if (baselineOrientation != Configuration.ORIENTATION_UNDEFINED) {
+                    resetConfig.orientation = baselineOrientation
+                }
+
+                @Suppress("DEPRECATION")
+                resources.updateConfiguration(resetConfig, metrics)
+                @Suppress("DEPRECATION")
+                activity.applicationContext.resources.updateConfiguration(resetConfig, metrics)
             }
-
-            @Suppress("DEPRECATION")
-            resources.updateConfiguration(resetConfig, metrics)
-            @Suppress("DEPRECATION")
-            activity.applicationContext.resources.updateConfiguration(resetConfig, metrics)
 
             baselineCaptured = false
         } catch (t: Throwable) {
