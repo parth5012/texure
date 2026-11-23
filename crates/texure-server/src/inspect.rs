@@ -646,6 +646,7 @@ mod tests {
                                                 scrollable: false,
                                                 index: Some(0),
                                                 hash: Some("abc".to_string()),
+                                                clipped: None,
                                                 children: vec![],
                                             }],
                                         };

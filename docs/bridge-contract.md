@@ -41,7 +41,8 @@ Returns the accessibility/view tree of the active window, compact form:
       "cls": "android.widget.Button",
       "bounds": [12, 340, 108, 56], // x, y, w, h (dp)
       "clickable": true,
-      "editable": false
+      "editable": false,
+      "clipped": false              // text clipping/truncation flag; additive nullable (map 19, #91)
     }
   ]
 }
