@@ -202,6 +202,7 @@ class BridgeService : Service() {
         const val NOTIFICATION_ID = 87650
         const val ACTION_STOP = "com.texure.bridge.STOP"
 
+        @Volatile
         var activeActivity: Activity? = null
     }
 }

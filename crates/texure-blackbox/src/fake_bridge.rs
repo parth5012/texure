@@ -556,7 +556,11 @@ fn inject_clipped(value: &mut Value, clipped: bool) {
             }
         }
         Value::Object(map) => {
-            map.insert("clipped".to_string(), json!(clipped));
+            if let Some(text) = map.get("text").and_then(|t| t.as_str()) {
+                if !text.is_empty() {
+                    map.insert("clipped".to_string(), json!(clipped));
+                }
+            }
             if let Some(children) = map.get_mut("children") {
                 inject_clipped(children, clipped);
             }
@@ -2158,6 +2162,29 @@ async fn route_request(
             let body_json: Value = serde_json::from_slice(body).unwrap_or(json!({}));
             let mut config_stress = state.config_stress.lock().await;
 
+            let has_font_scale =
+                body_json.get("font_scale").is_some() && !body_json["font_scale"].is_null();
+            let has_dark_mode =
+                body_json.get("dark_mode").is_some() && !body_json["dark_mode"].is_null();
+            let has_locale = body_json.get("locale").is_some() && !body_json["locale"].is_null();
+            let has_orientation =
+                body_json.get("orientation").is_some() && !body_json["orientation"].is_null();
+
+            if !has_font_scale && !has_dark_mode && !has_locale && !has_orientation {
+                let err = json!({
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message": "At least one stress parameter must be provided (font_scale, dark_mode, locale, orientation)",
+                        "hint": "provide font_scale, dark_mode, locale, or orientation"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err).unwrap(),
+                );
+            }
+
             if let Some(font_scale) = body_json.get("font_scale").and_then(|v| v.as_f64()) {
                 if !(0.5..=3.0).contains(&font_scale) {
                     let err = json!({
@@ -2185,7 +2212,8 @@ async fn route_request(
             }
 
             if let Some(orientation) = body_json.get("orientation").and_then(|v| v.as_str()) {
-                if orientation != "PORTRAIT" && orientation != "LANDSCAPE" {
+                let orient_upper = orientation.trim().to_uppercase();
+                if orient_upper != "PORTRAIT" && orient_upper != "LANDSCAPE" {
                     let err = json!({
                         "error": {
                             "code": "BAD_REQUEST",
@@ -2199,29 +2227,37 @@ async fn route_request(
                         serde_json::to_vec(&err).unwrap(),
                     );
                 }
-                config_stress.orientation = Some(orientation.to_string());
+                config_stress.orientation = Some(orient_upper);
             }
 
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = state
                 .ws_sender
-                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+                .send(json!({ "type": "tree_changed", "rev": new_rev }).to_string());
 
             let mut resp = json!({
                 "ok": true,
                 "rev": new_rev
             });
-            if let Some(font_scale) = config_stress.font_scale {
-                resp["font_scale"] = json!(font_scale);
+            if has_font_scale {
+                if let Some(font_scale) = config_stress.font_scale {
+                    resp["font_scale"] = json!(font_scale);
+                }
             }
-            if let Some(dark_mode) = config_stress.dark_mode {
-                resp["dark_mode"] = json!(dark_mode);
+            if has_dark_mode {
+                if let Some(dark_mode) = config_stress.dark_mode {
+                    resp["dark_mode"] = json!(dark_mode);
+                }
             }
-            if let Some(ref locale) = config_stress.locale {
-                resp["locale"] = json!(locale);
+            if has_locale {
+                if let Some(ref locale) = config_stress.locale {
+                    resp["locale"] = json!(locale);
+                }
             }
-            if let Some(ref orientation) = config_stress.orientation {
-                resp["orientation"] = json!(orientation);
+            if has_orientation {
+                if let Some(ref orientation) = config_stress.orientation {
+                    resp["orientation"] = json!(orientation);
+                }
             }
 
             (
@@ -2237,7 +2273,7 @@ async fn route_request(
             let new_rev = state.rev.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = state
                 .ws_sender
-                .send(json!({ "event": "tree_changed", "rev": new_rev }).to_string());
+                .send(json!({ "type": "tree_changed", "rev": new_rev }).to_string());
 
             let resp = json!({
                 "ok": true,

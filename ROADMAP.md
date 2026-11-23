@@ -37,7 +37,7 @@ Explicitly parked ideas live here so ARCHITECTURE.md stays about v1. Cadence: re
   - **Capacitor & Ionic:** npm plugin (`@texure/capacitor`) for hybrid mobile apps.
   - **Embedded WebViews / Electron-style shells:** Chromium DevTools Protocol (CDP) abstract socket adapter (`crates/texure-cdp`) for full DOM accessibility inspection.
 - **Screen mirroring for agents.** scrcpy-source MCP frame provider (requires the ADB bootstrap utility first; scrcpy needs ADB). Vision grounding on top of the JSON tree when pixel truth matters.
-- **Config matrix.** Same scenario replayed under rotation, dark mode, or a locale change; scenario runner scripts the config change before each replay.
+- **Config matrix** (shipped in Map 19 / PR #131 via in-process `/config/stress` and `clipped` tree annotation). Same scenario replayed under rotation, dark mode, or a locale change; scenario runner scripts the config change before each replay.
 - **Deep-link/entry matrix.** Same flow via deep link / notification / cold start.
 - **Performance probes.** Choreographer frame time + cold start per flow, persisted into the regression trend UI.
 - **Assertion SDK for devs.** Kotlin DSL over the bridge for non-agent tests in plain instrumented suites.

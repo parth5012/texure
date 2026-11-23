@@ -153,6 +153,8 @@ class BridgeTreeExtractor {
     }
 
     private fun isTextClipped(textView: TextView): Boolean {
+        if (textView is android.widget.EditText) return false
+
         val layout = textView.layout ?: return false
 
         // 1. Check ellipsis count across lines
@@ -169,15 +171,25 @@ class BridgeTreeExtractor {
         val availableWidth = textView.width - textView.compoundPaddingLeft - textView.compoundPaddingRight
         val availableHeight = textView.height - textView.compoundPaddingTop - textView.compoundPaddingBottom
 
-        if (availableWidth > 0 && lineCount > 0) {
+        // If padding exceeds view dimensions and text is non-empty, text is clipped
+        if (availableWidth <= 0 || availableHeight <= 0) {
+            return !textView.text.isNullOrEmpty()
+        }
+
+        // Check if layout text was truncated by maxLines or shorter than original text
+        val viewTextLength = textView.text?.length ?: 0
+        if (textView.maxLines in 1 until lineCount || layout.text.length < viewTextLength) {
+            return true
+        }
+
+        if (lineCount > 0) {
             for (line in 0 until lineCount) {
-                if (layout.getLineWidth(line) > availableWidth) {
+                // Epsilon tolerance (+0.5f) for subpixel font kerning and rounding
+                if (layout.getLineWidth(line) > (availableWidth + 0.5f)) {
                     return true
                 }
             }
-        }
 
-        if (availableHeight > 0 && lineCount > 0) {
             val totalTextHeight = layout.getLineBottom(lineCount - 1) - layout.getLineTop(0)
             if (totalTextHeight > availableHeight) {
                 return true
