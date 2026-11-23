@@ -494,6 +494,59 @@ Response (200 OK):
 
 - `cancelled`: boolean indicating whether an active simulated notification with that ID was found and cancelled (`false` if ID was not found or already cancelled).
 
+### Accessibility, Locale & Layout Stress Simulation (map 19, #91)
+
+Additive routes for in-process accessibility, dark mode, RTL layout, font scaling, and orientation overrides without restarting the app process.
+
+#### POST /config/stress
+
+Applies in-process configuration overrides to the active Activity and application context:
+
+```json
+{
+  "font_scale": 1.5,
+  "dark_mode": true,
+  "locale": "ar-AE",
+  "orientation": "PORTRAIT"
+}
+```
+
+- `font_scale`: optional float (e.g. 0.85, 1.0, 1.3, 1.5, 2.0). Range: 0.5 to 3.0.
+- `dark_mode`: optional boolean (triggers `AppCompatDelegate.setDefaultNightMode`).
+- `locale`: optional string BCP-47 language tag (e.g. `ar-AE` for RTL mirroring, `de-DE` for German text expansion).
+- `orientation`: optional string enum (`PORTRAIT` | `LANDSCAPE`).
+
+On configuration change, tree revision is bumped and `tree_changed` is broadcast over `/ws`.
+
+Response (200 OK):
+```json
+{
+  "ok": true,
+  "font_scale": 1.5,
+  "dark_mode": true,
+  "locale": "ar-AE",
+  "orientation": "PORTRAIT",
+  "rev": 43
+}
+```
+
+Errors:
+- 400 if `font_scale` is negative or out of bounds (< 0.5 or > 3.0), orientation is invalid, or JSON is malformed (`BAD_REQUEST`).
+- 400 if no active Activity is foregrounded (`APP_NOT_FOREGROUND`).
+
+#### DELETE /config/stress
+
+Restores the baseline configuration captured prior to the first stress override.
+
+Response (200 OK):
+```json
+{
+  "ok": true,
+  "reset": true,
+  "rev": 44
+}
+```
+
 ### (tool note, agent-facing)
 
 MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`.

@@ -194,6 +194,16 @@ Rows below define the contract for package-scoped deep-link intent routing and n
 | Push notification simulation | BB-D2 | Simulate notification via `POST /notification/simulate`, verify automatic debug channel creation (`texure_debug_channel`), pending intent attachment, and notification dismissal via `DELETE /notification`. |
 | Cross-package intent rejection | BB-D3 | Attempt cross-package intent dispatch, verify hard rejection with HTTP 400 error enforcing Guardrail G6 boundary. |
 
+## 3X. Accessibility, locale & layout stress simulation [X] (map 19, #91)
+
+Rows below define the contract for in-process configuration overrides (font scale, dark mode, RTL locales, orientation) and text-clipping/overflow detection in UI extraction.
+
+| Behavior | Test ID | Spec |
+|---|---|---|
+| In-process font scale & clipping | BB-X1 | Apply `font_scale=1.5` via `POST /config/stress`, verify tree extraction reflects updated node measurements and `clipped: true` flags on truncated text. |
+| Dark mode & locale override | BB-X2 | Apply `dark_mode=true` and RTL locale via `POST /config/stress`, verify configuration update, night mode, and tree revision bump. |
+| Configuration stress reset | BB-X3 | Reset configuration via `DELETE /config/stress`, verify return to baseline device configuration. |
+
 ## 4. Explicit non-behaviors (v1)
 
 - No auto-wake of a powered-off screen by the in-app bridge (remote wake via Shizuku in §3R BB-R7 is an explicitly guarded remote bootstrap exception).
@@ -203,5 +213,5 @@ Rows below define the contract for package-scoped deep-link intent routing and n
 
 ## 5. Verification hooks (link to testing-architecture)
 
-- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13), plus Group N network scenarios `network_mock_response`, `network_history`, `network_mode_passthrough` (BB-N1..BB-N3), plus Group S state scenarios `state_reset`, `state_prefs`, `state_snapshots` (BB-S1..BB-S3), plus Group L log scenarios `logs_level_filter`, `logs_since_filter`, `logs_clear` (BB-L1..BB-L3), plus Group D deep-link and notification scenarios `deep_link_intent`, `notification_simulate`, `cross_package_intent` (BB-D1..BB-D3).
+- Every behavior row above maps to a fixture or scenario to be authored in testing-architecture doc: FakeBridge scenarios `static_screen`, `stale_screen`, `slow_screen`, `auth_reject`, `human_win` (NEW: synthetic device id marker), `lock_screen`, `backgrounded`, Group R remote/gateway scenarios `reverse_ws_handshake`, `reverse_ws_auth_reject`, `reverse_ws_reconnect`, `gateway_proxy_tree`, `gateway_proxy_tap`, `gateway_error_propagation`, `shizuku_wake_keyguard`, `shizuku_cold_start`, `shizuku_pm_grant`, `shizuku_input_tap`, `pairing_qr`, `transport_fallback`, `tunnel_single_flight` (BB-R1..BB-R13), plus Group N network scenarios `network_mock_response`, `network_history`, `network_mode_passthrough` (BB-N1..BB-N3), plus Group S state scenarios `state_reset`, `state_prefs`, `state_snapshots` (BB-S1..BB-S3), plus Group L log scenarios `logs_level_filter`, `logs_since_filter`, `logs_clear` (BB-L1..BB-L3), plus Group D deep-link and notification scenarios `deep_link_intent`, `notification_simulate`, `cross_package_intent` (BB-D1..BB-D3), plus Group X layout stress scenarios `font_scale_clipping`, `dark_mode_locale`, `config_stress_reset` (BB-X1..BB-X3).
 - The spec as a whole is the input to the behavior-driven test matrix; breaking a row is a bug, not a choice.
