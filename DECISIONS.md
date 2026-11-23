@@ -393,10 +393,10 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 
 3. **Council Hardening Across All Three Delegates (Gemini 3.8 Flash, Hy4 Flash, DeepSeek V4.1 Flash).**
    - *What:*
-     - Wired WebSocket `broadcastTreeChanged(rev)` in `BridgeServer.kt` on `POST /config/stress` and `DELETE /config/stress`, guaranteeing reactive wake-up for WebSocket clients and `wait_for`.
-     - Marshaled configuration, orientation, and night mode mutations to the Android Main Looper (`Handler(Looper.getMainLooper())`) with caller thread synchronization and test scheduler timeout fallback.
+     - Wired single-source WebSocket `broadcastTreeChanged(rev)` in `BridgeConfigStress.kt`, eliminating duplicate handler-level broadcasts in `BridgeServer.kt` and guaranteeing exactly one reactive wake-up per mutation (verified with test assertions).
+     - Marshaled configuration, orientation, and night mode mutations to the Android Main Looper (`Handler(Looper.getMainLooper())`) guarded by an `AtomicBoolean` single-shot barrier and 2-second timeout, preventing double execution.
      - Restored explicit `baselineLayoutDirection` on configuration reset in `BridgeConfigStress.kt`.
-     - Hardened `isTextClipped`: added subpixel float epsilon (`+0.5f`) for font kerning, handled zero-bound padding overflow as clipped when text exists, detected `maxLines` truncation, and excluded `EditText` fields.
+     - Hardened `isTextClipped`: added subpixel float epsilon (`+0.5f`) for font kerning and height, checked `isLaidOut` to eliminate pre-layout false positives, handled zero-bound padding overflow as clipped when text exists, detected `maxLines` truncation, excluded `EditText` fields, and restricted `clipped` tree annotation strictly to non-empty text-bearing nodes.
      - Validated BCP-47 locale tags against standard format and non-empty language.
-     - Aligned `FakeBridge`: verified non-empty payload requirement (400 on empty `{}`), case-insensitive orientation, text-only node clipping injection, and `"type": "tree_changed"` event format.
+     - Aligned `FakeBridge`: verified non-empty payload requirement (400 on empty `{}`), validated BCP-47 regex on `locale` (400 on invalid), validated numeric `font_scale` (400 on non-numeric), excluded `EditText` from `inject_clipped`, handled case-insensitive orientation, and aligned `"type": "tree_changed"` event format.
      - Added `@Volatile` to `BridgeService.activeActivity` for safe cross-thread memory visibility.

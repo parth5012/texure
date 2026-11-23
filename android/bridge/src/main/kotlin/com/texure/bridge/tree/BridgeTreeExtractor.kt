@@ -105,9 +105,10 @@ class BridgeTreeExtractor {
             val id = resolveNodeId(view)
             val isClickable = view.isClickable
             val isEditable = view is EditText || (view.isFocusable && view.isFocusableInTouchMode)
-            val isClipped = when (view) {
-                is TextView -> isTextClipped(view)
-                else -> null
+            val isClipped = if (view is TextView && !text.isNullOrEmpty()) {
+                isTextClipped(view)
+            } else {
+                null
             }
 
             val treeNode = TreeNode(
@@ -154,6 +155,8 @@ class BridgeTreeExtractor {
 
     private fun isTextClipped(textView: TextView): Boolean {
         if (textView is android.widget.EditText) return false
+        if (textView.text.isNullOrEmpty()) return false
+        if (!textView.isLaidOut && (textView.width <= 0 || textView.height <= 0)) return false
 
         val layout = textView.layout ?: return false
 
@@ -191,7 +194,7 @@ class BridgeTreeExtractor {
             }
 
             val totalTextHeight = layout.getLineBottom(lineCount - 1) - layout.getLineTop(0)
-            if (totalTextHeight > availableHeight) {
+            if (totalTextHeight > (availableHeight + 0.5f)) {
                 return true
             }
         }

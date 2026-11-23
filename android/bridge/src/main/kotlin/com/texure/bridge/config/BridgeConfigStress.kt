@@ -44,10 +44,13 @@ class BridgeConfigStress(
     private fun runOnMainThread(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             block()
-        } else {
-            val latch = CountDownLatch(1)
-            var error: Throwable? = null
-            val posted = mainHandler.post {
+            return
+        }
+        val executed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val latch = CountDownLatch(1)
+        var error: Throwable? = null
+        val posted = mainHandler.post {
+            if (executed.compareAndSet(false, true)) {
                 try {
                     block()
                 } catch (t: Throwable) {
@@ -56,16 +59,18 @@ class BridgeConfigStress(
                     latch.countDown()
                 }
             }
-            if (!posted) {
+        }
+        if (!posted) {
+            block()
+            return
+        }
+        if (!latch.await(2, TimeUnit.SECONDS)) {
+            // If timed out, execute fallback only if main runnable has not started
+            if (executed.compareAndSet(false, true)) {
                 block()
-                return
             }
-            if (!latch.await(100, TimeUnit.MILLISECONDS)) {
-                // Fallback if main looper is paused/unpumped in test harness
-                block()
-            } else {
-                error?.let { throw it }
-            }
+        } else {
+            error?.let { throw it }
         }
     }
 

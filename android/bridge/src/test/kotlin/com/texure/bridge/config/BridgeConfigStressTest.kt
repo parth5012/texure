@@ -33,14 +33,17 @@ class BridgeConfigStressTest {
     private lateinit var server: BridgeServer
     private val testPort = 8780
     private val testToken = "test-token-stress"
+    private var broadcastCount = 0
 
     @Before
     fun setUp() {
+        broadcastCount = 0
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         treeExtractor = BridgeTreeExtractor()
         configStress = BridgeConfigStress(
             activityProvider = { activity },
-            treeExtractor = treeExtractor
+            treeExtractor = treeExtractor,
+            broadcastTreeChanged = { broadcastCount++ }
         )
 
         val tokenManager = BridgeTokenManager(activity).apply {
@@ -81,12 +84,14 @@ class BridgeConfigStressTest {
         assertTrue(response.getLong("rev") > initialRev)
 
         assertEquals(1.5f, activity.resources.configuration.fontScale, 0.01f)
+        assertEquals(1, broadcastCount)
 
         // 2. DELETE /config/stress
         val (delCode, delResponse) = executeRequest("DELETE", "/config/stress")
         assertEquals(200, delCode)
         assertTrue(delResponse.getBoolean("ok"))
         assertTrue(delResponse.getBoolean("reset"))
+        assertEquals(2, broadcastCount)
 
         assertEquals(initialFontScale, activity.resources.configuration.fontScale, 0.01f)
     }
