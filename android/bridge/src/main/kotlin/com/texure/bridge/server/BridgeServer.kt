@@ -9,6 +9,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import com.texure.bridge.crash.BridgeCrashHandler
+import com.texure.bridge.config.BridgeConfigStress
+import com.texure.bridge.config.ConfigStressResult
 import com.texure.bridge.intent.BridgeIntentDispatcher
 import com.texure.bridge.intent.IntentDispatchResult
 import com.texure.bridge.notification.BridgeNotificationSimulator
@@ -51,7 +53,8 @@ class BridgeServer(
     val statePrefs: BridgeStatePrefs = BridgeStatePrefs(context),
     val stateDb: BridgeStateDb = BridgeStateDb(context),
     val stateSnapshot: BridgeStateSnapshot = BridgeStateSnapshot(context),
-    val logcatReader: BridgeLogcatReader = BridgeLogcatReader()
+    val logcatReader: BridgeLogcatReader = BridgeLogcatReader(),
+    val configStress: BridgeConfigStress = BridgeConfigStress(activityProvider, treeExtractor)
 ) : NanoWSD(port) {
 
     init {
@@ -218,6 +221,8 @@ class BridgeServer(
                 method == Method.POST && uri == "/intent" -> handlePostIntent(session)
                 method == Method.POST && uri == "/notification/simulate" -> handlePostNotificationSimulate(session)
                 method == Method.DELETE && uri == "/notification" -> handleDeleteNotification(session)
+                method == Method.POST && uri == "/config/stress" -> handlePostConfigStress(session)
+                method == Method.DELETE && uri == "/config/stress" -> handleDeleteConfigStress(session)
                 method == Method.GET && uri == "/screenshot" -> handleGetScreenshot(session)
                 method == Method.GET && uri == "/last-crash" -> handleGetLastCrash()
                 else -> jsonResponse(Response.Status.NOT_FOUND, JSONObject().apply {
@@ -911,6 +916,76 @@ class BridgeServer(
                         })
                     }
                 )
+            }
+        }
+    }
+
+    private fun handlePostConfigStress(session: IHTTPSession): Response {
+        val refusal = checkDeviceReadiness(mutating = true)
+        if (refusal != null) return refusal
+
+        val body = parseBodyAsJson(session) ?: return badRequest("Invalid JSON body")
+        return when (val res = configStress.applyStress(body)) {
+            is ConfigStressResult.Success -> {
+                jsonResponse(Response.Status.OK, JSONObject().apply {
+                    put("ok", true)
+                    res.fontScale?.let { put("font_scale", it) }
+                    res.darkMode?.let { put("dark_mode", it) }
+                    res.locale?.let { put("locale", it) }
+                    res.orientation?.let { put("orientation", it) }
+                    put("rev", res.rev)
+                })
+            }
+            is ConfigStressResult.ResetSuccess -> {
+                jsonResponse(Response.Status.OK, JSONObject().apply {
+                    put("ok", true)
+                    put("reset", true)
+                    put("rev", res.rev)
+                })
+            }
+            is ConfigStressResult.Error -> {
+                jsonResponse(
+                    Response.Status.lookup(res.httpStatus) ?: Response.Status.BAD_REQUEST,
+                    JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", res.code)
+                            put("message", res.message)
+                        })
+                    }
+                )
+            }
+        }
+    }
+
+    private fun handleDeleteConfigStress(session: IHTTPSession): Response {
+        val refusal = checkDeviceReadiness(mutating = true)
+        if (refusal != null) return refusal
+
+        drainBody(session)
+        return when (val res = configStress.resetStress()) {
+            is ConfigStressResult.ResetSuccess -> {
+                jsonResponse(Response.Status.OK, JSONObject().apply {
+                    put("ok", true)
+                    put("reset", true)
+                    put("rev", res.rev)
+                })
+            }
+            is ConfigStressResult.Error -> {
+                jsonResponse(
+                    Response.Status.lookup(res.httpStatus) ?: Response.Status.BAD_REQUEST,
+                    JSONObject().apply {
+                        put("error", JSONObject().apply {
+                            put("code", res.code)
+                            put("message", res.message)
+                        })
+                    }
+                )
+            }
+            is ConfigStressResult.Success -> {
+                jsonResponse(Response.Status.OK, JSONObject().apply {
+                    put("ok", true)
+                    put("rev", res.rev)
+                })
             }
         }
     }
