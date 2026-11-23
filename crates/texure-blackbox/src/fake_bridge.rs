@@ -556,9 +556,19 @@ fn inject_clipped(value: &mut Value, clipped: bool) {
             }
         }
         Value::Object(map) => {
-            if let Some(text) = map.get("text").and_then(|t| t.as_str()) {
-                if !text.is_empty() {
-                    map.insert("clipped".to_string(), json!(clipped));
+            let is_editable = map
+                .get("editable")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false)
+                || map
+                    .get("cls")
+                    .and_then(|c| c.as_str())
+                    .is_some_and(|c| c.contains("EditText"));
+            if !is_editable {
+                if let Some(text) = map.get("text").and_then(|t| t.as_str()) {
+                    if !text.is_empty() {
+                        map.insert("clipped".to_string(), json!(clipped));
+                    }
                 }
             }
             if let Some(children) = map.get_mut("children") {
@@ -2185,30 +2195,95 @@ async fn route_request(
                 );
             }
 
-            if let Some(font_scale) = body_json.get("font_scale").and_then(|v| v.as_f64()) {
-                if !(0.5..=3.0).contains(&font_scale) {
-                    let err = json!({
-                        "error": {
-                            "code": "BAD_REQUEST",
-                            "message": "font_scale must be between 0.5 and 3.0",
-                            "hint": "provide font_scale in 0.5..=3.0"
-                        }
-                    });
-                    return (
-                        "400 Bad Request",
-                        vec![("Content-Type", "application/json".to_string())],
-                        serde_json::to_vec(&err).unwrap(),
-                    );
+            if let Some(font_val) = body_json.get("font_scale") {
+                if !font_val.is_null() {
+                    let Some(font_scale) = font_val.as_f64() else {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "font_scale must be a number between 0.5 and 3.0",
+                                "hint": "provide font_scale in 0.5..=3.0"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    };
+                    if !(0.5..=3.0).contains(&font_scale) {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "font_scale must be between 0.5 and 3.0",
+                                "hint": "provide font_scale in 0.5..=3.0"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                    config_stress.font_scale = Some(font_scale as f32);
                 }
-                config_stress.font_scale = Some(font_scale as f32);
             }
 
-            if let Some(dark_mode) = body_json.get("dark_mode").and_then(|v| v.as_bool()) {
-                config_stress.dark_mode = Some(dark_mode);
+            if let Some(dark_val) = body_json.get("dark_mode") {
+                if !dark_val.is_null() {
+                    let Some(dark_mode) = dark_val.as_bool() else {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "dark_mode must be a boolean",
+                                "hint": "provide dark_mode as true or false"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    };
+                    config_stress.dark_mode = Some(dark_mode);
+                }
             }
 
-            if let Some(locale) = body_json.get("locale").and_then(|v| v.as_str()) {
-                config_stress.locale = Some(locale.to_string());
+            if let Some(loc_val) = body_json.get("locale") {
+                if !loc_val.is_null() {
+                    let Some(locale) = loc_val.as_str() else {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": "locale must be a string BCP-47 tag",
+                                "hint": "provide a valid BCP-47 tag such as en-US, ar-EG"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    };
+                    let is_bcp47 = regex::Regex::new(r"^[a-zA-Z]{2,3}(-[a-zA-Z0-9]+)*$")
+                        .unwrap()
+                        .is_match(locale);
+                    if !is_bcp47 {
+                        let err = json!({
+                            "error": {
+                                "code": "BAD_REQUEST",
+                                "message": format!("Invalid BCP-47 locale tag: {}", locale),
+                                "hint": "provide a valid BCP-47 tag such as en-US, ar-EG"
+                            }
+                        });
+                        return (
+                            "400 Bad Request",
+                            vec![("Content-Type", "application/json".to_string())],
+                            serde_json::to_vec(&err).unwrap(),
+                        );
+                    }
+                    config_stress.locale = Some(locale.to_string());
+                }
             }
 
             if let Some(orientation) = body_json.get("orientation").and_then(|v| v.as_str()) {
