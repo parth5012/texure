@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
-use texure_contract::tools::FROZEN_TOOL_NAMES;
+use texure_contract::tools::{tool_annotations, tool_output_schema, FROZEN_TOOL_NAMES};
 
 pub struct FakeMcpServer {
     scenario: String,
@@ -65,11 +65,27 @@ impl FakeMcpServer {
 
         let resp = match method {
             "initialize" => {
+                let req_version = params.get("protocolVersion").and_then(|v| v.as_str());
+                let protocol_version = match req_version {
+                    Some("2024-11-05") => "2024-11-05",
+                    Some("2025-06-18") => "2025-06-18",
+                    None => "2024-11-05",
+                    Some(unsupported) => {
+                        return Some(json!({
+                            "jsonrpc": "2.0",
+                            "id": &id,
+                            "error": {
+                                "code": -32602,
+                                "message": format!("Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18")
+                            }
+                        }));
+                    }
+                };
                 json!({
                     "jsonrpc": "2.0",
                     "id": &id,
                     "result": {
-                        "protocolVersion": "2024-11-05",
+                        "protocolVersion": protocol_version,
                         "capabilities": {
                             "tools": {}
                         },
@@ -96,7 +112,9 @@ impl FakeMcpServer {
                                         "subtree": { "type": "string", "description": "Optional subtree node id" },
                                         "verbose": { "type": "boolean", "description": "Return full error payload on error" }
                                     }
-                                }
+                                },
+                                "outputSchema": tool_output_schema("device_tree"),
+                                "annotations": tool_annotations("device_tree")
                             },
                             {
                                 "name": "tap",
@@ -109,7 +127,9 @@ impl FakeMcpServer {
                                         "rev": { "type": "integer" },
                                         "verbose": { "type": "boolean" }
                                     }
-                                }
+                                },
+                                "outputSchema": tool_output_schema("tap"),
+                                "annotations": tool_annotations("tap")
                             },
                             {
                                 "name": "type",
@@ -123,7 +143,9 @@ impl FakeMcpServer {
                                         "rev": { "type": "integer" },
                                         "verbose": { "type": "boolean" }
                                     }
-                                }
+                                },
+                                "outputSchema": tool_output_schema("type"),
+                                "annotations": tool_annotations("type")
                             },
                             {
                                 "name": "keypress",
@@ -135,7 +157,9 @@ impl FakeMcpServer {
                                         "key": { "type": "string", "enum": ["ENTER", "BACK", "DEL", "TAB"] },
                                         "verbose": { "type": "boolean" }
                                     }
-                                }
+                                },
+                                "outputSchema": tool_output_schema("keypress"),
+                                "annotations": tool_annotations("keypress")
                             },
                             {
                                 "name": "screenshot",
@@ -146,7 +170,9 @@ impl FakeMcpServer {
                                         "scale": { "type": "number", "enum": [0.25, 0.5, 1.0] },
                                         "verbose": { "type": "boolean" }
                                     }
-                                }
+                                },
+                                "outputSchema": tool_output_schema("screenshot"),
+                                "annotations": tool_annotations("screenshot")
                             },
                             {
                                 "name": "wait_for",
@@ -160,7 +186,9 @@ impl FakeMcpServer {
                                         "timeout": { "type": "integer", "maximum": 30 },
                                         "verbose": { "type": "boolean" }
                                     }
-                                }
+                                },
+                                "outputSchema": tool_output_schema("wait_for"),
+                                "annotations": tool_annotations("wait_for")
                             }
                         ]
                     }
@@ -287,12 +315,14 @@ impl FakeMcpServer {
                                     "type": "text",
                                     "text": serde_json::to_string(&tree_resp).unwrap()
                                 }
-                            ]
+                            ],
+                            "structuredContent": tree_resp
                         }
                     }));
                 }
 
                 // Default fallback response
+                let default_resp = json!({"ok": true, "rev": 42});
                 json!({
                     "jsonrpc": "2.0",
                     "id": &id,
@@ -300,9 +330,10 @@ impl FakeMcpServer {
                         "content": [
                             {
                                 "type": "text",
-                                "text": "{\"ok\": true, \"rev\": 42}"
+                                "text": serde_json::to_string(&default_resp).unwrap()
                             }
-                        ]
+                        ],
+                        "structuredContent": default_resp
                     }
                 })
             }
@@ -334,6 +365,9 @@ impl FakeMcpServer {
                 "code": code,
                 "message": message,
                 "hint": hint
+            },
+            "data": {
+                "code": code
             }
         });
 
@@ -353,6 +387,7 @@ impl FakeMcpServer {
                         "text": text
                     }
                 ],
+                "structuredContent": err_json,
                 "isError": true
             }
         })

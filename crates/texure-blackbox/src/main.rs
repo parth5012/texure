@@ -662,7 +662,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "mcp_protocol_version.json".to_string(),
             target: "mcp-real".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-P2".to_string(),
@@ -670,7 +670,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "mcp_tools_metadata.json".to_string(),
             target: "mcp-real".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-P3".to_string(),
@@ -678,7 +678,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "mcp_structured_content.json".to_string(),
             target: "mcp-real".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-P4".to_string(),
@@ -686,7 +686,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "mcp_is_error.json".to_string(),
             target: "mcp-real".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
     ]
 }
