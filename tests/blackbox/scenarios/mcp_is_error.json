@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "name": "mcp_is_error",
+  "kind": "scenario",
+  "description": "Tool execution failure returns isError: true with structured error details while server remains alive",
+  "steps": [
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "texure-blackbox",
+            "version": "0.1.0"
+          }
+        }
+      },
+      "expect": {
+        "protocolVersion": "2025-06-18"
+      }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "tools/call",
+        "params": {
+          "name": "tap",
+          "arguments": {
+            "node": 1,
+            "rev": 999999
+          }
+        }
+      },
+      "expect": {
+        "is_error_with_code": true,
+        "isError": true
+      }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "ping"
+      },
+      "expect": {}
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "is_error_with_code" }
+  ]
+}

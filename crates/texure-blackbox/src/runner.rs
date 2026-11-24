@@ -420,6 +420,102 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                     }
                 }
             }
+            "raw_mcp" => {
+                let method = match step.args.get("method").and_then(|m| m.as_str()) {
+                    Some(m) => m,
+                    None => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            "raw_mcp requires 'method'",
+                            offset_ms,
+                        );
+                        return Err((steps, "raw_mcp requires 'method'".to_string()));
+                    }
+                };
+                let params = step.args.get("params").cloned();
+
+                let resp = match client.send_raw_request(method, params.clone()).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("raw_mcp({method}) failed: {e}")));
+                    }
+                };
+
+                let mut resp_val = match resp.result {
+                    Some(res) => {
+                        let mut m = json!({ "result": res.clone() });
+                        if let Some(map) = res.as_object() {
+                            for (k, v) in map {
+                                m[k] = v.clone();
+                            }
+                        }
+                        if method == "tools/list" {
+                            let mut valid = false;
+                            if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
+                                if tools.len() == 6 {
+                                    valid = tools.iter().all(|t| {
+                                        let has_out = t.get("outputSchema").is_some();
+                                        let has_ann = t.get("annotations").is_some();
+                                        has_out && has_ann
+                                    });
+                                }
+                            }
+                            m["tools_metadata_valid"] = json!(valid);
+                        }
+                        if method == "tools/call" {
+                            let has_struct = res.get("structuredContent").is_some();
+                            m["has_structured_content"] = json!(has_struct);
+                            let is_err = res.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
+                            let code = res
+                                .get("structuredContent")
+                                .and_then(|s| s.get("error").or(Some(s)))
+                                .and_then(|e| e.get("code"))
+                                .and_then(|c| c.as_str())
+                                .or_else(|| {
+                                    res.get("data")
+                                        .and_then(|d| d.get("code"))
+                                        .and_then(|c| c.as_str())
+                                });
+                            m["is_error_with_code"] = json!(is_err && code.is_some());
+                            if let Some(c) = code {
+                                m["error"] = json!({ "code": c });
+                            }
+                        }
+                        m
+                    }
+                    None => json!({}),
+                };
+                if let Some(err) = resp.error {
+                    resp_val["error"] = json!({
+                        "code": err.code,
+                        "message": err.message,
+                        "data": err.data,
+                    });
+                }
+                last_response = resp_val;
+                record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&step.args),
+                    &last_response,
+                    None,
+                    None,
+                    offset_ms,
+                );
+            }
             other => {
                 push_error_step(
                     &mut steps,
@@ -897,6 +993,102 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
                     &last_response,
                     rev_before,
                     rev_after,
+                    offset_ms,
+                );
+            }
+            "raw_mcp" => {
+                let method = match step.args.get("method").and_then(|m| m.as_str()) {
+                    Some(m) => m,
+                    None => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            "raw_mcp requires 'method'",
+                            offset_ms,
+                        );
+                        return Err((steps, "raw_mcp requires 'method'".to_string()));
+                    }
+                };
+                let params = step.args.get("params").cloned();
+
+                let resp = match client.send_raw_request(method, params.clone()).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_error_step(
+                            &mut steps,
+                            idx,
+                            &step.action,
+                            Some(&step.args),
+                            &e.to_string(),
+                            offset_ms,
+                        );
+                        return Err((steps, format!("raw_mcp({method}) failed: {e}")));
+                    }
+                };
+
+                let mut resp_val = match resp.result {
+                    Some(res) => {
+                        let mut m = json!({ "result": res.clone() });
+                        if let Some(map) = res.as_object() {
+                            for (k, v) in map {
+                                m[k] = v.clone();
+                            }
+                        }
+                        if method == "tools/list" {
+                            let mut valid = false;
+                            if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
+                                if tools.len() == 6 {
+                                    valid = tools.iter().all(|t| {
+                                        let has_out = t.get("outputSchema").is_some();
+                                        let has_ann = t.get("annotations").is_some();
+                                        has_out && has_ann
+                                    });
+                                }
+                            }
+                            m["tools_metadata_valid"] = json!(valid);
+                        }
+                        if method == "tools/call" {
+                            let has_struct = res.get("structuredContent").is_some();
+                            m["has_structured_content"] = json!(has_struct);
+                            let is_err = res.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
+                            let code = res
+                                .get("structuredContent")
+                                .and_then(|s| s.get("error").or(Some(s)))
+                                .and_then(|e| e.get("code"))
+                                .and_then(|c| c.as_str())
+                                .or_else(|| {
+                                    res.get("data")
+                                        .and_then(|d| d.get("code"))
+                                        .and_then(|c| c.as_str())
+                                });
+                            m["is_error_with_code"] = json!(is_err && code.is_some());
+                            if let Some(c) = code {
+                                m["error"] = json!({ "code": c });
+                            }
+                        }
+                        m
+                    }
+                    None => json!({}),
+                };
+                if let Some(err) = resp.error {
+                    resp_val["error"] = json!({
+                        "code": err.code,
+                        "message": err.message,
+                        "data": err.data,
+                    });
+                }
+                last_response = resp_val;
+                record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
+                push_step(
+                    &mut steps,
+                    idx,
+                    &step.action,
+                    Some(&step.args),
+                    &last_response,
+                    None,
+                    None,
                     offset_ms,
                 );
             }

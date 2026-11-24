@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "name": "mcp_tools_metadata",
+  "kind": "scenario",
+  "description": "tools/list returns exactly the 6 frozen tools with outputSchema and readOnly/destructive annotations",
+  "steps": [
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "texure-blackbox",
+            "version": "0.1.0"
+          }
+        }
+      },
+      "expect": {
+        "protocolVersion": "2025-06-18"
+      }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "tools/list"
+      },
+      "expect": {
+        "tools_metadata_valid": true
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "tools_metadata_valid" }
+  ]
+}
