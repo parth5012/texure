@@ -3157,6 +3157,21 @@ fn verify_expect(actual: &Value, expect: &Value) -> Result<(), String> {
             }
 
             if k == "error.code" || k == "code" {
+                if let Some(exp_int) = expected_val.as_i64() {
+                    let act_int = actual
+                        .get("error")
+                        .and_then(|e| e.get("code"))
+                        .and_then(|c| c.as_i64())
+                        .or_else(|| actual.get("code").and_then(|c| c.as_i64()));
+                    if act_int != Some(exp_int) {
+                        return Err(format!(
+                            "Expected {k} == {exp_int}, got '{:?}' in {:?}",
+                            act_int, actual
+                        ));
+                    }
+                    continue;
+                }
+
                 let code = actual
                     .get("error")
                     .and_then(|e| e.get("code"))

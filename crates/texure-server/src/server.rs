@@ -14,8 +14,8 @@ use std::sync::Arc;
 use texure_contract::bridge::{KeyPressRequest, TapRequest, TypeRequest};
 use texure_contract::rpc::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use texure_contract::tools::{
-    CallToolResult, DeviceTreeParams, KeyPressParams, ScreenshotParams, TapParams, TypeParams,
-    WaitForParams, FROZEN_TOOL_NAMES,
+    tool_annotations, tool_output_schema, CallToolResult, DeviceTreeParams, KeyPressParams,
+    ScreenshotParams, TapParams, TypeParams, WaitForParams, FROZEN_TOOL_NAMES,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
@@ -145,14 +145,28 @@ impl McpServer {
 
         match method {
             "initialize" => {
+                let req_version = params_val.get("protocolVersion").and_then(|v| v.as_str());
+                let protocol_version = match req_version {
+                    Some("2024-11-05") => "2024-11-05",
+                    Some("2025-06-18") => "2025-06-18",
+                    None => "2024-11-05",
+                    Some(unsupported) => {
+                        return Some(JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params(&format!(
+                                "Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18"
+                            )),
+                        ));
+                    }
+                };
                 let result = serde_json::json!({
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": protocol_version,
                     "capabilities": {
                         "tools": {}
                     },
                     "serverInfo": {
                         "name": "texure-server",
-                        "version": "0.1.0"
+                        "version": env!("CARGO_PKG_VERSION")
                     }
                 });
                 Some(JsonRpcResponse::success(id, result))
@@ -189,7 +203,9 @@ impl McpServer {
                         "subtree": { "type": "string", "description": "Optional subtree node id" },
                         "verbose": { "type": "boolean", "description": "Return full error payload on error" }
                     }
-                }
+                },
+                "outputSchema": tool_output_schema("device_tree"),
+                "annotations": tool_annotations("device_tree")
             }),
             serde_json::json!({
                 "name": "tap",
@@ -204,7 +220,9 @@ impl McpServer {
                         "rev": { "type": "integer" },
                         "verbose": { "type": "boolean" }
                     }
-                }
+                },
+                "outputSchema": tool_output_schema("tap"),
+                "annotations": tool_annotations("tap")
             }),
             serde_json::json!({
                 "name": "type",
@@ -220,7 +238,9 @@ impl McpServer {
                         "rev": { "type": "integer" },
                         "verbose": { "type": "boolean" }
                     }
-                }
+                },
+                "outputSchema": tool_output_schema("type"),
+                "annotations": tool_annotations("type")
             }),
             serde_json::json!({
                 "name": "keypress",
@@ -232,7 +252,9 @@ impl McpServer {
                         "key": { "type": "string", "enum": ["ENTER", "BACK", "DEL", "TAB"] },
                         "verbose": { "type": "boolean" }
                     }
-                }
+                },
+                "outputSchema": tool_output_schema("keypress"),
+                "annotations": tool_annotations("keypress")
             }),
             serde_json::json!({
                 "name": "screenshot",
@@ -243,7 +265,9 @@ impl McpServer {
                         "scale": { "type": "number", "enum": [0.25, 0.5, 1.0] },
                         "verbose": { "type": "boolean" }
                     }
-                }
+                },
+                "outputSchema": tool_output_schema("screenshot"),
+                "annotations": tool_annotations("screenshot")
             }),
             serde_json::json!({
                 "name": "wait_for",
@@ -257,7 +281,9 @@ impl McpServer {
                         "timeout": { "type": "integer", "maximum": 30 },
                         "verbose": { "type": "boolean" }
                     }
-                }
+                },
+                "outputSchema": tool_output_schema("wait_for"),
+                "annotations": tool_annotations("wait_for")
             }),
         ]
     }

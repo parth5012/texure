@@ -12,6 +12,71 @@ pub const FROZEN_TOOL_NAMES: [&str; 6] = [
     "wait_for",
 ];
 
+/// MCP 2025-06-18 declarative output schemas for the 6 frozen tools.
+pub fn tool_output_schema(name: &str) -> serde_json::Value {
+    match name {
+        "device_tree" => serde_json::json!({
+            "type": "object",
+            "properties": {
+                "rev": { "type": "integer" },
+                "window": { "type": "string" },
+                "nodes": {
+                    "type": "array",
+                    "items": { "type": "object" }
+                }
+            },
+            "required": ["rev", "window", "nodes"]
+        }),
+        "tap" | "type" | "keypress" => serde_json::json!({
+            "type": "object",
+            "properties": {
+                "ok": { "type": "boolean" },
+                "rev": { "type": "integer" },
+                "tree": { "type": "object" }
+            },
+            "required": ["ok", "rev"]
+        }),
+        "screenshot" => serde_json::json!({
+            "type": "object",
+            "properties": {
+                "format": { "type": "string" },
+                "bytes_length": { "type": "integer" },
+                "scale": { "type": "number" }
+            },
+            "required": ["format"]
+        }),
+        "wait_for" => serde_json::json!({
+            "type": "object",
+            "properties": {
+                "ok": { "type": "boolean" },
+                "last_rev": { "type": "integer" },
+                "hint": { "type": "string" },
+                "tree": { "type": "object" }
+            },
+            "required": ["ok", "last_rev"]
+        }),
+        _ => serde_json::json!({ "type": "object" }),
+    }
+}
+
+/// MCP 2025-06-18 tool annotations for the 6 frozen tools.
+pub fn tool_annotations(name: &str) -> serde_json::Value {
+    match name {
+        "device_tree" | "screenshot" | "wait_for" => serde_json::json!({
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }),
+        "tap" | "type" | "keypress" => serde_json::json!({
+            "readOnlyHint": false,
+            "destructiveHint": true
+        }),
+        _ => serde_json::json!({
+            "readOnlyHint": false,
+            "destructiveHint": false
+        }),
+    }
+}
+
 /// Parameter payload for the `device_tree` tool.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceTreeParams {
@@ -221,6 +286,13 @@ pub struct CallToolResult {
     pub content: Vec<McpContent>,
     #[serde(
         default,
+        rename = "structuredContent",
+        alias = "structured_content",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub structured_content: Option<serde_json::Value>,
+    #[serde(
+        default,
         rename = "isError",
         alias = "is_error",
         skip_serializing_if = "Option::is_none"
@@ -230,8 +302,19 @@ pub struct CallToolResult {
 
 impl CallToolResult {
     pub fn success_text(text: impl Into<String>) -> Self {
+        let t = text.into();
+        let structured = serde_json::from_str::<serde_json::Value>(&t).ok();
+        Self {
+            content: vec![McpContent::text(t)],
+            structured_content: structured,
+            is_error: None,
+        }
+    }
+
+    pub fn success_structured(text: impl Into<String>, structured: serde_json::Value) -> Self {
         Self {
             content: vec![McpContent::text(text)],
+            structured_content: Some(structured),
             is_error: None,
         }
     }
@@ -239,6 +322,9 @@ impl CallToolResult {
     pub fn success_image(base64_png: impl Into<String>) -> Self {
         Self {
             content: vec![McpContent::png_image(base64_png)],
+            structured_content: Some(serde_json::json!({
+                "format": "image/png"
+            })),
             is_error: None,
         }
     }
@@ -249,6 +335,28 @@ impl CallToolResult {
         verbose: bool,
         full_error: Option<&serde_json::Value>,
     ) -> Self {
+        let msg = message.unwrap_or_else(|| code.default_message());
+        let hint = code.agent_hint();
+        let mut structured = if let Some(val) = full_error {
+            val.clone()
+        } else {
+            serde_json::json!({
+                "error": {
+                    "code": code.as_str(),
+                    "message": msg,
+                    "hint": hint,
+                }
+            })
+        };
+        if let Some(obj) = structured.as_object_mut() {
+            if !obj.contains_key("data") {
+                obj.insert(
+                    "data".to_string(),
+                    serde_json::json!({ "code": code.as_str() }),
+                );
+            }
+        }
+
         let text = if verbose {
             if let Some(val) = full_error {
                 serde_json::to_string(val).unwrap_or_else(|_| code.formatted_single_line(message))
@@ -256,8 +364,8 @@ impl CallToolResult {
                 let err_obj = serde_json::json!({
                     "error": {
                         "code": code.as_str(),
-                        "message": message.unwrap_or_else(|| code.default_message()),
-                        "hint": code.agent_hint(),
+                        "message": msg,
+                        "hint": hint,
                     }
                 });
                 serde_json::to_string(&err_obj)
@@ -269,6 +377,7 @@ impl CallToolResult {
 
         Self {
             content: vec![McpContent::text(text)],
+            structured_content: Some(structured),
             is_error: Some(true),
         }
     }
@@ -331,5 +440,33 @@ mod tests {
             serde_json::from_value(serde_json::json!({"node": 1, "rev": 42, "text": "hi"}))
                 .unwrap();
         assert_eq!(legacy.hash, None);
+    }
+
+    #[test]
+    fn test_tool_output_schema_and_annotations_all_frozen_tools() {
+        for name in FROZEN_TOOL_NAMES {
+            let schema = tool_output_schema(name);
+            assert_eq!(schema["type"], "object");
+            let ann = tool_annotations(name);
+            assert!(ann.get("readOnlyHint").is_some());
+            assert!(ann.get("destructiveHint").is_some());
+        }
+    }
+
+    #[test]
+    fn test_call_tool_result_structured_content() {
+        let res = CallToolResult::success_text("{\"ok\":true,\"rev\":10}");
+        assert_eq!(
+            res.structured_content,
+            Some(serde_json::json!({"ok": true, "rev": 10}))
+        );
+        assert_eq!(res.is_error, None);
+
+        let err = CallToolResult::error(ErrorCode::NodeOutdated, None, false, None);
+        assert_eq!(err.is_error, Some(true));
+        assert!(err.structured_content.is_some());
+        let s = err.structured_content.unwrap();
+        assert_eq!(s["error"]["code"], "NODE_OUTDATED");
+        assert_eq!(s["data"]["code"], "NODE_OUTDATED");
     }
 }
