@@ -827,11 +827,7 @@ async fn main() {
         "all" => {
             let real_runs: Vec<TestDef> = selected_tests
                 .iter()
-                .filter(|t| {
-                    t.target == "mcp"
-                        || t.target == "mcp-fake"
-                        || t.target == "http"
-                })
+                .filter(|t| t.target == "mcp" || t.target == "mcp-fake" || t.target == "http")
                 .map(|t| TestDef {
                     target: "mcp-real".to_string(),
                     ..t.clone()
