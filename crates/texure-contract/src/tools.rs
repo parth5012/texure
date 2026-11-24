@@ -34,7 +34,7 @@ pub fn tool_output_schema(name: &str) -> serde_json::Value {
                 "rev": { "type": "integer" },
                 "tree": { "type": "object" }
             },
-            "required": ["ok", "rev"]
+            "required": ["ok"]
         }),
         "keypress" => serde_json::json!({
             "type": "object",
@@ -493,11 +493,11 @@ mod tests {
         );
         assert_eq!(
             tool_output_schema("tap")["required"],
-            serde_json::json!(["ok", "rev"])
+            serde_json::json!(["ok"])
         );
         assert_eq!(
             tool_output_schema("type")["required"],
-            serde_json::json!(["ok", "rev"])
+            serde_json::json!(["ok"])
         );
         assert_eq!(
             tool_output_schema("keypress")["required"],

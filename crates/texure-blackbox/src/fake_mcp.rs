@@ -283,10 +283,15 @@ impl FakeMcpServer {
                                         "type": "text",
                                         "text": serde_json::to_string(&timeout_payload).unwrap()
                                     }
-                                ]
+                                ],
+                                "structuredContent": timeout_payload
                             }
                         }));
                     } else {
+                        let success_payload = json!({
+                            "ok": true,
+                            "last_rev": 42
+                        });
                         return Some(json!({
                             "jsonrpc": "2.0",
                             "id": &id,
@@ -294,9 +299,10 @@ impl FakeMcpServer {
                                 "content": [
                                     {
                                         "type": "text",
-                                        "text": "{\"ok\": true}"
+                                        "text": serde_json::to_string(&success_payload).unwrap()
                                     }
-                                ]
+                                ],
+                                "structuredContent": success_payload
                             }
                         }));
                     }

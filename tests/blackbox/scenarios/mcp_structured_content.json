@@ -53,6 +53,7 @@
     }
   ],
   "assertions": [
-    { "pred": "exists", "target": "has_structured_content" }
+    { "pred": "exists", "target": "has_structured_content" },
+    { "pred": "missing", "target": "error" }
   ]
 }
