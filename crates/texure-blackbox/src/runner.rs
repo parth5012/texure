@@ -476,7 +476,10 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                         if method == "tools/call" {
                             let has_struct = res.get("structuredContent").is_some();
                             m["has_structured_content"] = json!(has_struct);
-                            let is_err = res.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
+                            let is_err = res
+                                .get("isError")
+                                .and_then(|e| e.as_bool())
+                                .unwrap_or(false);
                             let code = res
                                 .get("structuredContent")
                                 .and_then(|s| s.get("error").or(Some(s)))
@@ -1052,7 +1055,10 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
                         if method == "tools/call" {
                             let has_struct = res.get("structuredContent").is_some();
                             m["has_structured_content"] = json!(has_struct);
-                            let is_err = res.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
+                            let is_err = res
+                                .get("isError")
+                                .and_then(|e| e.as_bool())
+                                .unwrap_or(false);
                             let code = res
                                 .get("structuredContent")
                                 .and_then(|s| s.get("error").or(Some(s)))
