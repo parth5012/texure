@@ -205,12 +205,18 @@ impl TunnelRouter {
                             format!("Invalid base64 image data from companion: {e}"),
                         )
                     })?;
-                let mut result = CallToolResult::success_image(&data);
+                let scale = params.scale.unwrap_or(0.5);
+                let mut result = CallToolResult::success_image_with_meta(
+                    &data,
+                    "image/png",
+                    bytes_length,
+                    scale,
+                );
                 // Verbose mirror of the direct path's metadata block.
                 if params.verbose.unwrap_or(false) {
                     let meta = json!({
                         "bytes_length": bytes_length,
-                        "scale": params.scale.unwrap_or(0.5),
+                        "scale": scale,
                     });
                     result
                         .content
@@ -920,6 +926,14 @@ mod tests {
         let result = route_args(&router, "screenshot", json!({}), false).await;
 
         assert_eq!(result.is_error, None);
+        assert_eq!(
+            result.structured_content,
+            Some(serde_json::json!({
+                "format": "image/png",
+                "bytes_length": 7,
+                "scale": 0.5
+            }))
+        );
         match result.content.first().expect("image block") {
             McpContent::Image { data, mime_type } => {
                 assert_eq!(data, &encoded);

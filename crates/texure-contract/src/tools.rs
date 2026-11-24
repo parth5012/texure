@@ -311,7 +311,9 @@ pub struct CallToolResult {
 impl CallToolResult {
     pub fn success_text(text: impl Into<String>) -> Self {
         let t = text.into();
-        let structured = serde_json::from_str::<serde_json::Value>(&t).ok();
+        let structured = serde_json::from_str::<serde_json::Value>(&t)
+            .ok()
+            .filter(|v| v.is_object());
         Self {
             content: vec![McpContent::text(t)],
             structured_content: structured,
