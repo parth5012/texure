@@ -400,3 +400,25 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
      - Validated BCP-47 locale tags against standard format and non-empty language.
      - Aligned `FakeBridge`: verified non-empty payload requirement (400 on empty `{}`), validated BCP-47 regex on `locale` (400 on invalid), validated numeric `font_scale` (400 on non-numeric), validated boolean `dark_mode` (400 on non-boolean), atomically validated all parameters prior to mutating state, excluded `EditText` from `inject_clipped`, handled case-insensitive orientation, and aligned `"type": "tree_changed"` event format.
      - Added `@Volatile` to `BridgeService.activeActivity` for safe cross-thread memory visibility.
+
+
+---
+
+## 2026-11-24 (Wayfinder Map #20 / #135: MCP protocol & typed tool results alignment)
+
+1. **Protocol Version Negotiation & Refusal (initialize).**
+   - *What:* `texure-server` negotiates `protocolVersion` from client `initialize` params, supporting `["2024-11-05", "2025-06-18"]`. Supported requested versions are echoed back in `result.protocolVersion`. If omitted by the client, defaults to `"2024-11-05"` for backwards compatibility. If an unsupported or unparseable version is requested, the server refuses cleanly with JSON-RPC error `code: -32602`, `message: "Unsupported protocol version: <version>. Supported: 2024-11-05, 2025-06-18"`. `serverInfo.version` is dynamically derived from `env!("CARGO_PKG_VERSION")`.
+
+2. **Additive Schema & Annotations Metadata in tools/list (Guardrail G7).**
+   - *What:* The 6-tool MCP tool list remains strictly frozen (`device_tree`, `tap`, `type`, `keypress`, `screenshot`, `wait_for`). In `tools/list`, each tool advertises additive `outputSchema` and explicit boolean `annotations`:
+     - Read tools (`device_tree`, `screenshot`, `wait_for`): `{ "readOnlyHint": true, "destructiveHint": false }`
+     - Mutating tools (`tap`, `type`, `keypress`): `{ "readOnlyHint": false, "destructiveHint": true }`
+   - *Source of Truth:* Output schemas are defined declaratively in `crates/texure-contract/src/tools.rs` using `serde_json::json!({ ... })` helpers, requiring zero new external dependencies.
+
+3. **Typed Result Envelope & isError Separation (Guardrail G8).**
+   - *What:* In `tools/call` responses:
+     - Protocol and envelope failures (unknown method, invalid params schema, unknown tool name) return JSON-RPC error `-326xx`.
+     - Tool and bridge execution failures (`NODE_OUTDATED`, `APP_NOT_FOREGROUND`, `SCREEN_OFF`, `DEVICE_LOCKED`, `OFFLINE`, `AUTH_FAILED`, `TIMEOUT`, `INJECT_FAILED`, `NODE_NOT_CLICKABLE`, `NODE_NOT_EDITABLE`, etc.) return `Ok(CallToolResult)` with `isError: true`. The text error format is preserved in `content` (`CODE: message\nhint: ...` per G8), and structured error representation is placed in `structuredContent` (`{ "code": "<CODE>", "message": "...", "hint": "..." }`).
+     - Tool successes return text in `content` plus typed object in `structuredContent` conforming to the advertised `outputSchema`.
+     - The server process and connection remain alive on tool errors.
+   - *Blackbox Test IDs:* New Group P scenarios (`BB-P1..BB-P4`) cover protocol negotiation, schema/annotations advertisement, structured result conforming to outputSchema, and `isError` tool failure handling.
