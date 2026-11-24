@@ -65,21 +65,32 @@ impl FakeMcpServer {
 
         let resp = match method {
             "initialize" => {
-                let req_version = params.get("protocolVersion").and_then(|v| v.as_str());
-                let protocol_version = match req_version {
-                    Some("2024-11-05") => "2024-11-05",
-                    Some("2025-06-18") => "2025-06-18",
-                    None => "2024-11-05",
-                    Some(unsupported) => {
+                let protocol_version = match params.get("protocolVersion") {
+                    Some(Value::String(s)) => match s.as_str() {
+                        "2024-11-05" => "2024-11-05",
+                        "2025-06-18" => "2025-06-18",
+                        unsupported => {
+                            return Some(json!({
+                                "jsonrpc": "2.0",
+                                "id": &id,
+                                "error": {
+                                    "code": -32602,
+                                    "message": format!("Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18")
+                                }
+                            }));
+                        }
+                    },
+                    Some(non_str) => {
                         return Some(json!({
                             "jsonrpc": "2.0",
                             "id": &id,
                             "error": {
                                 "code": -32602,
-                                "message": format!("Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18")
+                                "message": format!("Unsupported protocol version: {non_str}. Supported: 2024-11-05, 2025-06-18")
                             }
                         }));
                     }
+                    None => "2024-11-05",
                 };
                 json!({
                     "jsonrpc": "2.0",
@@ -317,6 +328,45 @@ impl FakeMcpServer {
                                 }
                             ],
                             "structuredContent": tree_resp
+                        }
+                    }));
+                }
+
+                if name == "keypress" {
+                    let resp = json!({"ok": true});
+                    return Some(json!({
+                        "jsonrpc": "2.0",
+                        "id": &id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": serde_json::to_string(&resp).unwrap()
+                                }
+                            ],
+                            "structuredContent": resp
+                        }
+                    }));
+                }
+
+                if name == "screenshot" {
+                    let resp = json!({
+                        "format": "image/png",
+                        "bytes_length": 1024,
+                        "scale": 0.5
+                    });
+                    return Some(json!({
+                        "jsonrpc": "2.0",
+                        "id": &id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                                    "mimeType": "image/png"
+                                }
+                            ],
+                            "structuredContent": resp
                         }
                     }));
                 }

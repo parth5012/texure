@@ -198,6 +198,84 @@ fn mark_expect_failure(steps: &mut [StepTrace], response: &Value, error: &str) {
 /// partial traces survive failures.
 type WalkOutcome = Result<(Vec<StepTrace>, ()), (Vec<StepTrace>, String)>;
 
+fn process_raw_mcp_response(resp: &texure_contract::rpc::JsonRpcResponse, method: &str) -> Value {
+    let mut resp_val = match &resp.result {
+        Some(res) => {
+            let mut m = json!({ "result": res.clone() });
+            if let Some(map) = res.as_object() {
+                for (k, v) in map {
+                    m[k] = v.clone();
+                }
+            }
+            if method == "tools/list" {
+                let mut valid = false;
+                if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
+                    if tools.len() == 6 {
+                        valid = tools.iter().all(|t| {
+                            let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                            let has_out = t
+                                .get("outputSchema")
+                                .and_then(|s| s.get("type"))
+                                .and_then(|s| s.as_str())
+                                == Some("object");
+                            let ann = t.get("annotations");
+                            let read_only = ann
+                                .and_then(|a| a.get("readOnlyHint"))
+                                .and_then(|v| v.as_bool());
+                            let destructive = ann
+                                .and_then(|a| a.get("destructiveHint"))
+                                .and_then(|v| v.as_bool());
+                            let expected_ann = match name {
+                                "device_tree" | "screenshot" | "wait_for" => {
+                                    read_only == Some(true) && destructive == Some(false)
+                                }
+                                "tap" | "type" | "keypress" => {
+                                    read_only == Some(false) && destructive == Some(true)
+                                }
+                                _ => false,
+                            };
+                            has_out && expected_ann
+                        });
+                    }
+                }
+                m["tools_metadata_valid"] = json!(valid);
+            }
+            if method == "tools/call" {
+                let has_struct = res.get("structuredContent").is_some();
+                m["has_structured_content"] = json!(has_struct);
+                let is_err = res
+                    .get("isError")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(false);
+                let code = res
+                    .get("structuredContent")
+                    .and_then(|s| s.get("error").or(Some(s)))
+                    .and_then(|e| e.get("code"))
+                    .and_then(|c| c.as_str())
+                    .or_else(|| {
+                        res.get("data")
+                            .and_then(|d| d.get("code"))
+                            .and_then(|c| c.as_str())
+                    });
+                m["is_error_with_code"] = json!(is_err && code.is_some());
+                if let Some(c) = code {
+                    m["error"] = json!({ "code": c });
+                }
+            }
+            m
+        }
+        None => json!({}),
+    };
+    if let Some(err) = &resp.error {
+        resp_val["error"] = json!({
+            "code": err.code,
+            "message": err.message,
+            "data": err.data,
+        });
+    }
+    resp_val
+}
+
 async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
     let start_time = Instant::now();
     let mut steps: Vec<StepTrace> = Vec::new();
@@ -452,61 +530,7 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                     }
                 };
 
-                let mut resp_val = match resp.result {
-                    Some(res) => {
-                        let mut m = json!({ "result": res.clone() });
-                        if let Some(map) = res.as_object() {
-                            for (k, v) in map {
-                                m[k] = v.clone();
-                            }
-                        }
-                        if method == "tools/list" {
-                            let mut valid = false;
-                            if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
-                                if tools.len() == 6 {
-                                    valid = tools.iter().all(|t| {
-                                        let has_out = t.get("outputSchema").is_some();
-                                        let has_ann = t.get("annotations").is_some();
-                                        has_out && has_ann
-                                    });
-                                }
-                            }
-                            m["tools_metadata_valid"] = json!(valid);
-                        }
-                        if method == "tools/call" {
-                            let has_struct = res.get("structuredContent").is_some();
-                            m["has_structured_content"] = json!(has_struct);
-                            let is_err = res
-                                .get("isError")
-                                .and_then(|e| e.as_bool())
-                                .unwrap_or(false);
-                            let code = res
-                                .get("structuredContent")
-                                .and_then(|s| s.get("error").or(Some(s)))
-                                .and_then(|e| e.get("code"))
-                                .and_then(|c| c.as_str())
-                                .or_else(|| {
-                                    res.get("data")
-                                        .and_then(|d| d.get("code"))
-                                        .and_then(|c| c.as_str())
-                                });
-                            m["is_error_with_code"] = json!(is_err && code.is_some());
-                            if let Some(c) = code {
-                                m["error"] = json!({ "code": c });
-                            }
-                        }
-                        m
-                    }
-                    None => json!({}),
-                };
-                if let Some(err) = resp.error {
-                    resp_val["error"] = json!({
-                        "code": err.code,
-                        "message": err.message,
-                        "data": err.data,
-                    });
-                }
-                last_response = resp_val;
+                last_response = process_raw_mcp_response(&resp, method);
                 record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
                 push_step(
                     &mut steps,
@@ -1031,61 +1055,7 @@ async fn walk_mcp_real_steps(scenario: &Scenario, client: &mut McpStdioClient) -
                     }
                 };
 
-                let mut resp_val = match resp.result {
-                    Some(res) => {
-                        let mut m = json!({ "result": res.clone() });
-                        if let Some(map) = res.as_object() {
-                            for (k, v) in map {
-                                m[k] = v.clone();
-                            }
-                        }
-                        if method == "tools/list" {
-                            let mut valid = false;
-                            if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
-                                if tools.len() == 6 {
-                                    valid = tools.iter().all(|t| {
-                                        let has_out = t.get("outputSchema").is_some();
-                                        let has_ann = t.get("annotations").is_some();
-                                        has_out && has_ann
-                                    });
-                                }
-                            }
-                            m["tools_metadata_valid"] = json!(valid);
-                        }
-                        if method == "tools/call" {
-                            let has_struct = res.get("structuredContent").is_some();
-                            m["has_structured_content"] = json!(has_struct);
-                            let is_err = res
-                                .get("isError")
-                                .and_then(|e| e.as_bool())
-                                .unwrap_or(false);
-                            let code = res
-                                .get("structuredContent")
-                                .and_then(|s| s.get("error").or(Some(s)))
-                                .and_then(|e| e.get("code"))
-                                .and_then(|c| c.as_str())
-                                .or_else(|| {
-                                    res.get("data")
-                                        .and_then(|d| d.get("code"))
-                                        .and_then(|c| c.as_str())
-                                });
-                            m["is_error_with_code"] = json!(is_err && code.is_some());
-                            if let Some(c) = code {
-                                m["error"] = json!({ "code": c });
-                            }
-                        }
-                        m
-                    }
-                    None => json!({}),
-                };
-                if let Some(err) = resp.error {
-                    resp_val["error"] = json!({
-                        "code": err.code,
-                        "message": err.message,
-                        "data": err.data,
-                    });
-                }
-                last_response = resp_val;
+                last_response = process_raw_mcp_response(&resp, method);
                 record_step_context(&mut context, &step.action, Some(&step.args), &last_response);
                 push_step(
                     &mut steps,

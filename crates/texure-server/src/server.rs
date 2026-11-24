@@ -145,19 +145,28 @@ impl McpServer {
 
         match method {
             "initialize" => {
-                let req_version = params_val.get("protocolVersion").and_then(|v| v.as_str());
-                let protocol_version = match req_version {
-                    Some("2024-11-05") => "2024-11-05",
-                    Some("2025-06-18") => "2025-06-18",
-                    None => "2024-11-05",
-                    Some(unsupported) => {
+                let protocol_version = match params_val.get("protocolVersion") {
+                    Some(Value::String(s)) => match s.as_str() {
+                        "2024-11-05" => "2024-11-05",
+                        "2025-06-18" => "2025-06-18",
+                        unsupported => {
+                            return Some(JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params(&format!(
+                                    "Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18"
+                                )),
+                            ));
+                        }
+                    },
+                    Some(non_str) => {
                         return Some(JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params(&format!(
-                                "Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18"
+                                "Unsupported protocol version: {non_str}. Supported: 2024-11-05, 2025-06-18"
                             )),
                         ));
                     }
+                    None => "2024-11-05",
                 };
                 let result = serde_json::json!({
                     "protocolVersion": protocol_version,
@@ -463,11 +472,17 @@ impl McpServer {
             ToolArgs::Screenshot(ss_params) => match bridge.screenshot(ss_params.scale).await {
                 Ok(bytes) => {
                     let base64_png = BASE64.encode(&bytes);
-                    let mut res = CallToolResult::success_image(base64_png);
+                    let scale = ss_params.scale.unwrap_or(0.5);
+                    let mut res = CallToolResult::success_image_with_meta(
+                        base64_png,
+                        "image/png",
+                        bytes.len(),
+                        scale,
+                    );
                     if verbose {
                         let meta = serde_json::json!({
                             "bytes_length": bytes.len(),
-                            "scale": ss_params.scale.unwrap_or(0.5),
+                            "scale": scale,
                         });
                         res.content.push(texure_contract::tools::McpContent::text(
                             serde_json::to_string(&meta).unwrap_or_default(),

@@ -34,6 +34,22 @@
         "has_structured_content": true,
         "content.0.type": "text"
       }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "tools/call",
+        "params": {
+          "name": "keypress",
+          "arguments": {
+            "key": "ENTER"
+          }
+        }
+      },
+      "expect": {
+        "has_structured_content": true,
+        "structuredContent.ok": true
+      }
     }
   ],
   "assertions": [

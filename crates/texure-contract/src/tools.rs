@@ -27,7 +27,7 @@ pub fn tool_output_schema(name: &str) -> serde_json::Value {
             },
             "required": ["rev", "window", "nodes"]
         }),
-        "tap" | "type" | "keypress" => serde_json::json!({
+        "tap" | "type" => serde_json::json!({
             "type": "object",
             "properties": {
                 "ok": { "type": "boolean" },
@@ -35,6 +35,13 @@ pub fn tool_output_schema(name: &str) -> serde_json::Value {
                 "tree": { "type": "object" }
             },
             "required": ["ok", "rev"]
+        }),
+        "keypress" => serde_json::json!({
+            "type": "object",
+            "properties": {
+                "ok": { "type": "boolean" }
+            },
+            "required": ["ok"]
         }),
         "screenshot" => serde_json::json!({
             "type": "object",
@@ -49,11 +56,12 @@ pub fn tool_output_schema(name: &str) -> serde_json::Value {
             "type": "object",
             "properties": {
                 "ok": { "type": "boolean" },
+                "rev": { "type": "integer" },
                 "last_rev": { "type": "integer" },
                 "hint": { "type": "string" },
                 "tree": { "type": "object" }
             },
-            "required": ["ok", "last_rev"]
+            "required": ["ok"]
         }),
         _ => serde_json::json!({ "type": "object" }),
     }
@@ -329,6 +337,24 @@ impl CallToolResult {
         }
     }
 
+    pub fn success_image_with_meta(
+        base64_png: impl Into<String>,
+        format: impl Into<String>,
+        bytes_length: usize,
+        scale: f64,
+    ) -> Self {
+        let fmt = format.into();
+        Self {
+            content: vec![McpContent::png_image(base64_png)],
+            structured_content: Some(serde_json::json!({
+                "format": fmt,
+                "bytes_length": bytes_length,
+                "scale": scale,
+            })),
+            is_error: None,
+        }
+    }
+
     pub fn error(
         code: ErrorCode,
         message: Option<&str>,
@@ -444,13 +470,67 @@ mod tests {
 
     #[test]
     fn test_tool_output_schema_and_annotations_all_frozen_tools() {
-        for name in FROZEN_TOOL_NAMES {
+        for &name in &FROZEN_TOOL_NAMES {
             let schema = tool_output_schema(name);
             assert_eq!(schema["type"], "object");
             let ann = tool_annotations(name);
-            assert!(ann.get("readOnlyHint").is_some());
-            assert!(ann.get("destructiveHint").is_some());
+            match name {
+                "device_tree" | "screenshot" | "wait_for" => {
+                    assert_eq!(ann["readOnlyHint"], true);
+                    assert_eq!(ann["destructiveHint"], false);
+                }
+                "tap" | "type" | "keypress" => {
+                    assert_eq!(ann["readOnlyHint"], false);
+                    assert_eq!(ann["destructiveHint"], true);
+                }
+                _ => unreachable!(),
+            }
         }
+
+        assert_eq!(
+            tool_output_schema("device_tree")["required"],
+            serde_json::json!(["rev", "window", "nodes"])
+        );
+        assert_eq!(
+            tool_output_schema("tap")["required"],
+            serde_json::json!(["ok", "rev"])
+        );
+        assert_eq!(
+            tool_output_schema("type")["required"],
+            serde_json::json!(["ok", "rev"])
+        );
+        assert_eq!(
+            tool_output_schema("keypress")["required"],
+            serde_json::json!(["ok"])
+        );
+        assert_eq!(
+            tool_output_schema("screenshot")["required"],
+            serde_json::json!(["format"])
+        );
+        assert_eq!(
+            tool_output_schema("wait_for")["required"],
+            serde_json::json!(["ok"])
+        );
+        assert!(tool_output_schema("wait_for")["properties"]
+            .get("rev")
+            .is_some());
+        assert!(tool_output_schema("wait_for")["properties"]
+            .get("last_rev")
+            .is_some());
+    }
+
+    #[test]
+    fn test_call_tool_result_image_with_meta() {
+        let res = CallToolResult::success_image_with_meta("base64data", "image/png", 2048, 0.5);
+        assert_eq!(res.is_error, None);
+        assert_eq!(
+            res.structured_content,
+            Some(serde_json::json!({
+                "format": "image/png",
+                "bytes_length": 2048,
+                "scale": 0.5,
+            }))
+        );
     }
 
     #[test]
