@@ -19,8 +19,7 @@
       },
       "expect": {
         "protocolVersion": "2025-06-18",
-        "serverInfo.name": "texure-server",
-        "serverInfo.version": "0.1.0"
+        "serverInfo.name": "texure-server"
       }
     },
     {

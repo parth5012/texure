@@ -109,12 +109,14 @@ pub async fn execute_wait_for(
         last_rev = tree.rev;
     }
 
-    let timeout_payload = serde_json::json!({
+    let mut timeout_payload = serde_json::json!({
         "ok": false,
         "last_rev": last_rev,
-        "hint": "re-fetch device_tree and re-plan",
-        "tree": final_tree
+        "hint": "re-fetch device_tree and re-plan"
     });
+    if let Some(tree) = final_tree {
+        timeout_payload["tree"] = serde_json::to_value(tree).unwrap_or(serde_json::Value::Null);
+    }
 
     Ok(CallToolResult::success_text(timeout_payload.to_string()))
 }
