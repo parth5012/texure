@@ -418,7 +418,7 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 3. **Typed Result Envelope & isError Separation (Guardrail G8).**
    - *What:* In `tools/call` responses:
      - Protocol and envelope failures (unknown method, invalid params schema, unknown tool name) return JSON-RPC error `-326xx`.
-     - Tool and bridge execution failures (`NODE_OUTDATED`, `APP_NOT_FOREGROUND`, `SCREEN_OFF`, `DEVICE_LOCKED`, `OFFLINE`, `AUTH_FAILED`, `TIMEOUT`, `INJECT_FAILED`, `NODE_NOT_CLICKABLE`, `NODE_NOT_EDITABLE`, etc.) return `Ok(CallToolResult)` with `isError: true`. The text error format is preserved in `content` (`CODE: message\nhint: ...` per G8), and structured error representation is placed in `structuredContent` (`{ "code": "<CODE>", "message": "...", "hint": "..." }`).
+     - Tool and bridge execution failures (`NODE_OUTDATED`, `APP_NOT_FOREGROUND`, `SCREEN_OFF`, `DEVICE_LOCKED`, `OFFLINE`, `AUTH_FAILED`, `TIMEOUT`, `INJECT_FAILED`, `NODE_NOT_CLICKABLE`, `NODE_NOT_EDITABLE`, etc.) return `Ok(CallToolResult)` with `isError: true`. The text error format is preserved in `content` (`CODE: message\nhint: ...` per G8), and structured error representation is placed in `structuredContent` (`{ "error": { "code": "<CODE>", "message": "...", "hint": "..." }, "data": { "code": "<CODE>" } }`).
      - Tool successes return text in `content` plus typed object in `structuredContent` conforming to the advertised `outputSchema`.
      - The server process and connection remain alive on tool errors.
    - *Blackbox Test IDs:* New Group P scenarios (`BB-P1..BB-P4`) cover protocol negotiation, schema/annotations advertisement, structured result conforming to outputSchema, and `isError` tool failure handling.

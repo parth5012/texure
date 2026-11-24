@@ -241,7 +241,11 @@ fn process_raw_mcp_response(resp: &texure_contract::rpc::JsonRpcResponse, method
                 m["tools_metadata_valid"] = json!(valid);
             }
             if method == "tools/call" {
-                let has_struct = res.get("structuredContent").is_some();
+                let has_struct = res
+                    .get("structuredContent")
+                    .and_then(|s| s.as_object())
+                    .map(|o| !o.is_empty())
+                    .unwrap_or(false);
                 m["has_structured_content"] = json!(has_struct);
                 let is_err = res
                     .get("isError")
@@ -490,13 +494,6 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                     rev_after,
                     offset_ms,
                 );
-
-                if let Some(ref expect) = step.expect {
-                    if let Err(e) = verify_expect(&last_response, expect) {
-                        mark_expect_failure(&mut steps, &last_response, &e);
-                        return Err((steps, e));
-                    }
-                }
             }
             "raw_mcp" => {
                 let method = match step.args.get("method").and_then(|m| m.as_str()) {
@@ -553,6 +550,13 @@ async fn run_mcp_test(_test: &TestDef, scenario: &Scenario) -> WalkOutcome {
                     offset_ms,
                 );
                 return Err((steps, format!("Unsupported action in MCP test: {other}")));
+            }
+        }
+
+        if let Some(ref expect) = step.expect {
+            if let Err(e) = verify_expect(&last_response, expect) {
+                mark_expect_failure(&mut steps, &last_response, &e);
+                return Err((steps, e));
             }
         }
     }

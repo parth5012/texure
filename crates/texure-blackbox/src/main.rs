@@ -831,7 +831,6 @@ async fn main() {
                     t.target == "mcp"
                         || t.target == "mcp-fake"
                         || t.target == "http"
-                        || t.target == "mcp-real"
                 })
                 .map(|t| TestDef {
                     target: "mcp-real".to_string(),
