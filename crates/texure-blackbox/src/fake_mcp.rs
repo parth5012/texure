@@ -75,7 +75,7 @@ impl FakeMcpServer {
                                 "id": &id,
                                 "error": {
                                     "code": -32602,
-                                    "message": format!("Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18")
+                                    "message": format!("Invalid params: Unsupported protocol version: {unsupported}. Supported: 2024-11-05, 2025-06-18")
                                 }
                             }));
                         }
@@ -86,7 +86,7 @@ impl FakeMcpServer {
                             "id": &id,
                             "error": {
                                 "code": -32602,
-                                "message": format!("Unsupported protocol version: {non_str}. Supported: 2024-11-05, 2025-06-18")
+                                "message": format!("Invalid params: Unsupported protocol version: {non_str}. Supported: 2024-11-05, 2025-06-18")
                             }
                         }));
                     }

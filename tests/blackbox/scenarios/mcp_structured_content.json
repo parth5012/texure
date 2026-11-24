@@ -32,7 +32,8 @@
       },
       "expect": {
         "has_structured_content": true,
-        "content.0.type": "text"
+        "content.0.type": "text",
+        "structuredContent.window": "com.velavoice/.MainActivity"
       }
     },
     {
