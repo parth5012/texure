@@ -1,5 +1,15 @@
 # Log
 
+## 2026-11-24 (session) — Wayfinder map 20 (#135) MCP Protocol & Typed Tool Results Alignment
+- Scope: HITL ticket (#132), 2 AFK tickets (#133, #134) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/135-mcp-typed-results`.
+- HITL #132: Grilling MCP alignment contract across decisions (a)-(e). Decided protocolVersion negotiation (supports `2024-11-05` and `2025-06-18`, rejects unsupported cleanly with JSON-RPC `-32602`), contract-owned declarative `outputSchema` with 0 external dependencies, explicit boolean annotations (`readOnlyHint` and `destructiveHint`) for all 6 tools, error boundary with JSON-RPC `-326xx` for syntax/protocol and `Ok(CallToolResult)` with `isError: true`, single-line text fallback in `content`, and machine-readable error in `structuredContent` (with frozen code in `error.code` and `data.code`). Captured formal entry in `DECISIONS.md`. Closed #132.
+- AFK #133: Write-first blackbox test suite (RED). Added 4 protocol scenarios (`BB-P1` protocol version negotiation, `BB-P2` tools metadata outputSchema + annotations, `BB-P3` structuredContent on tool success, `BB-P4` isError and server liveliness on tool failure). Registered in `texure-blackbox`, `texure-lint`, and `docs/behavior-spec.md`. Confirmed RED against real server with evidence bundles in `tmp/evidence/BB-P*`. Zero production code touched. Closed #133.
+- AFK #134: Implementation (GREEN). Implemented protocolVersion negotiation and CARGO_PKG_VERSION serverInfo in `crates/texure-server/src/server.rs`. Added `tool_output_schema` and `tool_annotations` to `crates/texure-contract/src/tools.rs` and injected into `tools/list`. Added `structured_content: Option<serde_json::Value>` to `CallToolResult` with automatic JSON parsing and error wrapping while maintaining single-line fallback text in `content`. Aligned `FakeMcpServer` in `crates/texure-blackbox`. Verified full ladder clean, flipped BB-P1..BB-P4 to green, and purged temporary evidence bundles. Closed #134.
+- Verification:
+  - L0 Static: `cargo run --offline -p texure-lint` (0 findings).
+  - L1 Unit: `cargo test --offline --workspace` (all tests passed: 9 companion, 47 texure-blackbox, 75 texure-server, 12 texure-contract).
+  - L2 Blackbox: `cargo run --offline -p texure-blackbox -- --target mcp-real --scenario BB-P` (4/4 passed: BB-P1 5ms, BB-P2 8ms, BB-P3 130ms, BB-P4 9ms), `cargo run --offline -p texure-blackbox -- --target mcp-fake` (32/32 passed).
+
 ## 2026-11-23 (session) — Wayfinder map 19 (#91) Accessibility & Layout Stress Simulator with Text-Clipping Detection
 - Scope: 3 AFK tickets (#88, #89, #90) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/91-a11y-layout-stress`, PR #131 (`main` ← branch).
 - Ticket #88: In-process configuration override engine in `android/bridge`. Added `POST /config/stress` and `DELETE /config/stress` to `BridgeServer` and `BridgeConfigStress`. Supports `font_scale` (0.5..=3.0), `dark_mode` (via `AppCompatDelegate`), `locale` (supporting RTL locales like `ar-AE`), and `orientation` (`PORTRAIT` / `LANDSCAPE`). Unit tests in `BridgeConfigStressTest.kt` pass 100%. Closed #88.
