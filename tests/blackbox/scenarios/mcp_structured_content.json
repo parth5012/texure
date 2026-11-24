@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "name": "mcp_structured_content",
+  "kind": "scenario",
+  "description": "Successful tool call returns structuredContent conforming to outputSchema plus text fallback in content",
+  "steps": [
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "texure-blackbox",
+            "version": "0.1.0"
+          }
+        }
+      },
+      "expect": {
+        "protocolVersion": "2025-06-18"
+      }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "tools/call",
+        "params": {
+          "name": "device_tree",
+          "arguments": {}
+        }
+      },
+      "expect": {
+        "has_structured_content": true,
+        "content.0.type": "text"
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "has_structured_content" }
+  ]
+}

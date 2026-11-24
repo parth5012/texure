@@ -655,6 +655,39 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: false,
         },
+        // Group P: MCP protocol & typed tool results alignment (map #20 / #135, write-first)
+        TestDef {
+            id: "BB-P1".to_string(),
+            name: "initialize negotiates protocolVersion (2024-11-05, 2025-06-18); refuses unsupported with -32602".to_string(),
+            scenario_file: "mcp_protocol_version.json".to_string(),
+            target: "mcp-real".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-P2".to_string(),
+            name: "tools/list returns 6 frozen tools with outputSchema and readOnly/destructive annotations".to_string(),
+            scenario_file: "mcp_tools_metadata.json".to_string(),
+            target: "mcp-real".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-P3".to_string(),
+            name: "tools/call success carries structuredContent conforming to outputSchema plus text fallback".to_string(),
+            scenario_file: "mcp_structured_content.json".to_string(),
+            target: "mcp-real".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-P4".to_string(),
+            name: "tools/call failure returns isError with frozen code in structuredContent; server stays alive".to_string(),
+            scenario_file: "mcp_is_error.json".to_string(),
+            target: "mcp-real".to_string(),
+            is_device: false,
+            write_first: true,
+        },
     ]
 }
 
@@ -756,7 +789,7 @@ async fn main() {
         .into_iter()
         .filter(|t| {
             if let Some(ref sc) = args.scenario {
-                if !t.id.eq_ignore_ascii_case(sc)
+                if !t.id.to_lowercase().contains(&sc.to_lowercase())
                     && !t.name.to_lowercase().contains(&sc.to_lowercase())
                     && !t.scenario_file.contains(sc)
                 {
@@ -771,7 +804,12 @@ async fn main() {
                 "mcp-fake" | "fake" => {
                     t.target == "mcp-fake" || t.target == "fake" || t.target == "mcp"
                 }
-                "mcp-real" => t.target == "mcp" || t.target == "mcp-fake" || t.target == "http",
+                "mcp-real" => {
+                    t.target == "mcp"
+                        || t.target == "mcp-fake"
+                        || t.target == "http"
+                        || t.target == "mcp-real"
+                }
                 "mcp-tunnel" => t.target == "mcp-tunnel",
                 other => t.target == other,
             }
@@ -789,7 +827,12 @@ async fn main() {
         "all" => {
             let real_runs: Vec<TestDef> = selected_tests
                 .iter()
-                .filter(|t| t.target == "mcp" || t.target == "mcp-fake" || t.target == "http")
+                .filter(|t| {
+                    t.target == "mcp"
+                        || t.target == "mcp-fake"
+                        || t.target == "http"
+                        || t.target == "mcp-real"
+                })
                 .map(|t| TestDef {
                     target: "mcp-real".to_string(),
                     ..t.clone()

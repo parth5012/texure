@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "name": "mcp_protocol_version",
+  "kind": "scenario",
+  "description": "initialize negotiates protocolVersion (2024-11-05 and 2025-06-18) and cleanly refuses unsupported versions with -32602",
+  "steps": [
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "texure-blackbox",
+            "version": "0.1.0"
+          }
+        }
+      },
+      "expect": {
+        "protocolVersion": "2025-06-18",
+        "serverInfo.name": "texure-server",
+        "serverInfo.version": "0.1.0"
+      }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "texure-blackbox",
+            "version": "0.1.0"
+          }
+        }
+      },
+      "expect": {
+        "protocolVersion": "2024-11-05"
+      }
+    },
+    {
+      "action": "raw_mcp",
+      "args": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "9999-99-99",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "texure-blackbox",
+            "version": "0.1.0"
+          }
+        }
+      },
+      "expect": {
+        "error.code": -32602
+      }
+    }
+  ],
+  "assertions": [
+    { "pred": "exists", "target": "error.code" }
+  ]
+}

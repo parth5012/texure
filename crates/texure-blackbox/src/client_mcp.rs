@@ -115,6 +115,38 @@ impl McpStdioClient {
         Err(McpClientError::Terminated)
     }
 
+    pub async fn send_raw_request(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<JsonRpcResponse, McpClientError> {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        let req = JsonRpcRequest::with_numeric_id(id, method, params);
+
+        let mut raw = serde_json::to_string(&req)?;
+        raw.push('\n');
+        self.stdin.write_all(raw.as_bytes()).await?;
+        self.stdin.flush().await?;
+
+        // Read response line
+        while let Some(line) = self.stdout_lines.next_line().await? {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let resp: JsonRpcResponse = match serde_json::from_str(&line) {
+                Ok(resp) => resp,
+                Err(_) => continue,
+            };
+            if resp.matches_numeric_id(id) || resp.id.is_none() {
+                return Ok(resp);
+            }
+        }
+
+        Err(McpClientError::Terminated)
+    }
+
     pub async fn initialize(&mut self) -> Result<Value, McpClientError> {
         self.send_request(
             "initialize",
