@@ -39,7 +39,8 @@ pub fn tool_output_schema(name: &str) -> serde_json::Value {
         "keypress" => serde_json::json!({
             "type": "object",
             "properties": {
-                "ok": { "type": "boolean" }
+                "ok": { "type": "boolean" },
+                "rev": { "type": "integer" }
             },
             "required": ["ok"]
         }),
@@ -373,10 +374,19 @@ impl CallToolResult {
                     "code": code.as_str(),
                     "message": msg,
                     "hint": hint,
+                    "data": { "code": code.as_str() },
                 }
             })
         };
         if let Some(obj) = structured.as_object_mut() {
+            if let Some(err_obj) = obj.get_mut("error").and_then(|e| e.as_object_mut()) {
+                if !err_obj.contains_key("data") {
+                    err_obj.insert(
+                        "data".to_string(),
+                        serde_json::json!({ "code": code.as_str() }),
+                    );
+                }
+            }
             if !obj.contains_key("data") {
                 obj.insert(
                     "data".to_string(),
@@ -549,6 +559,7 @@ mod tests {
         assert!(err.structured_content.is_some());
         let s = err.structured_content.unwrap();
         assert_eq!(s["error"]["code"], "NODE_OUTDATED");
+        assert_eq!(s["error"]["data"]["code"], "NODE_OUTDATED");
         assert_eq!(s["data"]["code"], "NODE_OUTDATED");
     }
 }
