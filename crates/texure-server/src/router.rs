@@ -281,12 +281,14 @@ impl TunnelRouter {
             Err(RouteError::Tool(_)) => final_tree,
         };
 
-        let timeout = json!({
+        let mut timeout = json!({
             "ok": false,
             "last_rev": last_rev,
             "hint": "re-fetch device_tree and re-plan",
-            "tree": final_tree,
         });
+        if let Some(tree) = final_tree {
+            timeout["tree"] = serde_json::to_value(tree).unwrap_or(serde_json::Value::Null);
+        }
         Ok(CallToolResult::success_text(timeout.to_string()))
     }
 

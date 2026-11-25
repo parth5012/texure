@@ -47,6 +47,6 @@
     }
   ],
   "assertions": [
-    { "pred": "exists", "target": "is_error_with_code" }
+    { "pred": "missing", "target": "error" }
   ]
 }

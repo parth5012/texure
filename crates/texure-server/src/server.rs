@@ -307,6 +307,7 @@ impl McpServer {
             .ok_or_else(|| JsonRpcError::invalid_params("missing tool name"))?;
         let args = params
             .get("arguments")
+            .filter(|v| !v.is_null())
             .cloned()
             .unwrap_or(serde_json::json!({}));
         let verbose = args
@@ -646,5 +647,40 @@ mod tests {
         assert_eq!(result["isError"], true);
         let text = result["content"][0]["text"].as_str().expect("error text");
         assert!(text.contains("NO_CONFIG: no config file or env vars"));
+    }
+
+    #[tokio::test]
+    async fn test_server_initialize_negotiation() {
+        let server = McpServer::new(None, None);
+
+        // Explicit 2025-06-18
+        let init_params = serde_json::json!({ "protocolVersion": "2025-06-18" });
+        let resp = server
+            .handle_request(Some(Value::from(1)), "initialize", Some(init_params))
+            .await
+            .expect("init response");
+        let result = resp.result.expect("result");
+        assert_eq!(result["protocolVersion"], "2025-06-18");
+        assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+
+        // Unsupported version returns -32602
+        let bad_params = serde_json::json!({ "protocolVersion": "2099-01-01" });
+        let bad_resp = server
+            .handle_request(Some(Value::from(2)), "initialize", Some(bad_params))
+            .await
+            .expect("error response");
+        assert!(bad_resp.error.is_some());
+        assert_eq!(bad_resp.error.unwrap().code, -32602);
+
+        // tools/call with explicit "arguments": null is treated like arguments: {}
+        let null_args_params = serde_json::json!({
+            "name": "device_tree",
+            "arguments": serde_json::Value::Null
+        });
+        let call_res = server
+            .handle_request(Some(Value::from(3)), "tools/call", Some(null_args_params))
+            .await
+            .expect("response");
+        assert!(call_res.result.is_some());
     }
 }

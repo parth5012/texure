@@ -210,7 +210,17 @@ fn process_raw_mcp_response(resp: &texure_contract::rpc::JsonRpcResponse, method
             if method == "tools/list" {
                 let mut valid = false;
                 if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
-                    if tools.len() == 6 {
+                    let mut names = std::collections::HashSet::new();
+                    for t in tools {
+                        if let Some(n) = t.get("name").and_then(|n| n.as_str()) {
+                            names.insert(n);
+                        }
+                    }
+                    let all_six_present = names.len() == 6
+                        && texure_contract::tools::FROZEN_TOOL_NAMES
+                            .iter()
+                            .all(|n| names.contains(n));
+                    if tools.len() == 6 && all_six_present {
                         valid = tools.iter().all(|t| {
                             let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("");
                             let has_out = t
@@ -3309,6 +3319,21 @@ fn evaluate_assertion(
                         "Assertion failed: error does not exist in {last_response}"
                     ));
                 }
+            } else if let Some(val) = last_response.get(&assertion.target) {
+                if val == &json!(false) || val.is_null() {
+                    return Err(format!(
+                        "Assertion failed: target '{}' is false or null in {last_response}",
+                        assertion.target
+                    ));
+                }
+            } else if !last_response
+                .as_object()
+                .is_some_and(|obj| obj.contains_key(&assertion.target))
+            {
+                return Err(format!(
+                    "Assertion failed: target '{}' does not exist in {last_response}",
+                    assertion.target
+                ));
             }
         }
         "missing" => {

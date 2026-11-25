@@ -102,7 +102,7 @@ impl FakeMcpServer {
                         },
                         "serverInfo": {
                             "name": "texure-server",
-                            "version": "0.1.0"
+                            "version": env!("CARGO_PKG_VERSION")
                         }
                     }
                 })
@@ -207,7 +207,11 @@ impl FakeMcpServer {
             }
             "tools/call" => {
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                let args = params
+                    .get("arguments")
+                    .filter(|v| !v.is_null())
+                    .cloned()
+                    .unwrap_or(json!({}));
                 let verbose = args
                     .get("verbose")
                     .and_then(|v| v.as_bool())
@@ -219,8 +223,8 @@ impl FakeMcpServer {
                         "jsonrpc": "2.0",
                         "id": &id,
                         "error": {
-                            "code": -32601,
-                            "message": format!("Unknown tool: {name}")
+                            "code": -32602,
+                            "message": format!("Invalid params: Unknown tool: {name}")
                         }
                     }));
                 }
@@ -290,7 +294,7 @@ impl FakeMcpServer {
                     } else {
                         let success_payload = json!({
                             "ok": true,
-                            "last_rev": 42
+                            "rev": 42
                         });
                         return Some(json!({
                             "jsonrpc": "2.0",
