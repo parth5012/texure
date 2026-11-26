@@ -14,6 +14,7 @@ import com.texure.bridge.tree.ExtractedTree
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 sealed class WorkerResult<out T> {
     data class Success<out T>(val value: T) : WorkerResult<T>()
@@ -171,47 +172,73 @@ class BridgeWorker(
     }
 
     fun executeBack(): WorkerResult<Unit> {
-        val future = executor.submit<WorkerResult<Unit>> {
-            val activity = activityProvider() ?: return@submit WorkerResult.Error(BridgeError.APP_NOT_FOREGROUND)
+        val activity = activityProvider() ?: return WorkerResult.Error(BridgeError.APP_NOT_FOREGROUND)
 
-            val action = {
-                val method = activity.javaClass.methods.firstOrNull { it.name == "getOnBackPressedDispatcher" }
-                if (method != null) {
-                    val dispatcher = method.invoke(activity)
-                    val backMethod = dispatcher?.javaClass?.getMethod("onBackPressed")
-                    backMethod?.invoke(dispatcher)
-                } else {
+        val action = {
+            val method = activity.javaClass.methods.firstOrNull { it.name == "getOnBackPressedDispatcher" }
+            if (method != null) {
+                val dispatcher = method.invoke(activity)
+                val backMethod = dispatcher?.javaClass?.getMethod("onBackPressed")
+                backMethod?.invoke(dispatcher)
+            } else {
+                @Suppress("DEPRECATION")
+                activity.onBackPressed()
+            }
+        }
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return try {
+                action()
+                treeExtractor.bumpRev()
+                WorkerResult.Success(Unit)
+            } catch (_: Exception) {
+                try {
                     @Suppress("DEPRECATION")
                     activity.onBackPressed()
-                }
-            }
-
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                return@submit try {
-                    action()
                     treeExtractor.bumpRev()
                     WorkerResult.Success(Unit)
                 } catch (_: Exception) {
-                    WorkerResult.Error(BridgeError.INJECT_FAILED)
+                    try {
+                        activity.finish()
+                        treeExtractor.bumpRev()
+                        WorkerResult.Success(Unit)
+                    } catch (_: Exception) {
+                        WorkerResult.Error(BridgeError.INJECT_FAILED)
+                    }
                 }
             }
+        }
 
+        val future = executor.submit<WorkerResult<Unit>> {
             val latch = CountDownLatch(1)
+            val isCancelled = AtomicBoolean(false)
             var success = false
             mainHandler.post {
+                if (isCancelled.get()) {
+                    latch.countDown()
+                    return@post
+                }
                 try {
                     action()
-                    success = true
-                } catch (_: Exception) {
-                    try {
-                        @Suppress("DEPRECATION")
-                        activity.onBackPressed()
+                    if (!isCancelled.get()) {
                         success = true
-                    } catch (_: Exception) {
+                    }
+                } catch (_: Exception) {
+                    if (!isCancelled.get()) {
                         try {
-                            activity.finish()
-                            success = true
-                        } catch (_: Exception) {}
+                            @Suppress("DEPRECATION")
+                            activity.onBackPressed()
+                            if (!isCancelled.get()) {
+                                success = true
+                            }
+                        } catch (_: Exception) {
+                            try {
+                                activity.finish()
+                                if (!isCancelled.get()) {
+                                    success = true
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
                 } finally {
                     latch.countDown()
@@ -219,15 +246,11 @@ class BridgeWorker(
             }
 
             val completed = latch.await(1000, TimeUnit.MILLISECONDS)
-            if (!completed || !success) {
-                // Direct fallback
-                try {
-                    action()
-                    success = true
-                } catch (_: Exception) {}
+            if (!completed) {
+                isCancelled.set(true)
             }
 
-            if (success) {
+            if (completed && success && !isCancelled.get()) {
                 treeExtractor.bumpRev()
                 WorkerResult.Success(Unit)
             } else {

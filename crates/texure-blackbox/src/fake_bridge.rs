@@ -942,6 +942,22 @@ async fn route_request(
                 .get("key")
                 .and_then(|v| v.as_str())
                 .unwrap_or("ENTER");
+
+            if state.scenario_name == "slow_main_back" && key == "BACK" {
+                let err_resp = json!({
+                    "error": {
+                        "code": "INJECT_FAILED",
+                        "message": "both injection methods failed or main looper timeout on back press",
+                        "hint": "re-fetch tree, retry once; bundle evidence"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err_resp).unwrap(),
+                );
+            }
+
             capture_recording_action(
                 state,
                 "keypress",
@@ -958,6 +974,21 @@ async fn route_request(
             )
         }
         ("POST", "/back") => {
+            if state.scenario_name == "slow_main_back" {
+                let err_resp = json!({
+                    "error": {
+                        "code": "INJECT_FAILED",
+                        "message": "both injection methods failed or main looper timeout on back press",
+                        "hint": "re-fetch tree, retry once; bundle evidence"
+                    }
+                });
+                return (
+                    "400 Bad Request",
+                    vec![("Content-Type", "application/json".to_string())],
+                    serde_json::to_vec(&err_resp).unwrap(),
+                );
+            }
+
             capture_recording_action(state, "keypress", None, None, Some("BACK")).await;
             let resp = json!({ "ok": true });
             (
