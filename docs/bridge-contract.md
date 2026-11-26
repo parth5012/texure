@@ -575,7 +575,7 @@ MCP server exposes **6 tools**: `device_tree`, `tap`, `type`, `keypress`, `scree
 | `NODE_NOT_CLICKABLE` | bridge | 400 | tap onto non-clickable node | pick a clickable node from the latest tree |
 | `NODE_NOT_EDITABLE` | bridge | 400 | type into non-editable node | tap the editable field first, then type |
 | `NODE_NOT_FOUND` | bridge | 400 | `?subtree=<id>` unknown id | ids only come from the latest `device_tree` |
-| `INJECT_FAILED` | bridge | 400 | both injection methods failed | re-fetch tree, retry once; bundle evidence |
+| `INJECT_FAILED` | bridge | 400 | both injection methods failed or main looper timeout on back press | re-fetch tree, retry once; bundle evidence |
 | `CAPTURE_FAILED` | bridge | 400 | `/screenshot` capture failed | foreground the app; `device_tree` still works |
 | `APP_NOT_FOREGROUND` | bridge | 400 | mutation while backgrounded | bring app forward explicitly (no auto-launch) |
 | `SCREEN_OFF` | bridge | 400 | display off | wake + reopen app (human step) |
