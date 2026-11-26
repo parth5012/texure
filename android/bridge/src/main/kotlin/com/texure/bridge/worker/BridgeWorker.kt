@@ -14,7 +14,7 @@ import com.texure.bridge.tree.ExtractedTree
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 sealed class WorkerResult<out T> {
     data class Success<out T>(val value: T) : WorkerResult<T>()
@@ -211,46 +211,43 @@ class BridgeWorker(
 
         val future = executor.submit<WorkerResult<Unit>> {
             val latch = CountDownLatch(1)
-            val isCancelled = AtomicBoolean(false)
+            val state = AtomicInteger(STATE_PENDING)
             var success = false
             mainHandler.post {
-                if (isCancelled.get()) {
+                if (!state.compareAndSet(STATE_PENDING, STATE_RUNNING)) {
                     latch.countDown()
                     return@post
                 }
                 try {
                     action()
-                    if (!isCancelled.get()) {
-                        success = true
-                    }
+                    success = true
                 } catch (_: Exception) {
-                    if (!isCancelled.get()) {
+                    try {
+                        @Suppress("DEPRECATION")
+                        activity.onBackPressed()
+                        success = true
+                    } catch (_: Exception) {
                         try {
-                            @Suppress("DEPRECATION")
-                            activity.onBackPressed()
-                            if (!isCancelled.get()) {
-                                success = true
-                            }
-                        } catch (_: Exception) {
-                            try {
-                                activity.finish()
-                                if (!isCancelled.get()) {
-                                    success = true
-                                }
-                            } catch (_: Exception) {}
-                        }
+                            activity.finish()
+                            success = true
+                        } catch (_: Exception) {}
                     }
                 } finally {
+                    state.set(STATE_COMPLETED)
                     latch.countDown()
                 }
             }
 
             val completed = latch.await(1000, TimeUnit.MILLISECONDS)
             if (!completed) {
-                isCancelled.set(true)
+                if (state.compareAndSet(STATE_PENDING, STATE_CANCELLED)) {
+                    return@submit WorkerResult.Error(BridgeError.INJECT_FAILED)
+                }
+                // Dispatch already started on main thread; await completion
+                latch.await(1000, TimeUnit.MILLISECONDS)
             }
 
-            if (completed && success && !isCancelled.get()) {
+            if (success) {
                 treeExtractor.bumpRev()
                 WorkerResult.Success(Unit)
             } else {
@@ -309,5 +306,12 @@ class BridgeWorker(
 
     fun shutdown() {
         executor.shutdownNow()
+    }
+
+    companion object {
+        private const val STATE_PENDING = 0
+        private const val STATE_RUNNING = 1
+        private const val STATE_COMPLETED = 2
+        private const val STATE_CANCELLED = 3
     }
 }

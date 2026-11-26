@@ -15,6 +15,26 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class BridgeWorkerTest {
 
+    open class FaultyActivity : Activity() {
+        @Suppress("DEPRECATION")
+        @Deprecated("Deprecated in Java")
+        override fun onBackPressed() {
+            throw RuntimeException("Simulated onBackPressed failure")
+        }
+        override fun finish() {
+            throw RuntimeException("Simulated finish failure")
+        }
+    }
+
+    open class TrackingActivity : Activity() {
+        var backCalled = false
+        @Suppress("DEPRECATION")
+        @Deprecated("Deprecated in Java")
+        override fun onBackPressed() {
+            backCalled = true
+        }
+    }
+
     @Test
     fun testExecuteBackForegroundSuccess() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
@@ -47,17 +67,6 @@ class BridgeWorkerTest {
 
     @Test
     fun testExecuteBackWhenActionThrowsReturnsInjectFailedWithoutRevBump() {
-        class FaultyActivity : Activity() {
-            @Suppress("DEPRECATION")
-            @Deprecated("Deprecated in Java")
-            override fun onBackPressed() {
-                throw RuntimeException("Simulated onBackPressed failure")
-            }
-            override fun finish() {
-                throw RuntimeException("Simulated finish failure")
-            }
-        }
-
         val activity = Robolectric.buildActivity(FaultyActivity::class.java).setup().get()
         val treeExtractor = BridgeTreeExtractor()
         val initialRev = treeExtractor.getRev()
@@ -70,5 +79,36 @@ class BridgeWorkerTest {
         assertTrue("Expected Error, got $result", result is WorkerResult.Error)
         assertEquals(BridgeError.INJECT_FAILED, (result as WorkerResult.Error).bridgeError)
         assertEquals("Rev must not be bumped on inject failure", initialRev, treeExtractor.getRev())
+    }
+
+    @Test
+    fun testExecuteBackSlowMainThreadTimesOutAndCancelsWithoutRevBump() {
+        val activity = Robolectric.buildActivity(TrackingActivity::class.java).setup().get()
+        val treeExtractor = BridgeTreeExtractor()
+        val initialRev = treeExtractor.getRev()
+        val worker = BridgeWorker(
+            activityProvider = { activity },
+            treeExtractor = treeExtractor
+        )
+
+        val backgroundExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val bgFuture = backgroundExecutor.submit<WorkerResult<Unit>> {
+            worker.executeBack()
+        }
+
+        // Wait for background execution to complete (it will hit the 1000ms latch timeout and cancel)
+        val result = bgFuture.get(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertTrue("Expected Error on timeout, got $result", result is WorkerResult.Error)
+        assertEquals(BridgeError.INJECT_FAILED, (result as WorkerResult.Error).bridgeError)
+        assertEquals("Rev must not be bumped on timeout", initialRev, treeExtractor.getRev())
+
+        // Now drain main looper tasks to prove the cancelled runnable does not execute action()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+
+        org.junit.Assert.assertFalse("Cancelled back press must not run after timeout", activity.backCalled)
+        assertEquals("Rev must still be unbumped after looper drain", initialRev, treeExtractor.getRev())
+
+        worker.shutdown()
+        backgroundExecutor.shutdown()
     }
 }
