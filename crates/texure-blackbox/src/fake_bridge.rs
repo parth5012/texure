@@ -947,7 +947,7 @@ async fn route_request(
                 let err_resp = json!({
                     "error": {
                         "code": "INJECT_FAILED",
-                        "message": "both injection methods failed or main looper timeout on back press",
+                        "message": "both injection methods failed",
                         "hint": "re-fetch tree, retry once; bundle evidence"
                     }
                 });
