@@ -78,9 +78,11 @@ Optional `hash` (map #36, #29): same verify-at-execute targeting and semantics a
 { "key": "ENTER" }  // enum: ENTER, BACK, DEL, TAB
 ```
 
+Dispatches key press. When `key` is `BACK`, routes directly through the main-thread back dispatcher (matching `POST /back`). If the main looper does not service the action within 1000 ms, the action aborts without off-main fallback and refuses with `INJECT_FAILED` (400, hint: "re-fetch tree, retry once; bundle evidence"). Tree `rev` is not bumped on timeout or refusal.
+
 ### POST /back
 
-No body. `{ "ok": true }`.
+No body. `{ "ok": true }`. Dispatches back press on the main thread via `OnBackPressedDispatcher`. Aborts after 1000 ms timeout without off-main fallback, refusing with `INJECT_FAILED` (400).
 
 ### POST /tag (dynamic view tagging, map #36, #31)
 

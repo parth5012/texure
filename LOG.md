@@ -2,7 +2,7 @@
 
 ## 2026-11-26 (session) — Wayfinder map 21 (#139) Remove off-main back-press fallback in BridgeWorker
 - Scope: HITL ticket (#136), 2 AFK tickets (#137, #138) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/139-backpress-fallback`.
-- HITL #136: Decide slow-main-thread failure contract. Grilling session confirmed eliminating off-main fallback entirely from `BridgeWorker.kt`. If the main looper does not service BACK within 1000 ms, the action aborts via an `AtomicBoolean` cancellation token to prevent ghost execution and refuses with `INJECT_FAILED` (HTTP 400, hint: "re-fetch tree, retry once; bundle evidence"). Tree `rev` is not bumped on timeout or refusal. Documented in `docs/behavior-spec.md` §1.4 and `docs/bridge-contract.md` §5.1. Closed #136.
+- HITL #136: Decide slow-main-thread failure contract. Grilling session confirmed eliminating off-main fallback entirely from `BridgeWorker.kt`. If the main looper does not service BACK within 1000 ms, the action aborts via an atomic 4-state transition (`AtomicInteger` CAS) cancellation token to prevent ghost execution and refuses with `INJECT_FAILED` (HTTP 400, hint: "re-fetch tree, retry once; bundle evidence"). Tree `rev` is not bumped on timeout or refusal. Documented in `docs/behavior-spec.md` §1.4 and `docs/bridge-contract.md` §5.1. Closed #136.
 - AFK #137: Write-first blackbox test for slow-main back action (RED). Added scenario `tests/blackbox/scenarios/slow_main_back.json` asserting `INJECT_FAILED` with exact hint on slow main BACK and verifying tree rev remains unchanged (42). Registered `BB-C4` in `crates/texure-blackbox/src/main.rs`, `crates/texure-lint/src/docs_gate.rs`, `docs/behavior-spec.md`, and `docs/blackbox-plan.md`. Confirmed RED failure against FakeBridge with evidence saved to `tmp/evidence/137/red-run.txt`. Closed #137.
 - AFK #138: Implementation and verification (GREEN). Updated `BridgeWorker.kt` to eliminate worker-thread `action()` / `onBackPressed()` invocation fallback. Added atomic 4-state transition (`AtomicInteger`) cancellation flag to prevent late-firing on main looper if unblocked post-timeout. Moved main-looper check to method entry to prevent self-deadlock. Added unit tests in `android/bridge/src/test/kotlin/com/texure/bridge/worker/BridgeWorkerTest.kt` verifying foreground success, background rejection (`APP_NOT_FOREGROUND`), and exception handling without rev bump. Updated FakeBridge and FakeMcpServer handlers to model the agreed contract. Flipped `BB-C4` to green. Closed #138.
 - CodeRabbit review remediation: Updated `BridgeWorker.kt` to use an atomic 4-state transition (`STATE_PENDING`, `STATE_RUNNING`, `STATE_COMPLETED`, `STATE_CANCELLED`) via `AtomicInteger` CAS to make timeout cancellation and BACK dispatch strictly mutually exclusive. If timeout fires while `PENDING`, CAS to `CANCELLED` prevents subsequent main-thread execution; if already `RUNNING`, timeout awaits completion so dispatch is not reported as refused without `bumpRev()`. Added Robolectric unit test in `BridgeWorkerTest.kt` verifying slow-main timeout cancellation, unbumped rev, and zero ghost execution on looper drain.
@@ -15,8 +15,12 @@
   - Recorded formal architecture entry in `DECISIONS.md` for Map 21. Added unit tests in `BridgeWorkerTest.kt` for `executeKey(BACK)`.
 - Verification:
   - L0 Static: `cargo run -p texure-lint` (0 findings).
-  - L1 Unit: `./gradlew :android:bridge:testDebug` (145 passed, 0 failed), `cargo test --workspace` (all passed: 9 companion, 47 texure-blackbox, 76 texure-server, 12 texure-contract).
-  - L2 Blackbox: `cargo run -p texure-blackbox -- --target mcp-fake` (33/33 passed, including `BB-C4`).
+  - L1 Unit: `./gradlew :android:bridge:testDebug` (147 passed, 0 failed), `cargo test --workspace` (all passed: 9 companion, 47 texure-blackbox, 76 texure-server, 12 texure-contract).
+  - L2 Blackbox: `cargo run -p texure-blackbox -- --target mcp-fake` (33/33 passed, including `BB-C4`), `cargo run -p texure-blackbox -- --target mcp-real --scenario BB-C4` (PASS).
+  - L3 Device: Blocked (no device attached).
+VERIFY: L0 pass · L1 pass · L2 pass(33) · L3 blocked:no device
+EVIDENCE: tmp/evidence/137/red-run.txt
+FLIPS: BB-C4
 
 ## 2026-11-24 (session) — Wayfinder map 20 (#135) MCP Protocol & Typed Tool Results Alignment
 - Scope: HITL ticket (#132), 2 AFK tickets (#133, #134) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/135-mcp-typed-results`.
