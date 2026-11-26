@@ -423,7 +423,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "slow_main_back.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
         // Group R: remote tunnel & gateway (write-first suite, map 9 #41).
         // Flipped green by ticket #63 via the `--target mcp-tunnel` full

@@ -343,6 +343,16 @@ impl FakeMcpServer {
                 }
 
                 if name == "keypress" {
+                    let key = args.get("key").and_then(|k| k.as_str()).unwrap_or("");
+                    if self.scenario == "slow_main_back" && key == "BACK" {
+                        return Some(self.make_error_response(
+                            &id,
+                            "INJECT_FAILED",
+                            "both injection methods failed or main looper timeout on back press",
+                            "re-fetch tree, retry once; bundle evidence",
+                            verbose,
+                        ));
+                    }
                     let resp = json!({"ok": true});
                     return Some(json!({
                         "jsonrpc": "2.0",
