@@ -118,7 +118,7 @@ class BridgeWorker(
         }
 
         return try {
-            future.get(2000, TimeUnit.MILLISECONDS)
+            future.get(2500, TimeUnit.MILLISECONDS)
         } catch (_: Exception) {
             future.cancel(false)
             WorkerResult.Error(BridgeError.INJECT_FAILED)
@@ -222,8 +222,10 @@ class BridgeWorker(
                 try {
                     val currentActivity = activityProvider() ?: activity
                     if (dispatchBack(currentActivity)) {
-                        treeExtractor.bumpRev()
-                        success = true
+                        if (state.get() == STATE_RUNNING) {
+                            treeExtractor.bumpRev()
+                            success = true
+                        }
                     }
                 } finally {
                     state.set(STATE_COMPLETED)
@@ -240,7 +242,11 @@ class BridgeWorker(
                     return@submit WorkerResult.Error(BridgeError.INJECT_FAILED)
                 }
                 // Dispatch already started on main thread; await completion
-                latch.await(1000, TimeUnit.MILLISECONDS)
+                val completedSecond = latch.await(1000, TimeUnit.MILLISECONDS)
+                if (!completedSecond) {
+                    state.set(STATE_CANCELLED)
+                    return@submit WorkerResult.Error(BridgeError.INJECT_FAILED)
+                }
             }
 
             if (success) {
@@ -251,7 +257,7 @@ class BridgeWorker(
         }
 
         return try {
-            future.get(2000, TimeUnit.MILLISECONDS)
+            future.get(2500, TimeUnit.MILLISECONDS)
         } catch (_: Exception) {
             future.cancel(false)
             WorkerResult.Error(BridgeError.INJECT_FAILED)

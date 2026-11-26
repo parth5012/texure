@@ -431,7 +431,7 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
 **Eliminate off-main back-press fallback in BridgeWorker and route `Key.BACK` to main-only cancellable execution.**
 - **Context:** `BridgeWorker.executeBack()` fell back to worker-thread `activity.onBackPressed()` after a 1 s main-thread timeout. On a slow main thread, this caused an off-main UI call on Android, risking crashes or delayed ghost execution. Additionally, `/keypress` with `Key.BACK` was bypassing `executeBack()` and calling off-main instrumentation.
 - **Decision:**
-  1. Eliminate off-main back-press fallback completely in `BridgeWorker.kt` and `DefaultInjectionAdapter.kt`.
+  1. Eliminate off-main back-press fallback completely in `BridgeWorker.kt` and `DefaultInjectionAdapter` (`InjectionAdapter.kt`).
   2. Route `Key.BACK` in `BridgeWorker.executeKey(Key.BACK)` directly to `executeBack()`.
   3. Bound main-looper dispatch by a 1000 ms timeout. An atomic 4-state CAS handshake (`STATE_PENDING -> STATE_RUNNING -> STATE_COMPLETED / STATE_CANCELLED`) guarantees mutual exclusion between timeout cancellation and action dispatch: if timeout occurs while `PENDING`, state becomes `CANCELLED` and the queued action aborts without execution.
   4. Preserve rev guard: `treeExtractor.bumpRev()` is invoked on the main looper immediately upon successful dispatch. Timeouts and refusals preserve `rev`.
