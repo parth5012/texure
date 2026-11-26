@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "slow_main_back",
+  "kind": "scenario",
+  "description": "Slow main thread on /keypress BACK refuses with INJECT_FAILED and preserves tree revision",
+  "steps": [
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "keypress",
+      "args": { "key": "BACK" },
+      "expect": {
+        "error.code": "INJECT_FAILED",
+        "error.hint": "re-fetch tree, retry once; bundle evidence"
+      }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": 42 }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}

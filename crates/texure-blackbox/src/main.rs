@@ -417,6 +417,14 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: true,
             write_first: false,
         },
+        TestDef {
+            id: "BB-C4".to_string(),
+            name: "slow_main_back: main-thread timeout on /keypress BACK refuses with INJECT_FAILED and preserves rev".to_string(),
+            scenario_file: "slow_main_back.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: true,
+        },
         // Group R: remote tunnel & gateway (write-first suite, map 9 #41).
         // Flipped green by ticket #63 via the `--target mcp-tunnel` full
         // round-trip (real server binary + in-process fake companion).

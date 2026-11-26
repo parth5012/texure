@@ -63,6 +63,7 @@ Test IDs: `BB-<group><n>`. Every row from behavior-spec is covered or explicitly
 | C1 | `login_flow`: agent-driven login/text flow completes unattended on VelaVoice over LAN (issue #2's milestone, as a test) |
 | C2 | `slow_screen`: `wait_for` timeout ≤ 30s → `{ok:false,last_rev}` + re-plan hint; WS-down path falls back to HTTP polling |
 | C3 | `steer_flow`: human touch mid-flow → agent receives steering signal and completes after re-fetch (human+agent cooperative flow) |
+| C4 | `slow_main_back`: main-thread timeout on `/keypress` BACK refuses with `INJECT_FAILED` and preserves rev (map 21 #139, write-first) |
 
 ### Group R — remote tunnel, gateway, Shizuku, pairing (write-first, maps 10–13)
 
