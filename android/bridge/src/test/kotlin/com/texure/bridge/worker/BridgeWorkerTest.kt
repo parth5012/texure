@@ -111,4 +111,48 @@ class BridgeWorkerTest {
         worker.shutdown()
         backgroundExecutor.shutdown()
     }
+
+    @Test
+    fun testExecuteKeyBackRoutesToExecuteBackSuccess() {
+        val activity = Robolectric.buildActivity(TrackingActivity::class.java).setup().get()
+        val treeExtractor = BridgeTreeExtractor()
+        val initialRev = treeExtractor.getRev()
+        val worker = BridgeWorker(
+            activityProvider = { activity },
+            treeExtractor = treeExtractor
+        )
+
+        val result = worker.executeKey(com.texure.bridge.model.Key.BACK)
+        assertTrue("Expected Success, got $result", result is WorkerResult.Success)
+        assertEquals("Rev must be bumped on executeKey(BACK) success", initialRev + 1, treeExtractor.getRev())
+        assertTrue("Activity back must be called", activity.backCalled)
+        worker.shutdown()
+    }
+
+    @Test
+    fun testExecuteKeyBackWhenSlowTimesOutWithoutRevBump() {
+        val activity = Robolectric.buildActivity(TrackingActivity::class.java).setup().get()
+        val treeExtractor = BridgeTreeExtractor()
+        val initialRev = treeExtractor.getRev()
+        val worker = BridgeWorker(
+            activityProvider = { activity },
+            treeExtractor = treeExtractor
+        )
+
+        val backgroundExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val bgFuture = backgroundExecutor.submit<WorkerResult<Unit>> {
+            worker.executeKey(com.texure.bridge.model.Key.BACK)
+        }
+
+        val result = bgFuture.get(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertTrue("Expected Error on timeout, got $result", result is WorkerResult.Error)
+        assertEquals(BridgeError.INJECT_FAILED, (result as WorkerResult.Error).bridgeError)
+        assertEquals("Rev must not be bumped on timeout", initialRev, treeExtractor.getRev())
+
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        org.junit.Assert.assertFalse("Cancelled back press must not run after timeout", activity.backCalled)
+
+        worker.shutdown()
+        backgroundExecutor.shutdown()
+    }
 }

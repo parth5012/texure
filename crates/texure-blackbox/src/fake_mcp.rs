@@ -348,7 +348,7 @@ impl FakeMcpServer {
                         return Some(self.make_error_response(
                             &id,
                             "INJECT_FAILED",
-                            "both injection methods failed or main looper timeout on back press",
+                            "both injection methods failed",
                             "re-fetch tree, retry once; bundle evidence",
                             verbose,
                         ));

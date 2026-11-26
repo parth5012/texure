@@ -210,7 +210,7 @@ class DefaultInjectionAdapter(
             Key.TAB -> KeyEvent.KEYCODE_TAB
         }
 
-        if (Looper.myLooper() != Looper.getMainLooper()) {
+        if (key != Key.BACK && Looper.myLooper() != Looper.getMainLooper()) {
             try {
                 instrumentation.sendKeyDownUpSync(keyCode)
                 return InjectionResult.Success

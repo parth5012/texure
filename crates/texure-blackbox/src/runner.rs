@@ -633,6 +633,11 @@ fn mcp_content_to_response(call_res: &Value) -> Value {
         serde_json::from_str(content_text).unwrap_or_else(|_| json!({ "raw": content_text }));
 
     if is_error {
+        if let Some(structured) = call_res.get("structuredContent") {
+            if let Some(err_obj) = structured.get("error") {
+                return json!({ "error": err_obj });
+            }
+        }
         if let Some(err_obj) = parsed_content.get("error") {
             json!({ "error": err_obj })
         } else if let Some(code) = extract_error_code(content_text) {
@@ -641,7 +646,11 @@ fn mcp_content_to_response(call_res: &Value) -> Value {
             json!({ "error": { "message": content_text } })
         }
     } else {
-        parsed_content
+        if let Some(structured) = call_res.get("structuredContent") {
+            structured.clone()
+        } else {
+            parsed_content
+        }
     }
 }
 

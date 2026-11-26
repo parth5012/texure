@@ -104,6 +104,9 @@ class BridgeWorker(
     }
 
     fun executeKey(key: Key): WorkerResult<Unit> {
+        if (key == Key.BACK) {
+            return executeBack()
+        }
         val future = executor.submit<WorkerResult<Unit>> {
             when (injectionAdapter.key(key)) {
                 is InjectionResult.Success -> {
@@ -117,6 +120,7 @@ class BridgeWorker(
         return try {
             future.get(2000, TimeUnit.MILLISECONDS)
         } catch (_: Exception) {
+            future.cancel(false)
             WorkerResult.Error(BridgeError.INJECT_FAILED)
         }
     }
@@ -171,10 +175,8 @@ class BridgeWorker(
         }
     }
 
-    fun executeBack(): WorkerResult<Unit> {
-        val activity = activityProvider() ?: return WorkerResult.Error(BridgeError.APP_NOT_FOREGROUND)
-
-        val action = {
+    private fun dispatchBack(activity: Activity): Boolean {
+        return try {
             val method = activity.javaClass.methods.firstOrNull { it.name == "getOnBackPressedDispatcher" }
             if (method != null) {
                 val dispatcher = method.invoke(activity)
@@ -184,58 +186,52 @@ class BridgeWorker(
                 @Suppress("DEPRECATION")
                 activity.onBackPressed()
             }
+            true
+        } catch (_: Exception) {
+            try {
+                @Suppress("DEPRECATION")
+                activity.onBackPressed()
+                true
+            } catch (_: Exception) {
+                false
+            }
         }
+    }
 
+    fun executeBack(): WorkerResult<Unit> {
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            return try {
-                action()
+            val activity = activityProvider() ?: return WorkerResult.Error(BridgeError.APP_NOT_FOREGROUND)
+            return if (dispatchBack(activity)) {
                 treeExtractor.bumpRev()
                 WorkerResult.Success(Unit)
-            } catch (_: Exception) {
-                try {
-                    @Suppress("DEPRECATION")
-                    activity.onBackPressed()
-                    treeExtractor.bumpRev()
-                    WorkerResult.Success(Unit)
-                } catch (_: Exception) {
-                    try {
-                        activity.finish()
-                        treeExtractor.bumpRev()
-                        WorkerResult.Success(Unit)
-                    } catch (_: Exception) {
-                        WorkerResult.Error(BridgeError.INJECT_FAILED)
-                    }
-                }
+            } else {
+                WorkerResult.Error(BridgeError.INJECT_FAILED)
             }
         }
 
         val future = executor.submit<WorkerResult<Unit>> {
+            val activity = activityProvider() ?: return@submit WorkerResult.Error(BridgeError.APP_NOT_FOREGROUND)
             val latch = CountDownLatch(1)
             val state = AtomicInteger(STATE_PENDING)
             var success = false
-            mainHandler.post {
+            val posted = mainHandler.post {
                 if (!state.compareAndSet(STATE_PENDING, STATE_RUNNING)) {
                     latch.countDown()
                     return@post
                 }
                 try {
-                    action()
-                    success = true
-                } catch (_: Exception) {
-                    try {
-                        @Suppress("DEPRECATION")
-                        activity.onBackPressed()
+                    val currentActivity = activityProvider() ?: activity
+                    if (dispatchBack(currentActivity)) {
+                        treeExtractor.bumpRev()
                         success = true
-                    } catch (_: Exception) {
-                        try {
-                            activity.finish()
-                            success = true
-                        } catch (_: Exception) {}
                     }
                 } finally {
                     state.set(STATE_COMPLETED)
                     latch.countDown()
                 }
+            }
+            if (!posted) {
+                return@submit WorkerResult.Error(BridgeError.INJECT_FAILED)
             }
 
             val completed = latch.await(1000, TimeUnit.MILLISECONDS)
@@ -248,7 +244,6 @@ class BridgeWorker(
             }
 
             if (success) {
-                treeExtractor.bumpRev()
                 WorkerResult.Success(Unit)
             } else {
                 WorkerResult.Error(BridgeError.INJECT_FAILED)
@@ -258,6 +253,7 @@ class BridgeWorker(
         return try {
             future.get(2000, TimeUnit.MILLISECONDS)
         } catch (_: Exception) {
+            future.cancel(false)
             WorkerResult.Error(BridgeError.INJECT_FAILED)
         }
     }
