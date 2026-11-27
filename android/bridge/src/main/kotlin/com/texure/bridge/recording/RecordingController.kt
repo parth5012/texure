@@ -14,6 +14,7 @@ import com.texure.bridge.injection.DefaultInjectionAdapter
 import com.texure.bridge.model.TreeNode
 import com.texure.bridge.tree.BridgeTreeExtractor
 import com.texure.bridge.tree.ExtractedTree
+import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 
@@ -72,6 +73,7 @@ class RecordingController(
     // Installed only while a session is active
     private var originalWindowCallback: Window.Callback? = null
     private var proxyWindowCallback: RecordingWindowCallback? = null
+    private var hookedWindow: WeakReference<Window>? = null
 
     fun hookState(): HookState = synchronized(lifecycleLock) { hookState }
 
@@ -211,6 +213,15 @@ class RecordingController(
         }
     }
 
+    private fun abortInstallIfCurrent(gen: Long) {
+        synchronized(lifecycleLock) {
+            if (currentGeneration == gen && hookState == HookState.INSTALLING) {
+                activeSession = null
+                hookState = HookState.IDLE
+            }
+        }
+    }
+
     private fun installHooks(gen: Long) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             installHooksOnMain(gen)
@@ -220,15 +231,28 @@ class RecordingController(
     }
 
     private fun installHooksOnMain(gen: Long) {
-        val (existingProxy, existingOriginal) = synchronized(lifecycleLock) {
+        val (existingProxy, existingOriginal, existingWindow) = synchronized(lifecycleLock) {
             if (currentGeneration != gen || hookState != HookState.INSTALLING) {
                 return
             }
-            proxyWindowCallback to originalWindowCallback
+            Triple(proxyWindowCallback, originalWindowCallback, hookedWindow?.get())
         }
-        val activity = activityProvider() ?: return
+        val activity = activityProvider() ?: run {
+            abortInstallIfCurrent(gen)
+            return
+        }
         val window = activity.window
-        val currentCallback = window.callback ?: return
+        val currentCallback = window.callback ?: run {
+            abortInstallIfCurrent(gen)
+            return
+        }
+        if (existingProxy != null && existingWindow != null && existingWindow !== window) {
+            try {
+                if (existingWindow.callback === existingProxy) {
+                    existingWindow.callback = existingOriginal
+                }
+            } catch (_: Exception) {}
+        }
         val baseCallback = if (
             existingProxy != null &&
             currentCallback === existingProxy &&
@@ -239,16 +263,18 @@ class RecordingController(
             currentCallback
         }
         val proxy = try {
-            val newProxy = RecordingWindowCallback(this@RecordingController, activity, baseCallback, gen)
+            val newProxy = RecordingWindowCallback(this@RecordingController, baseCallback, gen)
             window.callback = newProxy
             newProxy
         } catch (_: Exception) {
+            abortInstallIfCurrent(gen)
             return
         }
         val committed = synchronized(lifecycleLock) {
             if (currentGeneration == gen && hookState == HookState.INSTALLING) {
                 originalWindowCallback = baseCallback
                 proxyWindowCallback = proxy
+                hookedWindow = WeakReference(window)
                 hookState = HookState.ACTIVE
                 true
             } else {
@@ -276,23 +302,25 @@ class RecordingController(
         unwatch(stoppedSession)
         stoppedSession.downTime = null
 
-        val (proxy, original) = synchronized(lifecycleLock) {
+        val (proxy, original, window) = synchronized(lifecycleLock) {
             if (currentGeneration != gen || hookState != HookState.UNINSTALLING) {
                 return
             }
             val currentProxy = proxyWindowCallback
             val currentOriginal = originalWindowCallback
+            val currentWindow = hookedWindow?.get()
             proxyWindowCallback = null
             originalWindowCallback = null
+            hookedWindow = null
             hookState = HookState.IDLE
-            currentProxy to currentOriginal
+            Triple(currentProxy, currentOriginal, currentWindow)
         }
 
         if (proxy != null) {
-            val activity = activityProvider()
+            val targetWindow = window ?: activityProvider()?.window
             try {
-                if (activity?.window?.callback === proxy) {
-                    activity.window.callback = original
+                if (targetWindow?.callback === proxy) {
+                    targetWindow.callback = original
                 }
             } catch (_: Exception) {}
         }
@@ -300,7 +328,6 @@ class RecordingController(
 
     private class RecordingWindowCallback(
         private val controller: RecordingController,
-        private val activity: Activity,
         private val delegate: Window.Callback,
         private val generation: Long
     ) : Window.Callback by delegate, KeyEvent.Callback {
@@ -374,6 +401,7 @@ class RecordingController(
      * agent /back mutations run muted through the server instead.
      */
     private fun onKeyObserved(generation: Long, event: KeyEvent) {
+        // Also honor mute window so in-process Instrumentation.sendKeyDownUpSync (which lacks SYNTHETIC_DEVICE_ID) is excluded.
         if (event.deviceId == DefaultInjectionAdapter.SYNTHETIC_DEVICE_ID || muted) return
         val session = activeSessionFor(generation) ?: return
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
