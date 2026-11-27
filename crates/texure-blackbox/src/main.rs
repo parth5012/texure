@@ -398,7 +398,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "recording_race.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
         TestDef {
             id: "BB-B17".to_string(),
@@ -406,7 +406,7 @@ pub fn get_all_tests() -> Vec<TestDef> {
             scenario_file: "recording_synthetic_key.json".to_string(),
             target: "mcp-fake".to_string(),
             is_device: false,
-            write_first: true,
+            write_first: false,
         },
         // Group C: Goal flows
         TestDef {

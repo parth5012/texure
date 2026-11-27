@@ -1,14 +1,20 @@
 package com.texure.bridge.recording
 
 import android.app.Activity
-import android.view.MotionEvent
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import com.texure.bridge.injection.DefaultInjectionAdapter
 import com.texure.bridge.tree.BridgeTreeExtractor
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -16,7 +22,6 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * BB-B13 / BB-B14: passive capture + event mapping (tap / type / keypress / pause).
@@ -200,5 +205,157 @@ class RecordingMappingTest {
         assertEquals("pause", pause.getString("action"))
         assertTrue("pause must cover the >= 2s gap", pause.getLong("ms") >= 3_500)
         assertEquals("pause precedes the delayed action", "tap", actions[2].getString("action"))
+    }
+
+    // BB-B16: background start() followed by immediate main-thread stop() before looper drains
+    // must not leave a stale Window.Callback intercepting touches after stop.
+    @Test
+    fun backgroundStartThenImmediateStopLeavesNoStaleHook() {
+        val controller = newController(BridgeTreeExtractor())
+        val originalCallback = activity.window.callback
+        val bg = Executors.newSingleThreadExecutor()
+        try {
+            bg.submit { controller.start() }.get()
+        } finally {
+            bg.shutdown()
+        }
+
+        // Stop immediately on main thread before queued installHooksOnMain runs
+        val stoppedCount = controller.stop()
+        assertEquals(0, stoppedCount)
+        assertTrue(!controller.isRecording())
+
+        // Drain queued main-looper install task
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+
+        assertSame("window.callback must stay original after stop", originalCallback, activity.window.callback)
+        onMain { dispatchTap(testButton, 2_000) }
+        assertEquals(0, controller.count())
+    }
+
+    // BB-B16: start -> stop -> start across background and main looper must not clobber the
+    // newer active session or double-wrap Window.Callback, and HookState tracks all 4 states.
+    @Test
+    fun rapidStartStopStartKeepsSingleActiveHook() {
+        val controller = newController(BridgeTreeExtractor())
+        val originalCallback = activity.window.callback
+        assertEquals(RecordingController.HookState.IDLE, controller.hookState())
+
+        val bg = Executors.newSingleThreadExecutor()
+        try {
+            // 1. Background start -> INSTALLING until main looper drains -> ACTIVE
+            bg.submit { controller.start() }.get()
+            assertEquals(RecordingController.HookState.INSTALLING, controller.hookState())
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            assertEquals(RecordingController.HookState.ACTIVE, controller.hookState())
+
+            // 2. Background stop -> UNINSTALLING, then background start -> INSTALLING (supersedes uninstall)
+            bg.submit { controller.stop() }.get()
+            assertEquals(RecordingController.HookState.UNINSTALLING, controller.hookState())
+            assertEquals(null, controller.stop()) // stop while UNINSTALLING returns null (RECORDING_IDLE)
+            bg.submit { controller.start() }.get()
+            assertEquals(RecordingController.HookState.INSTALLING, controller.hookState())
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            assertEquals(RecordingController.HookState.ACTIVE, controller.hookState())
+
+            // 3. Queued bg start + bg stop followed by synchronous main start must ignore stale runnables
+            bg.submit { controller.start() }.get() // idempotent while ACTIVE
+            bg.submit { controller.stop() }.get()  // queues uninstall gen N
+            bg.submit { controller.stop() }.get()  // no-op
+        } finally {
+            bg.shutdown()
+        }
+
+        // Start on main thread BEFORE queued bg uninstall runs!
+        controller.start()
+        assertEquals(RecordingController.HookState.ACTIVE, controller.hookState())
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(RecordingController.HookState.ACTIVE, controller.hookState())
+        assertTrue("controller must remain recording", controller.isRecording())
+        assertTrue("window.callback must be wrapped", activity.window.callback !== originalCallback)
+
+        onMain { dispatchTap(testButton, 3_000) }
+        assertEquals("single tap must record exactly once (no drop, no double-wrap)", 1, controller.count())
+    }
+
+    // BB-B17: agent-injected KeyEvents carrying SYNTHETIC_DEVICE_ID are excluded from capture
+    @Test
+    fun syntheticKeyEventIsNotRecorded() {
+        val controller = newController(BridgeTreeExtractor())
+        controller.start()
+        onMain {}
+
+        val decor = activity.window.decorView
+        val now = fakeTime.get()
+        val syntheticBack = KeyEvent(
+            now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0,
+            0, DefaultInjectionAdapter.SYNTHETIC_DEVICE_ID, 0
+        )
+        val syntheticEnter = KeyEvent(
+            now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0,
+            0, DefaultInjectionAdapter.SYNTHETIC_DEVICE_ID, 0
+        )
+        onMain {
+            decor.dispatchKeyEvent(syntheticBack)
+            decor.dispatchKeyEvent(syntheticEnter)
+        }
+
+        assertEquals("synthetic key events must not be recorded", 0, controller.count())
+
+        // Also verify in-process instrumentation key events during muted agent mutation are excluded
+        controller.beginAgentMutation()
+        try {
+            onMain {
+                decor.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            }
+        } finally {
+            controller.endAgentMutation()
+        }
+        assertEquals("muted agent key event must not be recorded", 0, controller.count())
+    }
+
+    // BB-B17: overlay noise exclusion must compare event.x/y against getLocationInWindow,
+    // not getLocationOnScreen (e.g. when window has a vertical screen offset).
+    @Test
+    fun overlayHitTestUsesWindowCoordinates() {
+        val controller = newController(BridgeTreeExtractor())
+        val decor = activity.window.decorView as ViewGroup
+
+        val fakeOverlay = object : View(activity) {
+            override fun getLocationInWindow(outLocation: IntArray) {
+                outLocation[0] = 0
+                outLocation[1] = 100
+            }
+
+            override fun getLocationOnScreen(outLocation: IntArray) {
+                outLocation[0] = 0
+                outLocation[1] = 600 // offset from window coordinates
+            }
+        }.apply {
+            tag = RecordingController.BRIDGE_OVERLAY_TAG
+            measure(
+                View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+            )
+            layout(0, 100, 300, 200)
+        }
+        decor.addView(fakeOverlay)
+
+        controller.start()
+        onMain {}
+
+        // Tap inside overlay's window bounds (50, 150) — outside screen bounds (600..700)
+        onMain {
+            val downTime = fakeTime.get()
+            decor.dispatchTouchEvent(
+                MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, 50f, 150f, 0)
+            )
+            fakeTime.set(downTime + 40)
+            decor.dispatchTouchEvent(
+                MotionEvent.obtain(downTime, downTime + 40, MotionEvent.ACTION_UP, 50f, 150f, 0)
+            )
+        }
+
+        assertEquals("touch inside overlay window bounds must be excluded", 0, controller.count())
     }
 }

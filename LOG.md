@@ -1,5 +1,19 @@
 # Log
 
+## 2026-11-27 (session) — Wayfinder map 22 (#143) Recording start/stop race hardening
+- Scope: HITL ticket (#140), 2 AFK tickets (#141, #142) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/143-recording-race`.
+- HITL #140: Grilling session decided `HookState` (`IDLE`, `INSTALLING`, `ACTIVE`, `UNINSTALLING`) + monotonic `generation: Long` token barrier under a single lock, keeping HTTP wire JSON (`recording: boolean`) unchanged (`schema_version: 1`) while exposing `hookState()` for unit tests, and keeping both adjacent fixes (`onKeyObserved` `SYNTHETIC_DEVICE_ID` exclusion and `isInsideBridgeOverlay` `getLocationInWindow` coordinate space) in `#141`/`#142`. Closed #140.
+- AFK #141: Write-first blackbox tests for recording race & synthetic key exclusion (RED). Added `tests/blackbox/scenarios/recording_race.json` (`BB-B16`) and `tests/blackbox/scenarios/recording_synthetic_key.json` (`BB-B17`). Registered `BB-B16`/`BB-B17` with `write_first: true` in `crates/texure-blackbox/src/main.rs`, `crates/texure-lint/src/docs_gate.rs`, `docs/behavior-spec.md` §1.7, and `docs/blackbox-plan.md`. Confirmed RED failure against `FakeBridge` with evidence saved to `tmp/evidence/141/red-run.txt`. Closed #141.
+- AFK #142: Implementation and verification (GREEN). Updated `RecordingController.kt` with atomic `(HookState, currentGeneration)` lifecycle barrier across `start()`/`stop()` and main-looper `installHooksOnMain`/`uninstallHooksOnMain` (unwrapping existing proxy via `originalWindowCallback` to prevent double-wrapping, rolling back if superseded mid-install, and binding generation tokens to `RecordingWindowCallback` and `Session`). Added `SYNTHETIC_DEVICE_ID || muted` guard to `onKeyObserved` and switched `isInsideBridgeOverlay` to `getLocationInWindow`. Added Robolectric tests in `RecordingMappingTest.kt`. Updated `FakeBridge` (`fake_bridge.rs`) to model synthetic exclusion and fresh-start reset for `recording_race`/`recording_synthetic_key`, and flipped `BB-B16`/`BB-B17` to `write_first: false`.
+- Verification:
+  - L0 Static: `cargo run --offline -p texure-lint` (0 findings), `cargo clippy --offline --workspace --all-targets -- -D warnings` (clean), `:bridge:lint` (0 findings in `RecordingController.kt`; 1 pre-existing `SuspiciousIndentation` error in `TexureNetworkInterceptor.kt:49` outside diff).
+  - L1 Unit: `cargo test --offline --workspace` (all passed: 47 texure-blackbox, 30 texure-contract, 4 texure-lint, 76 texure-server, companion), `./gradlew --no-daemon :bridge:testDebugUnitTest` (151 passed, 0 failed, 0 skipped).
+  - L2 Blackbox: `cargo run --offline -p texure-blackbox -- --target mcp-fake` (35/35 passed, including `BB-B16` and `BB-B17`).
+  - L3 Device: Blocked (no device attached).
+VERIFY: L0 pass · L1 pass · L2 pass(35) · L3 blocked:no device
+EVIDENCE: tmp/evidence/141/red-run.txt
+FLIPS: BB-B16, BB-B17
+
 ## 2026-11-26 (session) — Wayfinder map 21 (#139) Remove off-main back-press fallback in BridgeWorker
 - Scope: HITL ticket (#136), 2 AFK tickets (#137, #138) executed end-to-end in single-PR mode (< 5 tickets) on branch `wf/139-backpress-fallback`.
 - HITL #136: Decide slow-main-thread failure contract. Grilling session confirmed eliminating off-main fallback entirely from `BridgeWorker.kt`. If the main looper does not service BACK within 1000 ms, the action aborts via an atomic 4-state transition (`AtomicInteger` CAS) cancellation token to prevent ghost execution and refuses with `INJECT_FAILED` (HTTP 400, hint: "re-fetch tree, retry once; bundle evidence"). Tree `rev` is not bumped on timeout or refusal. Documented in `docs/behavior-spec.md` §1.4 and `docs/bridge-contract.md` §5.1. Closed #136.

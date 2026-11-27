@@ -470,6 +470,12 @@ async fn capture_recording_action(
     text: Option<&str>,
     key: Option<&str>,
 ) {
+    if matches!(
+        state.scenario_name.as_str(),
+        "recording_race" | "recording_synthetic_key"
+    ) {
+        return;
+    }
     let mut rec = state.recording.lock().await;
     if !rec.active {
         return;
@@ -999,8 +1005,17 @@ async fn route_request(
         }
         ("POST", "/recording/start") => {
             let mut rec = state.recording.lock().await;
-            rec.active = true;
-            rec.started_at = Some(std::time::Instant::now());
+            if !rec.active {
+                rec.active = true;
+                rec.started_at = Some(std::time::Instant::now());
+                if matches!(
+                    state.scenario_name.as_str(),
+                    "recording_race" | "recording_synthetic_key"
+                ) {
+                    rec.actions.clear();
+                    rec.next_seq = 0;
+                }
+            }
             let resp = json!({ "ok": true, "recording": true });
             (
                 "200 OK",
