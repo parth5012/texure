@@ -214,11 +214,26 @@ class RecordingController(
     }
 
     private fun abortInstallIfCurrent(gen: Long) {
-        synchronized(lifecycleLock) {
-            if (currentGeneration == gen && hookState == HookState.INSTALLING) {
-                activeSession = null
-                hookState = HookState.IDLE
+        val (proxy, original, window) = synchronized(lifecycleLock) {
+            if (currentGeneration != gen || hookState != HookState.INSTALLING) {
+                return
             }
+            activeSession = null
+            hookState = HookState.IDLE
+            val trackedProxy = proxyWindowCallback
+            val trackedOriginal = originalWindowCallback
+            val trackedWindow = hookedWindow?.get()
+            proxyWindowCallback = null
+            originalWindowCallback = null
+            hookedWindow = null
+            Triple(trackedProxy, trackedOriginal, trackedWindow)
+        }
+        if (proxy != null && window != null) {
+            try {
+                if (window.callback === proxy) {
+                    window.callback = original
+                }
+            } catch (_: Exception) {}
         }
     }
 
