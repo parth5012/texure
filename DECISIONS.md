@@ -440,3 +440,18 @@ Full LLD for Gradle plugin: [docs/lld-plugin.md](docs/lld-plugin.md).
   - Extended wait on main thread: Rejected because agents should not block indefinitely on unresponsive UI threads.
   - Off-main instrumentation fallback for BACK: Rejected because Android UI back press dispatch belongs strictly on the main thread and can crash off-main.
   - Bumping rev on timeout: Rejected because the UI did not mutate.
+
+---
+
+## 2026-11-27 (Wayfinder Map 22, Issue #143)
+
+**Harden `RecordingController` hook install/uninstall with an atomic `(HookState, generation)` state machine and align key/overlay filtering.**
+- **Context:** `RecordingController` tracked recording via `AtomicBoolean` + `AtomicReference<Session?>` and posted `installHooksOnMain()` / `uninstallHooksOnMain()` to the main looper without generation checks. A rapid `start() -> stop()` before `installHooksOnMain()` drained could leave a stale `RecordingWindowCallback` intercepting input after recording stopped, and `start() -> stop() -> start()` could let a queued uninstall tear down a newer session. Additionally, `onKeyObserved` omitted `SYNTHETIC_DEVICE_ID` exclusion and `isInsideBridgeOverlay` compared window-relative `event.x`/`event.y` against `getLocationOnScreen`.
+- **Decision:**
+  1. Replace the boolean/reference pair with an atomic `(HookState: IDLE | INSTALLING | ACTIVE | UNINSTALLING, currentGeneration: Long)` state machine guarded by a single leaf `lifecycleLock`, keeping `isRecording()` (`INSTALLING | ACTIVE -> true`, `IDLE | UNINSTALLING -> false`) and HTTP wire JSON (`schema_version: 1`) unchanged while exposing `hookState()` for unit diagnostics.
+  2. Bind `generation` into both `Session` and `RecordingWindowCallback`, validate `(currentGeneration, hookState)` inside main-looper install/uninstall tasks, unwrap existing `proxyWindowCallback` via `originalWindowCallback` to prevent double-wrapping, roll back `window.callback` if superseded mid-install, revert `INSTALLING -> IDLE` on install failure (`activityProvider() == null`, `window.callback == null`, or attach exception), and store a `WeakReference<Window>` (`hookedWindow`) so `uninstallHooksOnMain` unwraps the exact window wrapped on `start()`.
+  3. Filter `SYNTHETIC_DEVICE_ID || muted` in `onKeyObserved` (covering both synthetic `KeyEvent`s and in-process `Instrumentation.sendKeyDownUpSync` under `BridgeServer`'s mute window) and switch `isInsideBridgeOverlay` to `getLocationInWindow`.
+- **Alternatives rejected:**
+  - Blocking HTTP threads synchronously on `mainHandler` for every `start()`/`stop()`: Rejected to avoid blocking control-plane routes on slow UI threads.
+  - Bare `AtomicBoolean` CAS without generation tokens: Rejected because queued main-looper tasks still race across `start -> stop -> start`.
+  - Adding a second lock around `Session` and `lifecycleLock` together: Rejected to preserve strict non-nested lock ordering (`lifecycleLock` is never held across `synchronized(session)` or `Window` calls).

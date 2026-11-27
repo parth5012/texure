@@ -55,8 +55,8 @@ Test IDs: `BB-<group><n>`. Every row from behavior-spec is covered or explicitly
 | B8 | Single-flight: second MCP session gets `BUSY` + owner identity | mcp |
 | B9 | Lock release on disconnect and on 60s idle (test-mode timer via `TEXURE_TEST_*` env scaling — a documented affordance, not an impl change) | mcp |
 | B10 | `verbose:true` returns full JSON error; default returns one-liner | mcp, http |
-| B16 | `recording_race`: rapid `start -> stop -> start -> synthetic tap` keeps one active recording, no stale interception, empty `{recording,count,actions}` export (map 22 #143, write-first) | mcp-fake |
-| B17 | `recording_synthetic_key`: agent-injected key events with `SYNTHETIC_DEVICE_ID` are not recorded as human input (map 22 #143, write-first) | mcp-fake |
+| B16 | `recording_race`: rapid `start -> stop -> start -> synthetic tap` keeps one active recording, no stale interception, empty `{recording,count,actions}` export (map 22 #143) | mcp-fake |
+| B17 | `recording_synthetic_key`: agent-injected key events with `SYNTHETIC_DEVICE_ID` are not recorded as human input (map 22 #143) | mcp-fake |
 
 ### Group C — goal flows (the milestone instrumented)
 

@@ -208,7 +208,7 @@ class RecordingMappingTest {
     }
 
     // BB-B16: background start() followed by immediate main-thread stop() before looper drains
-    // must not leave a stale Window.Callback intercepting touches after stop.
+    // must not leave a stale Window.Callback intercepting touches after stop (primary pre-fix regression test).
     @Test
     fun backgroundStartThenImmediateStopLeavesNoStaleHook() {
         val controller = newController(BridgeTreeExtractor())
@@ -276,6 +276,71 @@ class RecordingMappingTest {
 
         onMain { dispatchTap(testButton, 3_000) }
         assertEquals("single tap must record exactly once (no drop, no double-wrap)", 1, controller.count())
+
+        // Stopping after supersession cleanly unwraps back to the exact original Window.Callback
+        assertEquals(1, controller.stop())
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(RecordingController.HookState.IDLE, controller.hookState())
+        assertSame("post-stop window.callback must be unwrapped cleanly", originalCallback, activity.window.callback)
+    }
+
+    // BB-B16: if activityProvider returns null during install, HookState rolls back from INSTALLING to IDLE
+    // so a subsequent start() recovers instead of remaining permanently wedged in INSTALLING.
+    @Test
+    fun installFailureRollsBackInstallingToIdleAndRecovers() {
+        var currentActivity: Activity? = null
+        val controller = RecordingController(
+            activityProvider = { currentActivity },
+            treeExtractor = BridgeTreeExtractor(),
+            timeSource = { fakeTime.get() }
+        )
+
+        val bg = Executors.newSingleThreadExecutor()
+        try {
+            bg.submit { controller.start() }.get()
+        } finally {
+            bg.shutdown()
+        }
+        assertEquals(RecordingController.HookState.INSTALLING, controller.hookState())
+
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(RecordingController.HookState.IDLE, controller.hookState())
+        assertTrue(!controller.isRecording())
+
+        // Subsequent start() once Activity is present succeeds normally
+        currentActivity = activity
+        controller.start()
+        assertEquals(RecordingController.HookState.ACTIVE, controller.hookState())
+        onMain { dispatchTap(testButton, 4_000) }
+        assertEquals(1, controller.count())
+    }
+
+    // BB-B16: uninstall restores the exact Window wrapped on start(), even if activityProvider switched.
+    @Test
+    fun stopUnwrapsOriginalWindowEvenIfActivityProviderSwitches() {
+        val originalCallback = activity.window.callback
+        val secondActivity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val secondOriginalCallback = secondActivity.window.callback
+        var currentActivity: Activity = activity
+
+        val controller = RecordingController(
+            activityProvider = { currentActivity },
+            treeExtractor = BridgeTreeExtractor(),
+            timeSource = { fakeTime.get() }
+        )
+
+        controller.start()
+        assertEquals(RecordingController.HookState.ACTIVE, controller.hookState())
+        assertTrue(activity.window.callback !== originalCallback)
+
+        // Activity changes before stop()
+        currentActivity = secondActivity
+        controller.stop()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+
+        assertEquals(RecordingController.HookState.IDLE, controller.hookState())
+        assertSame("original Activity window callback must be restored", originalCallback, activity.window.callback)
+        assertSame("second Activity window callback must stay untouched", secondOriginalCallback, secondActivity.window.callback)
     }
 
     // BB-B17: agent-injected KeyEvents carrying SYNTHETIC_DEVICE_ID are excluded from capture

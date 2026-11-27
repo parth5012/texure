@@ -469,11 +469,14 @@ async fn capture_recording_action(
     node_index: Option<u64>,
     text: Option<&str>,
     key: Option<&str>,
+    synthetic: bool,
 ) {
-    if matches!(
-        state.scenario_name.as_str(),
-        "recording_race" | "recording_synthetic_key"
-    ) {
+    if synthetic
+        && matches!(
+            state.scenario_name.as_str(),
+            "recording_race" | "recording_synthetic_key"
+        )
+    {
         return;
     }
     let mut rec = state.recording.lock().await;
@@ -854,7 +857,7 @@ async fn route_request(
             });
             let _ = state.ws_sender.send(event.to_string());
 
-            capture_recording_action(state, "tap", Some(req_node), None, None).await;
+            capture_recording_action(state, "tap", Some(req_node), None, None, true).await;
 
             let resp = json!({ "ok": true });
             (
@@ -932,8 +935,15 @@ async fn route_request(
             });
             let _ = state.ws_sender.send(event.to_string());
 
-            capture_recording_action(state, "type", Some(req_node), req_text.as_deref(), None)
-                .await;
+            capture_recording_action(
+                state,
+                "type",
+                Some(req_node),
+                req_text.as_deref(),
+                None,
+                true,
+            )
+            .await;
 
             let resp = json!({ "ok": true });
             (
@@ -970,6 +980,7 @@ async fn route_request(
                 body_json.get("node").and_then(|v| v.as_u64()),
                 None,
                 Some(key),
+                true,
             )
             .await;
             let resp = json!({ "ok": true });
@@ -995,7 +1006,7 @@ async fn route_request(
                 );
             }
 
-            capture_recording_action(state, "keypress", None, None, Some("BACK")).await;
+            capture_recording_action(state, "keypress", None, None, Some("BACK"), true).await;
             let resp = json!({ "ok": true });
             (
                 "200 OK",
@@ -1008,13 +1019,8 @@ async fn route_request(
             if !rec.active {
                 rec.active = true;
                 rec.started_at = Some(std::time::Instant::now());
-                if matches!(
-                    state.scenario_name.as_str(),
-                    "recording_race" | "recording_synthetic_key"
-                ) {
-                    rec.actions.clear();
-                    rec.next_seq = 0;
-                }
+                rec.actions.clear();
+                rec.next_seq = 0;
             }
             let resp = json!({ "ok": true, "recording": true });
             (
