@@ -14,9 +14,7 @@ import com.texure.bridge.injection.DefaultInjectionAdapter
 import com.texure.bridge.model.TreeNode
 import com.texure.bridge.tree.BridgeTreeExtractor
 import com.texure.bridge.tree.ExtractedTree
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 /**
@@ -40,7 +38,14 @@ class RecordingController(
     private val timeSource: () -> Long = { SystemClock.uptimeMillis() }
 ) {
 
-    private class Session {
+    enum class HookState {
+        IDLE,
+        INSTALLING,
+        ACTIVE,
+        UNINSTALLING
+    }
+
+    private class Session(val generation: Long) {
         var sessionStart: Long = 0L
         val events = mutableListOf<RecordedAction>()
         var seq: Int = 0
@@ -57,54 +62,75 @@ class RecordingController(
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val recording = AtomicBoolean(false)
+    private val lifecycleLock = Any()
     private val muteCount = AtomicInteger(0)
-    private val sessionRef = AtomicReference<Session?>(null)
+
+    private var hookState: HookState = HookState.IDLE
+    private var currentGeneration: Long = 0L
+    private var activeSession: Session? = null
 
     // Installed only while a session is active
     private var originalWindowCallback: Window.Callback? = null
     private var proxyWindowCallback: RecordingWindowCallback? = null
 
-    fun isRecording(): Boolean = recording.get()
+    fun hookState(): HookState = synchronized(lifecycleLock) { hookState }
+
+    fun isRecording(): Boolean = synchronized(lifecycleLock) {
+        hookState == HookState.INSTALLING || hookState == HookState.ACTIVE
+    }
 
     fun count(): Int {
-        val session = sessionRef.get() ?: return 0
+        val session = synchronized(lifecycleLock) { activeSession } ?: return 0
         return synchronized(session) { session.events.size }
     }
 
-    /** Begins a fresh recording session (fresh trace). Idempotent while active. */
+    /** Begins a fresh recording session (fresh trace). Idempotent while active or installing. */
     fun start() {
-        if (!recording.compareAndSet(false, true)) {
-            return // already recording: contract keeps the buffer untouched
+        val installGen = synchronized(lifecycleLock) {
+            if (hookState == HookState.INSTALLING || hookState == HookState.ACTIVE) {
+                return // already recording: contract keeps the buffer untouched
+            }
+            val nextGen = ++currentGeneration
+            val session = Session(nextGen).apply { sessionStart = now() }
+            activeSession = session
+            hookState = HookState.INSTALLING
+            nextGen
         }
-        val session = Session()
-        session.sessionStart = now()
-        sessionRef.set(session)
-        installHooks()
+        installHooks(installGen)
     }
 
     /**
      * Ends the active session. Returns the recorded action count,
-     * or null when idle (maps to `RECORDING_IDLE`).
+     * or null when idle or already uninstalling (maps to `RECORDING_IDLE`).
      */
     fun stop(): Int? {
-        if (!isRecording()) return null
-        val session = sessionRef.getAndSet(null) ?: return null
-        recording.set(false)
-        uninstallHooks()
-        return synchronized(session) { session.events.size }
+        val (uninstallGen, stoppedSession) = synchronized(lifecycleLock) {
+            if (hookState == HookState.IDLE || hookState == HookState.UNINSTALLING) {
+                return null
+            }
+            val session = activeSession ?: return null
+            val nextGen = ++currentGeneration
+            activeSession = null
+            hookState = HookState.UNINSTALLING
+            nextGen to session
+        }
+        uninstallHooks(uninstallGen, stoppedSession)
+        return synchronized(stoppedSession) { stoppedSession.events.size }
     }
 
     /** Clears the buffered trace (works idle or while recording). */
     fun clear() {
-        val session = sessionRef.get() ?: return
+        val session = synchronized(lifecycleLock) { activeSession } ?: return
         synchronized(session) { session.events.clear() }
     }
 
     fun export(): JSONObject {
-        val session = sessionRef.get()
+        val (recordingActive, session) = synchronized(lifecycleLock) {
+            val active = hookState == HookState.INSTALLING || hookState == HookState.ACTIVE
+            active to activeSession
+        }
         return JSONObject().apply {
-            put("recording", isRecording())
+            put("recording", recordingActive)
             if (session == null) {
                 put("count", 0)
                 put("actions", RecordedAction.actionsJson(emptyList()))
@@ -170,70 +196,122 @@ class RecordingController(
     }
 
     // ---------------------------------------------------------------------------
-    // Hook install / uninstall (main thread only)
+    // Hook install / uninstall (main thread only, generation-token guarded)
     // ---------------------------------------------------------------------------
 
-    private fun installHooks() {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            installHooksOnMain()
-            return
+    private fun activeSessionFor(generation: Long): Session? = synchronized(lifecycleLock) {
+        val session = activeSession ?: return null
+        if ((hookState == HookState.INSTALLING || hookState == HookState.ACTIVE) &&
+            currentGeneration == generation &&
+            session.generation == generation
+        ) {
+            session
+        } else {
+            null
         }
-        mainHandler.post { installHooksOnMain() }
     }
 
-    private fun installHooksOnMain() {
-        if (proxyWindowCallback != null) return
+    private fun installHooks(gen: Long) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            installHooksOnMain(gen)
+            return
+        }
+        mainHandler.post { installHooksOnMain(gen) }
+    }
+
+    private fun installHooksOnMain(gen: Long) {
+        val (existingProxy, existingOriginal) = synchronized(lifecycleLock) {
+            if (currentGeneration != gen || hookState != HookState.INSTALLING) {
+                return
+            }
+            proxyWindowCallback to originalWindowCallback
+        }
         val activity = activityProvider() ?: return
         val window = activity.window
-        val original = window.callback ?: return
-        try {
-            val proxy = RecordingWindowCallback(this@RecordingController, activity, original)
-            window.callback = proxy
-            originalWindowCallback = original
-            proxyWindowCallback = proxy
-        } catch (_: Exception) {
-            proxyWindowCallback = null
-            originalWindowCallback = null
+        val currentCallback = window.callback ?: return
+        val baseCallback = if (
+            existingProxy != null &&
+            currentCallback === existingProxy &&
+            existingOriginal != null
+        ) {
+            existingOriginal
+        } else {
+            currentCallback
         }
-    }
-
-    private fun uninstallHooks() {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            uninstallHooksOnMain()
+        val proxy = try {
+            val newProxy = RecordingWindowCallback(this@RecordingController, activity, baseCallback, gen)
+            window.callback = newProxy
+            newProxy
+        } catch (_: Exception) {
             return
         }
-        mainHandler.post { uninstallHooksOnMain() }
+        val committed = synchronized(lifecycleLock) {
+            if (currentGeneration == gen && hookState == HookState.INSTALLING) {
+                originalWindowCallback = baseCallback
+                proxyWindowCallback = proxy
+                hookState = HookState.ACTIVE
+                true
+            } else {
+                false
+            }
+        }
+        if (!committed) {
+            try {
+                if (window.callback === proxy) {
+                    window.callback = baseCallback
+                }
+            } catch (_: Exception) {}
+        }
     }
 
-    private fun uninstallHooksOnMain() {
-        val proxy = proxyWindowCallback ?: return
-        val activity = activityProvider()
-        try {
-            if (activity?.window?.callback === proxy) {
-                activity.window.callback = originalWindowCallback
+    private fun uninstallHooks(gen: Long, stoppedSession: Session) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            uninstallHooksOnMain(gen, stoppedSession)
+            return
+        }
+        mainHandler.post { uninstallHooksOnMain(gen, stoppedSession) }
+    }
+
+    private fun uninstallHooksOnMain(gen: Long, stoppedSession: Session) {
+        unwatch(stoppedSession)
+        stoppedSession.downTime = null
+
+        val (proxy, original) = synchronized(lifecycleLock) {
+            if (currentGeneration != gen || hookState != HookState.UNINSTALLING) {
+                return
             }
-        } catch (_: Exception) {}
-        proxyWindowCallback = null
-        originalWindowCallback = null
-        sessionRef.get()?.let { session ->
-            unwatch(session)
-            session.downTime = null
+            val currentProxy = proxyWindowCallback
+            val currentOriginal = originalWindowCallback
+            proxyWindowCallback = null
+            originalWindowCallback = null
+            hookState = HookState.IDLE
+            currentProxy to currentOriginal
+        }
+
+        if (proxy != null) {
+            val activity = activityProvider()
+            try {
+                if (activity?.window?.callback === proxy) {
+                    activity.window.callback = original
+                }
+            } catch (_: Exception) {}
         }
     }
 
     private class RecordingWindowCallback(
         private val controller: RecordingController,
         private val activity: Activity,
-        private val delegate: Window.Callback
+        private val delegate: Window.Callback,
+        private val generation: Long
     ) : Window.Callback by delegate, KeyEvent.Callback {
 
         override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
-            event?.let { controller.onKeyObserved(event) }
+            event?.let { controller.onKeyObserved(generation, it) }
             return delegate.dispatchKeyEvent(event)
         }
 
         override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
-            event?.let { controller.onTouchObserved(it) }
+            event?.let { controller.onTouchObserved(generation, it) }
             return delegate.dispatchTouchEvent(event)
         }
 
@@ -258,10 +336,9 @@ class RecordingController(
     // Observation (called on the main thread by the callback wrapper)
     // ---------------------------------------------------------------------------
 
-    private fun onTouchObserved(event: MotionEvent) {
+    private fun onTouchObserved(generation: Long, event: MotionEvent) {
         if (event.deviceId == DefaultInjectionAdapter.SYNTHETIC_DEVICE_ID) return
-        val session = sessionRef.get() ?: return
-        if (!isRecording()) return
+        val session = activeSessionFor(generation) ?: return
         val activity = activityProvider() ?: return
 
         when (event.actionMasked) {
@@ -296,9 +373,9 @@ class RecordingController(
      * dispatches to the Activity object directly and bypasses the proxy — by design:
      * agent /back mutations run muted through the server instead.
      */
-    private fun onKeyObserved(event: KeyEvent) {
-        val session = sessionRef.get() ?: return
-        if (!isRecording()) return
+    private fun onKeyObserved(generation: Long, event: KeyEvent) {
+        if (event.deviceId == DefaultInjectionAdapter.SYNTHETIC_DEVICE_ID || muted) return
+        val session = activeSessionFor(generation) ?: return
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             val keyName = when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK -> "BACK"
@@ -336,7 +413,7 @@ class RecordingController(
             val child = decor.getChildAt(i)
             if (child.tag == BRIDGE_OVERLAY_TAG) {
                 val loc = IntArray(2)
-                child.getLocationOnScreen(loc)
+                child.getLocationInWindow(loc)
                 return event.x >= loc[0] && event.x <= loc[0] + child.width &&
                     event.y >= loc[1] && event.y <= loc[1] + child.height
             }
@@ -402,7 +479,7 @@ class RecordingController(
 
     private fun onWatchTextChanged(session: Session, index: Int, node: TreeNode, current: String) {
         if (session.watchedEditable == null) return // watcher already detached
-        if (!isRecording() || muted) {
+        if (activeSessionFor(session.generation) !== session || muted) {
             session.baseText = current
             session.pendingDelta = ""
             return
