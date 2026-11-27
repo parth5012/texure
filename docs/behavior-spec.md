@@ -75,6 +75,8 @@ Legend: [S] decided in LLD grilling round 3, 2026-10-30.
 | Event mapping | BB-B14 | Recorded actions: `tap` (down+up within threshold; node = smallest clickable/editable own-view containing the point, correlated via the tree extractor with index, id, text, cd, cls, rev), `type` (committed text on focused editable), `keypress` (BACK via dispatcher, ENTER via text commit), `pause` (gap ≥ 2s). All with `t` offsets from session start. |
 | Export & clear | BB-B15 | `GET /recording/export` returns `{recording, count, actions}` per the contract; `DELETE /recording` clears the buffer, export then shows count 0. |
 | Overlay control | BB-B12, BB-B13 | Debug overlay gains a Record/Stop toggle and a status indicator (recording state + recorded event count). Overlay button drives the same controller as the HTTP routes. |
+| Hook lifecycle race guard (map #143) | BB-B16 | Hook install/uninstall uses an atomic `(IDLE \| INSTALLING \| ACTIVE \| UNINSTALLING, generation)` state machine; queued main-looper install/uninstall tasks verify their generation token so a rapid `start -> stop -> start` cannot leave a stale `Window.Callback` installed or tear down a newer session (`export` returns `{recording, count, actions}`). |
+| Synthetic key & overlay window-coordinate exclusion (map #143) | BB-B17 | `onKeyObserved` excludes events with `SYNTHETIC_DEVICE_ID` (matching touch capture), and overlay touch exclusion compares `event.x`/`event.y` against `getLocationInWindow` (not `getLocationOnScreen`). |
 
 ## 2. MCP server (texure-server, Rust)
 

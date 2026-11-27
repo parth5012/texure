@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "name": "recording_race",
+  "kind": "scenario",
+  "description": "Rapid start -> stop -> start followed by synthetic tap leaves exactly one active recording, no stale interception, and empty {recording,count,actions} export",
+  "steps": [
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true, "recording": true }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "ok": true, "recording": false, "count": 0 }
+    },
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true, "recording": true }
+    },
+    {
+      "action": "device_tree",
+      "args": {},
+      "expect": { "rev": "> 0" }
+    },
+    {
+      "action": "tap",
+      "args": { "node": 0, "rev": "$tree.rev" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_export",
+      "args": {},
+      "expect": { "recording": true, "count": 0, "actions": [] }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "ok": true, "recording": false, "count": 0 }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}
