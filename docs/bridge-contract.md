@@ -130,7 +130,7 @@ Recording is a bridge-side capability: the bridge observes interactions on its o
 
 #### POST /recording/start
 
-Starts a recording session: attaches the passive touch observer (own windows only, no gesture consumption) and begins buffering actions. Response `{ "ok": true, "recording": true }`. Idempotent: starting while already recording returns `{ "ok": true, "recording": true }` unchanged (buffer is NOT cleared).
+Starts a recording session: schedules passive `Window.Callback` observer attachment on the main looper (own windows only, no gesture consumption) and begins buffering actions. Response `{ "ok": true, "recording": true }` is returned optimistically while main-thread attachment runs; if no foreground `Activity`/`Window` is available when installation executes, recording rolls back to `IDLE` (`recording: false`, observable via `GET /recording/export` or `400 RECORDING_IDLE` on `POST /recording/stop`). Idempotent: starting while already recording or installing returns `{ "ok": true, "recording": true }` unchanged (buffer is NOT cleared).
 
 #### POST /recording/stop
 
