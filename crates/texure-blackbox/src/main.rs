@@ -392,6 +392,22 @@ pub fn get_all_tests() -> Vec<TestDef> {
             is_device: false,
             write_first: false,
         },
+        TestDef {
+            id: "BB-B16".to_string(),
+            name: "recording_race: rapid start->stop->start keeps one active session and excludes synthetic tap".to_string(),
+            scenario_file: "recording_race.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: true,
+        },
+        TestDef {
+            id: "BB-B17".to_string(),
+            name: "recording_synthetic_key: agent-injected key with synthetic deviceId is not recorded".to_string(),
+            scenario_file: "recording_synthetic_key.json".to_string(),
+            target: "mcp-fake".to_string(),
+            is_device: false,
+            write_first: true,
+        },
         // Group C: Goal flows
         TestDef {
             id: "BB-C1".to_string(),

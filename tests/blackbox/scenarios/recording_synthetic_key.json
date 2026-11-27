@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "recording_synthetic_key",
+  "kind": "scenario",
+  "description": "Agent-injected keypresses with synthetic deviceId are excluded from recorded human input",
+  "steps": [
+    {
+      "action": "recording_start",
+      "args": {},
+      "expect": { "ok": true, "recording": true }
+    },
+    {
+      "action": "keypress",
+      "args": { "key": "ENTER" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "keypress",
+      "args": { "key": "BACK" },
+      "expect": { "ok": true }
+    },
+    {
+      "action": "recording_export",
+      "args": {},
+      "expect": { "recording": true, "count": 0, "actions": [] }
+    },
+    {
+      "action": "recording_stop",
+      "args": {},
+      "expect": { "ok": true, "recording": false, "count": 0 }
+    }
+  ],
+  "assertions": [
+    { "pred": "state", "target": "bridge", "value": "IDLE" }
+  ]
+}
