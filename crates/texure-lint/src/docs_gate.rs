@@ -46,7 +46,8 @@ pub fn check_docs_gate(root_dir: &Path) -> Vec<Finding> {
     let all_expected_bb_ids = [
         "BB-A0", "BB-A1", "BB-A2", "BB-A3", "BB-A4", "BB-A5", "BB-A6", "BB-A7", "BB-B1", "BB-B2",
         "BB-B3", "BB-B4", "BB-B5", "BB-B6", "BB-B7", "BB-B8", "BB-B9", "BB-B10", "BB-B11",
-        "BB-B12", "BB-B13", "BB-B14", "BB-B15", "BB-B16", "BB-B17", "BB-C1", "BB-C2", "BB-C3", "BB-C4",
+        "BB-B12", "BB-B13", "BB-B14", "BB-B15", "BB-B16", "BB-B17", "BB-C1", "BB-C2", "BB-C3",
+        "BB-C4",
         // Group R: remote tunnel/gateway/Shizuku/pairing (map 9 #41, write-first)
         "BB-R1", "BB-R2", "BB-R3", "BB-R4", "BB-R5", "BB-R6", "BB-R7", "BB-R8", "BB-R9", "BB-R10",
         "BB-R11", "BB-R12", "BB-R13",
